@@ -1,12 +1,12 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-// Tab Components
 import { ManagerOverview } from './manager-tabs/ManagerOverview';
 import { ManagerQueue } from './manager-tabs/ManagerQueue';
 import { ManagerRevenue } from './manager-tabs/ManagerRevenue';
 import { ManagerRbac } from './manager-tabs/ManagerRbac';
 import { ManagerSettings } from './manager-tabs/ManagerSettings';
+import { ManagerSchedule } from './manager-tabs/ManagerSchedule';
 
 export const ManagerDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -18,6 +18,8 @@ export const ManagerDashboard: React.FC = () => {
         return <ManagerQueue />;
       case 'revenue':
         return <ManagerRevenue />;
+      case 'schedule':
+        return <ManagerSchedule />;
       case 'rbac':
         return <ManagerRbac />;
       case 'settings':

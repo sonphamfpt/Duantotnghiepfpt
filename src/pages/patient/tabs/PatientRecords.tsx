@@ -168,10 +168,37 @@ export const PatientRecords: React.FC = () => {
     // Prescription
     const prescription = rec.prescription || parsed.prescription;
 
-    // Files list
-    const files = rec.files || (rec.type !== 'prescription' ? [
-      { id: `F-${rec.id}`, type: rec.type, title: rec.title, size: rec.size }
-    ] : []);
+    // Files list containing the EMR PDF file and the image files
+    const files: any[] = [
+      {
+        id: `EMR-PDF-${rec.id}`,
+        type: 'pdf' as const,
+        title: `Hồ sơ bệnh án điện tử EMR_${rec.id}.pdf`,
+        size: rec.size || '1.5 MB',
+        isEmrPdf: true,
+        record: rec
+      }
+    ];
+
+    if (rec.files) {
+      rec.files.forEach((f: any) => {
+        if (f.type === 'image') {
+          files.push(f);
+        }
+      });
+    }
+
+    if (rec.type === 'image') {
+      if (!files.some(f => f.id === rec.id)) {
+        files.push({
+          id: rec.id,
+          type: 'image' as const,
+          title: rec.title,
+          size: rec.size,
+          url: rec.url
+        });
+      }
+    }
 
     return {
       id: rec.id,
@@ -194,9 +221,13 @@ export const PatientRecords: React.FC = () => {
   const [rotateDegree, setRotateDegree] = useState<number>(0);
 
   const handleOpenRecord = (file: any) => {
-    setViewRecord(file);
-    setZoomScale(1);
-    setRotateDegree(0);
+    if (file.isEmrPdf) {
+      setViewEMRRecord(file.record);
+    } else {
+      setViewRecord(file);
+      setZoomScale(1);
+      setRotateDegree(0);
+    }
   };
   const [printVisit, setPrintVisit] = useState<any>(null); // For printing visit record
   const [viewEMRRecord, setViewEMRRecord] = useState<any | null>(null); // For EMR A4 replica detail view
@@ -486,7 +517,7 @@ export const PatientRecords: React.FC = () => {
                                 <div className="w-10 h-10 bg-zinc-800 text-white rounded-lg flex items-center justify-center shrink-0 overflow-hidden relative">
                                   {file.type === 'image' ? (
                                     <img 
-                                      src={file.id === 'F-112' || file.title?.toLowerCase().includes('niềng răng') ? '/braces_progress.png' : '/xray_panorama.png'} 
+                                      src={file.url || (file.id === 'F-112' || file.title?.toLowerCase().includes('niềng răng') ? '/braces_progress.png' : '/xray_panorama.png')} 
                                       alt={file.title} 
                                       className="w-full h-full object-cover absolute inset-0" 
                                     />
@@ -582,7 +613,7 @@ export const PatientRecords: React.FC = () => {
                   {/* Lightbox canvas */}
                   <div className="w-full bg-slate-955 rounded-2xl h-[300px] flex items-center justify-center relative overflow-hidden border border-slate-800 shadow-inner select-none">
                     <img 
-                      src={viewRecord.id === 'F-112' || viewRecord.title?.toLowerCase().includes('niềng răng') ? '/braces_progress.png' : '/xray_panorama.png'} 
+                      src={viewRecord.url || (viewRecord.id === 'F-112' || viewRecord.title?.toLowerCase().includes('niềng răng') ? '/braces_progress.png' : '/xray_panorama.png')} 
                       alt={viewRecord.title} 
                       style={{ 
                         transform: `scale(${zoomScale}) rotate(${rotateDegree}deg)`,
@@ -998,13 +1029,35 @@ export const PatientRecords: React.FC = () => {
                   <p className="text-[9px] font-bold text-primary uppercase border-b border-slate-200 pb-1 text-left">Chẩn đoán và Thủ thuật điều trị</p>
                   <div className="space-y-1.5">
                     <p><strong>Dịch vụ chính thực hiện:</strong> {viewEMRRecord.title}</p>
-                    {viewEMRRecord.type === 'image' && (
-                      <div className="mt-3 border border-slate-200 rounded-lg overflow-hidden bg-slate-900 flex items-center justify-center h-[220px]">
-                        <img 
-                          src={viewEMRRecord.id === 'MR-02' ? '/braces_progress.png' : '/xray_panorama.png'} 
-                          alt={viewEMRRecord.title} 
-                          className="max-h-full max-w-full object-contain" 
-                        />
+                    {(viewEMRRecord.type === 'image' || (viewEMRRecord.files && viewEMRRecord.files.some((f: any) => f.type === 'image'))) && (
+                      <div className="space-y-2 mt-4 text-left">
+                        <p className="text-[9px] font-bold text-primary uppercase border-b border-slate-200 pb-1 text-left">Hình ảnh đính kèm</p>
+                        {viewEMRRecord.files && viewEMRRecord.files.filter((f: any) => f.type === 'image').length > 0 && (
+                          <div className="grid grid-cols-2 gap-3 pt-1 mb-2">
+                            {viewEMRRecord.files.filter((file: any) => file.type === 'image').map((file: any) => (
+                              <div key={file.id} className="border border-slate-200 rounded-xl p-2 bg-slate-50 flex items-center gap-2">
+                                <div className="w-8 h-8 rounded bg-zinc-800 overflow-hidden shrink-0 flex items-center justify-center border border-slate-300">
+                                  <img 
+                                    src={file.url || (file.id === 'F-112' || file.title?.toLowerCase().includes('niềng răng') ? '/braces_progress.png' : '/xray_panorama.png')} 
+                                    alt={file.title} 
+                                    className="w-full h-full object-cover" 
+                                  />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-bold text-[10px] text-slate-800 truncate" title={file.title}>{file.title}</p>
+                                  <p className="text-[8px] text-slate-400 font-mono">{file.size} • IMAGE</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden bg-slate-900 flex items-center justify-center h-[180px]">
+                          <img 
+                            src={viewEMRRecord.url || (viewEMRRecord.files && viewEMRRecord.files.find((f: any) => f.type === 'image')?.url) || (viewEMRRecord.id === 'MR-02' ? '/braces_progress.png' : '/xray_panorama.png')} 
+                            alt="Clinical Scan" 
+                            className="max-h-full max-w-full object-contain" 
+                          />
+                        </div>
                       </div>
                     )}
                     {viewEMRRecord.teethMap && viewEMRRecord.teethMap.length > 0 && (

@@ -77,6 +77,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const loginWithCredentials = (email: string, password: string): { success: boolean; role?: UserRole; error?: string } => {
     const normalizedEmail = email.trim().toLowerCase();
+
+    // 1. Check admin-created staff accounts in localStorage
+    try {
+      const staffRaw = localStorage.getItem('goodsmile_staff_accounts');
+      const staffAccounts: Array<{ email: string; password: string; role: UserRole; name: string }> = staffRaw ? JSON.parse(staffRaw) : [];
+      const staffMatch = staffAccounts.find((s) => s.email.trim().toLowerCase() === normalizedEmail);
+      if (staffMatch) {
+        if (staffMatch.password !== password) {
+          return { success: false, error: 'Mật khẩu không đúng. Vui lòng thử lại.' };
+        }
+        // Build a dynamic profile for this staff member
+        setRole(staffMatch.role);
+        setUser({
+          name: staffMatch.name,
+          roleName: ROLE_PROFILES[staffMatch.role]?.roleName || staffMatch.role,
+          avatar: ROLE_PROFILES[staffMatch.role]?.avatar || '',
+        });
+        setIsAuthenticated(true);
+        return { success: true, role: staffMatch.role };
+      }
+    } catch (_) {
+      // ignore localStorage errors
+    }
+
+    // 2. Fall back to hardcoded demo credentials
     const cred = DEMO_CREDENTIALS[normalizedEmail];
     if (!cred) {
       return { success: false, error: 'Email không tồn tại trong hệ thống.' };

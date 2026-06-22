@@ -386,80 +386,206 @@ export const PatientAppointments: React.FC = () => {
       )}
 
       {/* Reschedule Modal */}
-      {rescheduleId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6 animate-fade-in border border-outline-variant">
-            <div className="flex justify-between items-center border-b border-outline-variant pb-4">
-              <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-                <Icon name="update" className="text-secondary" />
-                Dời lịch hẹn
-              </h3>
-              <button onClick={() => setRescheduleId(null)} className="text-on-surface-variant hover:text-on-surface cursor-pointer rounded-full p-1 hover:bg-surface-container">
-                <Icon name="close" />
-              </button>
-            </div>
-            
-            <p className="text-sm text-on-surface-variant">
-              Chọn một ngày và giờ mới cho lịch hẹn <strong>{UPCOMING_APPOINTMENTS.find(a => a.id === rescheduleId)?.service}</strong>.
-            </p>
+      {rescheduleId && (() => {
+        const apptToReschedule = UPCOMING_APPOINTMENTS.find(a => a.id === rescheduleId);
+        const isLateReschedule = apptToReschedule?.isNext24h;
+        
+        // Use a static list of time slots for demo
+        const timeSlots = [
+          '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM',
+          '10:15 AM', '11:00 AM', '02:00 PM', '02:30 PM',
+          '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM'
+        ];
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase text-on-surface-variant mb-2">Ngày mới</label>
-                <input type="date" className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-body-md focus:ring-2 focus:ring-primary/50 outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold uppercase text-on-surface-variant mb-2">Giờ mới</label>
-                <input type="time" className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-body-md focus:ring-2 focus:ring-primary/50 outline-none" />
-              </div>
-            </div>
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6 animate-in fade-in border border-outline-variant">
+              {isLateReschedule ? (
+                <>
+                  <div className="flex justify-between items-center border-b border-outline-variant pb-4">
+                    <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+                      <Icon name="block" className="text-error" />
+                      Không thể dời lịch
+                    </h3>
+                    <button onClick={() => setRescheduleId(null)} className="text-on-surface-variant hover:text-on-surface cursor-pointer rounded-full p-1 hover:bg-surface-container">
+                      <Icon name="close" />
+                    </button>
+                  </div>
+                  <div className="bg-error-container/30 border border-error/20 p-4 rounded-xl">
+                    <p className="text-error text-sm font-medium text-center">
+                      Lịch hẹn của bạn sẽ diễn ra trong vòng 24h tới. Để đảm bảo vận hành phòng khám, bạn không thể tự dời lịch lúc này.
+                    </p>
+                  </div>
+                  <p className="text-center text-on-surface-variant text-sm">
+                    Vui lòng gọi trực tiếp Hotline <strong className="text-primary">1900-xxxx</strong> để được hỗ trợ.
+                  </p>
+                  <button
+                    onClick={() => setRescheduleId(null)}
+                    className="w-full py-3 bg-surface-container text-on-surface rounded-xl font-bold hover:bg-surface-container-high transition-all cursor-pointer mt-2"
+                  >
+                    Đóng
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center border-b border-outline-variant pb-4">
+                    <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+                      <Icon name="update" className="text-secondary" />
+                      Dời lịch hẹn
+                    </h3>
+                    <button onClick={() => setRescheduleId(null)} className="text-on-surface-variant hover:text-on-surface cursor-pointer rounded-full p-1 hover:bg-surface-container">
+                      <Icon name="close" />
+                    </button>
+                  </div>
+                  
+                  <p className="text-sm text-on-surface-variant">
+                    Chọn một ngày và giờ mới cho lịch hẹn <strong>{apptToReschedule?.service}</strong> với {apptToReschedule?.dentist}.
+                  </p>
 
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={() => setRescheduleId(null)}
-                className="flex-1 py-3 border-2 border-outline-variant text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                onClick={() => { alert('Yêu cầu dời lịch đã được gửi đến Phòng khám! Bạn sẽ nhận được thông báo xác nhận.'); setRescheduleId(null); }}
-                className="flex-1 py-3 bg-secondary text-on-secondary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md"
-              >
-                Xác nhận Dời
-              </button>
+                  <div className="space-y-5">
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-on-surface-variant mb-2">Ngày khám mới *</label>
+                      <input 
+                        type="date" 
+                        className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-body-md focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all cursor-pointer" 
+                      />
+                    </div>
+                    
+                    <div className="animate-in fade-in slide-in-from-top-2">
+                      <label className="block text-xs font-bold uppercase text-on-surface-variant mb-3 flex items-center justify-between">
+                        <span>Khung giờ trống *</span>
+                        <span className="text-[10px] bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                          Real-time
+                        </span>
+                      </label>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {timeSlots.map(slot => {
+                          // Mock some slots as booked to show the real-time feature
+                          const isBooked = slot === '09:00 AM' || slot === '02:00 PM'; 
+                          
+                          if (isBooked) {
+                              return (
+                                <div key={slot} className="py-2 px-1 text-[11px] font-bold rounded-lg border border-outline-variant bg-surface-container-high text-on-surface-variant/40 flex items-center justify-center gap-0.5 cursor-not-allowed" title="Đã có khách đặt">
+                                  <Icon name="event_busy" className="text-[12px]" />
+                                  <span className="line-through">{slot}</span>
+                                </div>
+                              )
+                          }
+
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={(e) => {
+                                // Simple active state toggle for demo
+                                const parent = e.currentTarget.parentElement;
+                                parent?.querySelectorAll('button').forEach(b => {
+                                  b.className = "py-2 px-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer bg-white text-on-surface border-outline-variant hover:border-secondary/50 hover:bg-secondary/5";
+                                });
+                                e.currentTarget.className = "py-2 px-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer bg-secondary text-on-secondary border-secondary shadow-md scale-105";
+                              }}
+                              className="py-2 px-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer bg-white text-on-surface border-outline-variant hover:border-secondary/50 hover:bg-secondary/5"
+                            >
+                              {slot}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => setRescheduleId(null)}
+                      className="flex-1 py-3 border border-outline-variant text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer"
+                    >
+                      Hủy bỏ
+                    </button>
+                    <button
+                      onClick={() => { alert('Yêu cầu dời lịch đã được gửi đến Phòng khám! Bạn sẽ nhận được thông báo xác nhận.'); setRescheduleId(null); }}
+                      className="flex-1 py-3 bg-secondary text-on-secondary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
+                    >
+                      Xác nhận Dời
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Cancel Modal */}
-      {cancelId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl space-y-5 animate-fade-in border border-outline-variant">
-            <div className="w-16 h-16 bg-error-container rounded-full flex items-center justify-center mx-auto border border-error/20">
-              <Icon name="warning" className="text-error text-3xl" />
-            </div>
-            <h3 className="font-headline-sm text-headline-sm text-center text-on-surface">Huỷ lịch hẹn?</h3>
-            <p className="text-center text-on-surface-variant text-sm">
-              Bạn có chắc muốn huỷ lịch hẹn này không? Hành động này không thể hoàn tác và bạn sẽ cần đặt lịch lại từ đầu.
-            </p>
-            <div className="flex flex-col gap-3 pt-2">
-              <button
-                onClick={() => { alert('Lịch hẹn đã được huỷ thành công!'); setCancelId(null); }}
-                className="w-full py-3 bg-error text-on-error rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md"
-              >
-                Vâng, Huỷ lịch
-              </button>
-              <button
-                onClick={() => setCancelId(null)}
-                className="w-full py-3 text-on-surface-variant rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer"
-              >
-                Không, Giữ lại
-              </button>
+      {cancelId && (() => {
+        const apptToCancel = UPCOMING_APPOINTMENTS.find(a => a.id === cancelId);
+        const isLateCancel = apptToCancel?.isNext24h;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl space-y-5 animate-in fade-in border border-outline-variant">
+              {isLateCancel ? (
+                <>
+                  <div className="w-16 h-16 bg-error-container rounded-full flex items-center justify-center mx-auto border border-error/20">
+                    <Icon name="block" className="text-error text-3xl" />
+                  </div>
+                  <h3 className="font-headline-sm text-headline-sm text-center text-on-surface">Không thể huỷ lịch</h3>
+                  <div className="bg-error-container/30 border border-error/20 p-4 rounded-xl">
+                    <p className="text-center text-error text-sm font-medium">
+                      Lịch hẹn của bạn sẽ diễn ra trong vòng 24h tới. Để đảm bảo vận hành phòng khám, bạn không thể tự huỷ lịch lúc này.
+                    </p>
+                  </div>
+                  <p className="text-center text-on-surface-variant text-sm">
+                    Vui lòng gọi trực tiếp Hotline <strong className="text-primary">1900-xxxx</strong> để được hỗ trợ.
+                  </p>
+                  <button
+                    onClick={() => setCancelId(null)}
+                    className="w-full py-3 bg-surface-container text-on-surface rounded-xl font-bold hover:bg-surface-container-high transition-all cursor-pointer mt-2"
+                  >
+                    Đóng
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 bg-error-container rounded-full flex items-center justify-center mx-auto border border-error/20">
+                    <Icon name="warning" className="text-error text-3xl" />
+                  </div>
+                  <h3 className="font-headline-sm text-headline-sm text-center text-on-surface">Huỷ lịch hẹn?</h3>
+                  <p className="text-center text-on-surface-variant text-sm">
+                    Bạn có chắc muốn huỷ lịch hẹn này không? Hành động này không thể hoàn tác và bạn sẽ cần đặt lịch lại từ đầu.
+                  </p>
+                  
+                  <div className="mt-2">
+                    <label className="block text-xs font-bold uppercase text-on-surface-variant mb-2 text-left">Lý do huỷ lịch (Tùy chọn)</label>
+                    <select className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                      <option value="">-- Chọn lý do --</option>
+                      <option value="1">Bận đột xuất</option>
+                      <option value="2">Đã khám ở nơi khác</option>
+                      <option value="3">Hết đau răng / Không còn nhu cầu</option>
+                      <option value="4">Lý do khác</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-3 pt-2">
+                    <button
+                      onClick={() => { alert('Lịch hẹn đã được huỷ thành công!'); setCancelId(null); }}
+                      className="w-full py-3 bg-error text-on-error rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md"
+                    >
+                      Vâng, Huỷ lịch
+                    </button>
+                    <button
+                      onClick={() => setCancelId(null)}
+                      className="w-full py-3 text-on-surface-variant rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer"
+                    >
+                      Không, Giữ lại
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* QR Code Modal */}
       {qrCodeApptId && (

@@ -124,6 +124,7 @@ export interface MedicalRecord {
     type: 'pdf' | 'image' | 'prescription';
     title: string;
     size: string;
+    url?: string;
   }[];
 }
 

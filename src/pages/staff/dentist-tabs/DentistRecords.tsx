@@ -27,7 +27,10 @@ export const DentistRecords: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(urlPatientId);
   const [activeSection, setActiveSection] = useState<'timeline' | 'files' | 'teeth'>('timeline');
-  const [viewRecord, setViewRecord] = useState<typeof medicalRecords[0] | null>(null);
+  const [viewRecord, setViewRecord] = useState<any | null>(null); // For image lightbox
+  const [viewEMRRecord, setViewEMRRecord] = useState<typeof medicalRecords[0] | null>(null); // For EMR A4 replica
+  const [zoomScale, setZoomScale] = useState<number>(1);
+  const [rotateDegree, setRotateDegree] = useState<number>(0);
   const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
 
   useEffect(() => {
@@ -58,6 +61,49 @@ export const DentistRecords: React.FC = () => {
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
   const patientRecords = medicalRecords.filter(r => r.patientId === selectedPatientId);
+
+  const patientFiles = React.useMemo(() => {
+    const list: any[] = [];
+    patientRecords.forEach(rec => {
+      // EMR PDF file
+      list.push({
+        id: `EMR-PDF-${rec.id}`,
+        type: 'pdf' as const,
+        title: `Hồ sơ bệnh án điện tử EMR_${rec.id}.pdf`,
+        size: rec.size || '1.5 MB',
+        isEmrPdf: true,
+        record: rec,
+        date: rec.date
+      });
+      // Attached images
+      if (rec.files) {
+        rec.files.forEach((f: any) => {
+          if (f.type === 'image') {
+            list.push({
+              ...f,
+              date: rec.date,
+              parentRecord: rec
+            });
+          }
+        });
+      }
+      // If the record itself is an image type
+      if (rec.type === 'image') {
+        if (!list.some(f => f.id === rec.id)) {
+          list.push({
+            id: rec.id,
+            type: 'image' as const,
+            title: rec.title,
+            size: rec.size,
+            url: rec.url,
+            date: rec.date,
+            parentRecord: rec
+          });
+        }
+      }
+    });
+    return list;
+  }, [patientRecords]);
 
   const sections = [
     { key: 'timeline' as const, label: 'Lịch sử điều trị', icon: 'timeline' },
@@ -104,9 +150,9 @@ export const DentistRecords: React.FC = () => {
           <div className="p-4 border-b border-outline-variant bg-surface-container-low flex flex-col sm:flex-row gap-4 justify-between items-center">
             <div className="relative w-full sm:w-96">
               <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-              <input 
-                type="text" 
-                placeholder="Tìm bệnh nhân theo tên, mã hoặc SĐT..." 
+              <input
+                type="text"
+                placeholder="Tìm bệnh nhân theo tên, mã hoặc SĐT..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-outline-variant rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
@@ -187,7 +233,7 @@ export const DentistRecords: React.FC = () => {
                 })}
               </tbody>
             </table>
-            
+
             {filteredPatients.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <Icon name="search_off" className="text-[48px] text-outline mb-3" />
@@ -202,7 +248,7 @@ export const DentistRecords: React.FC = () => {
         <div className="space-y-5 animate-in fade-in duration-300">
           {/* Back button and navigation bar */}
           <div className="flex items-center justify-between bg-surface-container-low border border-outline-variant p-4 rounded-2xl shadow-sm">
-            <button 
+            <button
               onClick={clearPatient}
               className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-surface-container border border-outline-variant text-on-surface hover:text-primary rounded-xl font-bold text-xs transition-all cursor-pointer shadow-sm active:scale-95"
             >
@@ -248,9 +294,8 @@ export const DentistRecords: React.FC = () => {
               <button
                 key={s.key}
                 onClick={() => setActiveSection(s.key)}
-                className={`px-5 py-3 text-label-md font-bold flex items-center gap-2 border-b-2 -mb-px transition-all cursor-pointer ${
-                  activeSection === s.key ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
-                }`}
+                className={`px-5 py-3 text-label-md font-bold flex items-center gap-2 border-b-2 -mb-px transition-all cursor-pointer ${activeSection === s.key ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
+                  }`}
               >
                 <Icon name={s.icon} className="text-[18px]" />
                 {s.label}
@@ -304,7 +349,7 @@ export const DentistRecords: React.FC = () => {
                           </td>
                           <td className="py-5 px-4 text-right">
                             <button
-                              onClick={() => setViewRecord(rec)}
+                              onClick={() => setViewEMRRecord(rec)}
                               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold text-xs border border-primary/20 text-primary bg-primary/5 hover:bg-primary hover:text-white hover:border-primary transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer"
                             >
                               <Icon name="visibility" className="text-[14px]" />
@@ -316,7 +361,7 @@ export const DentistRecords: React.FC = () => {
                     })}
                   </tbody>
                 </table>
-                
+
                 {patientRecords.length === 0 && (
                   <div className="text-center py-12">
                     <Icon name="history" className="text-[60px] text-outline" />
@@ -330,19 +375,31 @@ export const DentistRecords: React.FC = () => {
           {/* Files */}
           {activeSection === 'files' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {patientRecords.map(rec => {
-                const typeConf = TYPE_CONFIG[rec.type as keyof typeof TYPE_CONFIG];
+              {patientFiles.map(file => {
+                const typeConf = TYPE_CONFIG[file.type as keyof typeof TYPE_CONFIG];
                 return (
-                  <div key={rec.id} onClick={() => setViewRecord(rec)} className="bg-white rounded-xl border border-outline-variant p-4 flex items-center gap-3 hover:shadow-md cursor-pointer transition-all group">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${typeConf?.color}`}>
-                      <Icon name={typeConf?.icon} className="text-[26px]" />
+                  <div
+                    key={file.id}
+                    onClick={() => {
+                      if (file.isEmrPdf) {
+                        setViewEMRRecord(file.record);
+                      } else {
+                        setViewRecord(file);
+                        setZoomScale(1);
+                        setRotateDegree(0);
+                      }
+                    }}
+                    className="bg-white rounded-xl border border-outline-variant p-4 flex items-center gap-3 hover:shadow-md cursor-pointer transition-all group"
+                  >
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${typeConf?.color || ''}`}>
+                      <Icon name={typeConf?.icon || 'description'} className="text-[26px]" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-on-surface text-sm truncate">{rec.title}</p>
-                      <p className="text-xs text-on-surface-variant">{rec.date} • {rec.size}</p>
+                      <p className="font-bold text-on-surface text-sm truncate">{file.title}</p>
+                      <p className="text-xs text-on-surface-variant">{file.date} • {file.size}</p>
                     </div>
                     <button
-                      onClick={e => { e.stopPropagation(); alert(`Tải xuống: ${rec.title}`); }}
+                      onClick={e => { e.stopPropagation(); alert(`Tải xuống: ${file.title}`); }}
                       className="p-2 text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
                     >
                       <Icon name="download" className="text-[20px]" />
@@ -350,7 +407,7 @@ export const DentistRecords: React.FC = () => {
                   </div>
                 );
               })}
-              {patientRecords.length === 0 && (
+              {patientFiles.length === 0 && (
                 <div className="col-span-2 text-center py-12 bg-white rounded-2xl border border-outline-variant">
                   <Icon name="folder_open" className="text-[60px] text-outline" />
                   <p className="text-on-surface-variant mt-3">Chưa có tài liệu nào</p>
@@ -392,9 +449,9 @@ export const DentistRecords: React.FC = () => {
         </div>
       )}
 
-      {/* View record modal */}
-      {viewRecord && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setViewRecord(null)}>
+      {/* View EMR record modal */}
+      {viewEMRRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setViewEMRRecord(null)}>
           <div className="bg-slate-100 rounded-2xl max-w-5xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-slate-800 animate-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="bg-slate-900 px-6 py-4 text-white flex justify-between items-center shrink-0">
@@ -402,17 +459,17 @@ export const DentistRecords: React.FC = () => {
                 <Icon name="folder_shared" className="text-primary text-[22px]" />
                 <div>
                   <h3 className="font-bold text-sm">Chi tiết Hồ sơ Bệnh án EMR</h3>
-                  <p className="text-[10px] text-slate-400">Mã hồ sơ: #{viewRecord.id} • Ngày lập: {viewRecord.date}</p>
+                  <p className="text-[10px] text-slate-400">Mã hồ sơ: #{viewEMRRecord.id} • Ngày lập: {viewEMRRecord.date}</p>
                 </div>
               </div>
-              <button onClick={() => setViewRecord(null)} className="p-1.5 hover:bg-white/20 rounded-full cursor-pointer flex items-center justify-center">
+              <button onClick={() => setViewEMRRecord(null)} className="p-1.5 hover:bg-white/20 rounded-full cursor-pointer flex items-center justify-center">
                 <Icon name="close" />
               </button>
             </div>
 
             {/* Split Content */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-              
+
               {/* Left side: Clinical Details & Teeth map */}
               <div className="lg:col-span-5 space-y-4 flex flex-col justify-between">
                 <div className="space-y-4">
@@ -424,16 +481,16 @@ export const DentistRecords: React.FC = () => {
                     <div className="space-y-3">
                       <div>
                         <p className="text-[10px] font-bold text-slate-400 uppercase">Hồ sơ / Điều trị chính</p>
-                        <p className="font-bold text-sm text-slate-900">{viewRecord.title}</p>
+                        <p className="font-bold text-sm text-slate-900">{viewEMRRecord.title}</p>
                       </div>
-                      
-                      {viewRecord.notes && (
+
+                      {viewEMRRecord.notes && (
                         <div>
                           <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Ghi chú & Đơn thuốc</p>
                           <div className="bg-amber-50/50 border border-amber-200/60 rounded-xl p-3.5 text-xs text-amber-900 leading-relaxed font-medium">
-                            {viewRecord.notes.includes('|') ? (
+                            {viewEMRRecord.notes.includes('|') ? (
                               <div className="space-y-2">
-                                {viewRecord.notes.split('|').map((part, pIdx) => {
+                                {viewEMRRecord.notes.split('|').map((part, pIdx) => {
                                   const trimmed = part.trim();
                                   if (trimmed.startsWith('Dị ứng:')) {
                                     return <p key={pIdx}><strong>Dị ứng:</strong> <span className="text-error font-bold">{trimmed.replace('Dị ứng:', '')}</span></p>;
@@ -457,7 +514,7 @@ export const DentistRecords: React.FC = () => {
                                 })}
                               </div>
                             ) : (
-                              <p className="whitespace-pre-line">{viewRecord.notes}</p>
+                              <p className="whitespace-pre-line">{viewEMRRecord.notes}</p>
                             )}
                           </div>
                         </div>
@@ -470,34 +527,33 @@ export const DentistRecords: React.FC = () => {
                         </div>
                         <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
                           <p className="text-[10px] text-slate-400 uppercase font-bold">Kích thước lưu trữ</p>
-                          <p className="font-bold text-slate-800">{viewRecord.size}</p>
+                          <p className="font-bold text-slate-800">{viewEMRRecord.size}</p>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Teeth Map recorded on that day */}
-                  {viewRecord.teethMap && viewRecord.teethMap.length > 0 && (
+                  {viewEMRRecord.teethMap && viewEMRRecord.teethMap.length > 0 && (
                     <div className="bg-white rounded-xl border border-outline-variant p-4 shadow-sm">
                       <h4 className="font-bold text-xs uppercase text-slate-400 tracking-wider mb-4 flex items-center gap-1.5">
                         <Icon name="dentistry" className="text-[16px] text-primary" />
-                        Sơ đồ răng điều trị ngày {viewRecord.date}
+                        Sơ đồ răng điều trị ngày {viewEMRRecord.date}
                       </h4>
-                      
+
                       {/* Mini Tooth map */}
                       <div className="p-2 border border-slate-100 rounded-lg bg-slate-50/50 space-y-4">
                         {/* Upper */}
                         <div className="flex justify-center gap-1 flex-wrap">
                           {UPPER_TEETH.map(tooth => {
-                            const match = viewRecord.teethMap?.find(t => t.toothNumber === tooth);
+                            const match = viewEMRRecord.teethMap?.find(t => t.toothNumber === tooth);
                             const cond = match?.condition || 'healthy';
                             const isTreated = cond !== 'healthy';
                             return (
-                              <div 
-                                key={tooth} 
-                                className={`w-7 h-10 rounded border-2 flex flex-col items-center justify-center text-[8px] transition-all ${
-                                  isTreated ? TOOTH_COLORS[cond] : 'bg-white border-slate-200 opacity-40'
-                                }`}
+                              <div
+                                key={tooth}
+                                className={`w-7 h-10 rounded border-2 flex flex-col items-center justify-center text-[8px] transition-all ${isTreated ? TOOTH_COLORS[cond] : 'bg-white border-slate-200 opacity-40'
+                                  }`}
                                 title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}
                               >
                                 <Icon name="dentistry" className="text-[11px]" />
@@ -506,23 +562,22 @@ export const DentistRecords: React.FC = () => {
                             );
                           })}
                         </div>
-                        
+
                         <div className="border-t border-dashed border-slate-200 my-1 text-center relative">
                           <span className="bg-white px-2 py-0.5 text-[8px] text-slate-400 font-bold border border-slate-200 rounded-full absolute -top-2.5 left-1/2 -translate-x-1/2">ĐƯỜNG GIỮA HÀM</span>
                         </div>
-                        
+
                         {/* Lower */}
                         <div className="flex justify-center gap-1 flex-wrap pt-1">
                           {LOWER_TEETH.map(tooth => {
-                            const match = viewRecord.teethMap?.find(t => t.toothNumber === tooth);
+                            const match = viewEMRRecord.teethMap?.find(t => t.toothNumber === tooth);
                             const cond = match?.condition || 'healthy';
                             const isTreated = cond !== 'healthy';
                             return (
-                              <div 
-                                key={tooth} 
-                                className={`w-7 h-10 rounded border-2 flex flex-col items-center justify-center text-[8px] transition-all ${
-                                  isTreated ? TOOTH_COLORS[cond] : 'bg-white border-slate-200 opacity-40'
-                                }`}
+                              <div
+                                key={tooth}
+                                className={`w-7 h-10 rounded border-2 flex flex-col items-center justify-center text-[8px] transition-all ${isTreated ? TOOTH_COLORS[cond] : 'bg-white border-slate-200 opacity-40'
+                                  }`}
                                 title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}
                               >
                                 <span className="font-bold">{tooth}</span>
@@ -535,7 +590,7 @@ export const DentistRecords: React.FC = () => {
 
                       {/* Detailed tooth conditions table */}
                       <div className="mt-3 space-y-1 max-h-[120px] overflow-y-auto custom-scrollbar">
-                        {viewRecord.teethMap.map((t, idx) => (
+                        {viewEMRRecord.teethMap.map((t, idx) => (
                           <div key={idx} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50 border border-slate-100">
                             <span className="font-bold text-slate-700">Răng số {t.toothNumber}</span>
                             <div className="flex items-center gap-2">
@@ -555,13 +610,13 @@ export const DentistRecords: React.FC = () => {
 
                 {/* Print/Download helper buttons */}
                 <div className="pt-2 flex gap-3">
-                  <button 
-                    onClick={() => alert(`Đang tải file EMR-${viewRecord.id}.pdf về thiết bị...`)}
+                  <button
+                    onClick={() => alert(`Đang tải file EMR-${viewEMRRecord.id}.pdf về thiết bị...`)}
                     className="flex-1 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow cursor-pointer"
                   >
                     <Icon name="download" className="text-[18px]" />Tải PDF bệnh án
                   </button>
-                  <button 
+                  <button
                     onClick={() => window.print()}
                     className="py-2.5 px-4 border border-outline-variant hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-2 active:scale-95 transition-all cursor-pointer"
                   >
@@ -572,8 +627,8 @@ export const DentistRecords: React.FC = () => {
 
               {/* Right side: Signed PDF Document view (A4 sheet replica) */}
               <div className="lg:col-span-7 bg-slate-400/20 rounded-xl border border-slate-300 p-4 lg:p-6 flex justify-center items-start overflow-y-auto max-h-[70vh] custom-scrollbar">
-                <div className="bg-white max-w-[595px] w-full p-6 lg:p-8 shadow-lg rounded border border-slate-300 text-slate-700 text-xs font-medium space-y-6 relative">
-                  
+                <div className="bg-white max-w-[595px] w-full p-6 lg:p-8 shadow-lg rounded border border-slate-300 text-slate-700 text-xs font-medium space-y-6 relative text-left">
+
                   {/* Signed Watermark */}
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.06] pointer-events-none select-none border-8 border-green-700 p-6 rounded-full text-center rotate-12">
                     <span className="text-4xl font-extrabold text-green-700 tracking-wider">ĐÃ KÝ SỐ EMR</span>
@@ -589,13 +644,13 @@ export const DentistRecords: React.FC = () => {
                       <p className="text-[9px] text-slate-500">Hotline: 1900 6789 | Email: contact@goodsmile.vn</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-slate-600 whitespace-nowrap">MÃ SỐ BỆNH ÁN: EMR-{viewRecord.id}</p>
-                      <p className="text-[9px] text-slate-400 whitespace-nowrap">Ngày lưu trữ: {viewRecord.date}</p>
+                      <p className="font-bold text-slate-600 whitespace-nowrap">MÃ SỐ BỆNH ÁN: EMR-{viewEMRRecord.id}</p>
+                      <p className="text-[9px] text-slate-400 whitespace-nowrap">Ngày lưu trữ: {viewEMRRecord.date}</p>
                     </div>
                   </div>
 
                   <h1 className="text-center text-sm font-black uppercase text-slate-900 tracking-wider">HỒ SƠ BỆNH ÁN ĐIỆN TỬ</h1>
-                  
+
                   {/* Patient Info */}
                   {selectedPatient && (
                     <div className="bg-slate-50 p-4 rounded-xl space-y-2 border border-slate-200/50">
@@ -613,37 +668,59 @@ export const DentistRecords: React.FC = () => {
 
                   {/* Treatment details */}
                   <div className="space-y-2">
-                    <p className="text-[9px] font-bold text-primary uppercase border-b border-slate-200 pb-1">Chẩn đoán và Thủ thuật điều trị</p>
-                    <div className="space-y-1.5">
-                      <p><strong>Dịch vụ chính thực hiện:</strong> {viewRecord.title}</p>
-                      {viewRecord.type === 'image' && (
-                        <div className="mt-3 border border-slate-200 rounded-lg overflow-hidden bg-slate-900 flex items-center justify-center h-[220px]">
-                          <img 
-                            src={viewRecord.id === 'MR-02' ? '/braces_progress.png' : '/xray_panorama.png'} 
-                            alt={viewRecord.title} 
-                            className="max-h-full max-w-full object-contain" 
-                          />
+                    <p className="text-[9px] font-bold text-primary uppercase border-b border-slate-200 pb-1 text-left">Chẩn đoán và Thủ thuật điều trị</p>
+                    <div className="space-y-1.5 text-left">
+                      <p><strong>Dịch vụ chính thực hiện:</strong> {viewEMRRecord.title}</p>
+                      {(viewEMRRecord.type === 'image' || (viewEMRRecord.files && viewEMRRecord.files.some(f => f.type === 'image'))) && (
+                        <div className="space-y-2 mt-4 text-left">
+                          <p className="text-[9px] font-bold text-primary uppercase border-b border-slate-200 pb-1">Hình ảnh đính kèm</p>
+                          {viewEMRRecord.files && viewEMRRecord.files.filter(f => f.type === 'image').length > 0 && (
+                            <div className="grid grid-cols-2 gap-3 pt-1 text-left mb-2">
+                              {viewEMRRecord.files.filter(file => file.type === 'image').map(file => (
+                                <div key={file.id} className="border border-slate-200 rounded-xl p-2 bg-slate-50 flex items-center gap-2">
+                                  <div className="w-8 h-8 rounded bg-zinc-800 overflow-hidden shrink-0 flex items-center justify-center border border-slate-300">
+                                    <img
+                                      src={file.url || (file.id === 'F-112' || file.title?.toLowerCase().includes('niềng răng') ? '/braces_progress.png' : '/xray_panorama.png')}
+                                      alt={file.title}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-bold text-[10px] text-slate-800 truncate" title={file.title}>{file.title}</p>
+                                    <p className="text-[8px] text-slate-400 font-mono">{file.size} • IMAGE</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden bg-slate-900 flex items-center justify-center h-[180px]">
+                            <img
+                              src={viewEMRRecord.url || (viewEMRRecord.files && viewEMRRecord.files.find(f => f.type === 'image')?.url) || (viewEMRRecord.id === 'MR-02' ? '/braces_progress.png' : '/xray_panorama.png')}
+                              alt="Clinical Scan"
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          </div>
                         </div>
                       )}
-                      {viewRecord.teethMap && viewRecord.teethMap.length > 0 && (
+                      {viewEMRRecord.teethMap && viewEMRRecord.teethMap.length > 0 && (
                         <div className="pl-3 border-l-2 border-primary/50 text-[11px] text-slate-600 space-y-1">
                           <p className="font-semibold text-slate-700 text-xs">Chi tiết răng điều trị:</p>
-                          {viewRecord.teethMap.map((t, idx) => (
+                          {viewEMRRecord.teethMap.map((t, idx) => (
                             <p key={idx}>• Răng số {t.toothNumber}: {CONDITION_LABELS[t.condition]?.label} {t.treatment ? `— ${t.treatment}` : ''}</p>
                           ))}
                         </div>
                       )}
-                      {viewRecord.notes && (
-                        <div className="mt-2 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700">
+                      {viewEMRRecord.notes && (
+                        <div className="mt-2 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700 text-left">
                           <p className="font-bold text-slate-600 mb-1 text-[10px] uppercase">Ghi chú lâm sàng:</p>
-                          <p className="italic">"{viewRecord.notes.includes('|') ? viewRecord.notes.split('|').filter(p => !p.trim().startsWith('Dị ứng:') && !p.trim().startsWith('Bệnh lý nền:') && !p.toLowerCase().includes('đơn thuốc:')).join('. ').trim() : viewRecord.notes}"</p>
+                          <p className="italic">"{viewEMRRecord.notes.includes('|') ? viewEMRRecord.notes.split('|').filter(p => !p.trim().startsWith('Dị ứng:') && !p.trim().startsWith('Bệnh lý nền:') && !p.toLowerCase().includes('đơn thuốc:')).join('. ').trim() : viewEMRRecord.notes}"</p>
                         </div>
                       )}
                     </div>
                   </div>
 
                   {/* PDF prescription if it contains prescription */}
-                  {viewRecord.notes && viewRecord.notes.toLowerCase().includes('đơn thuốc:') && (
+                  {viewEMRRecord.notes && viewEMRRecord.notes.toLowerCase().includes('đơn thuốc:') && (
                     <div className="space-y-2">
                       <p className="text-[9px] font-bold text-primary uppercase border-b border-slate-200 pb-1">Toa thuốc điều trị chỉ định</p>
                       <table className="w-full text-left border-collapse text-xs">
@@ -655,7 +732,7 @@ export const DentistRecords: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-[11px]">
-                          {viewRecord.notes.split('|').filter(part => part.toLowerCase().includes('đơn thuốc:')).map((rxPart, rxIdx) => {
+                          {viewEMRRecord.notes.split('|').filter(part => part.toLowerCase().includes('đơn thuốc:')).map((rxPart, rxIdx) => {
                             const rawDrugs = rxPart.replace(/đơn thuốc:/i, '').trim().split(';');
                             return rawDrugs.map((drug, drugIdx) => {
                               const match = drug.match(/(.*?)\s*\((.*?)\)\s*-\s*(.*)/);
@@ -718,6 +795,116 @@ export const DentistRecords: React.FC = () => {
                 </div>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Lightbox Viewer Modal */}
+      {viewRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setViewRecord(null)}>
+          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-slate-900 text-white">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Icon name="photo_camera_back" className="text-primary text-[20px]" />
+                {viewRecord.type === 'image' ? 'Trình xem ảnh y khoa X-Quang' : 'Tài liệu EMR đính kèm'}
+              </h3>
+              <button onClick={() => setViewRecord(null)} className="p-1.5 hover:bg-white/20 rounded-full cursor-pointer text-white flex items-center justify-center">
+                <Icon name="close" />
+              </button>
+            </div>
+
+            <div className="p-6 flex flex-col items-center flex-1 overflow-y-auto custom-scrollbar">
+              {viewRecord.type === 'image' ? (
+                <div className="w-full space-y-4">
+                  {/* Medical tools bar */}
+                  <div className="flex justify-between items-center bg-slate-100 p-2 rounded-xl border border-outline-variant/60">
+                    <span className="text-[11px] font-bold text-slate-600 pl-2">Công cụ phim chụp:</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setZoomScale(prev => Math.min(prev + 0.2, 2.5))}
+                        className="p-1 bg-white hover:bg-slate-200 border border-outline-variant rounded text-slate-800 flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                        title="Phóng to"
+                      >
+                        <Icon name="zoom_in" className="text-[14px]" />
+                        Phóng to
+                      </button>
+                      <button
+                        onClick={() => setZoomScale(prev => Math.max(prev - 0.2, 0.6))}
+                        className="p-1 bg-white hover:bg-slate-200 border border-outline-variant rounded text-slate-800 flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                        title="Thu nhỏ"
+                      >
+                        <Icon name="zoom_out" className="text-[14px]" />
+                        Thu nhỏ
+                      </button>
+                      <button
+                        onClick={() => setRotateDegree(prev => (prev + 90) % 360)}
+                        className="p-1 bg-white hover:bg-slate-200 border border-outline-variant rounded text-slate-800 flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                        title="Xoay ảnh"
+                      >
+                        <Icon name="rotate_right" className="text-[14px]" />
+                        Xoay 90°
+                      </button>
+                      <button
+                        onClick={() => { setZoomScale(1); setRotateDegree(0); }}
+                        className="p-1 bg-white hover:bg-slate-200 border border-outline-variant rounded text-slate-800 flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                        title="Đặt lại"
+                      >
+                        <Icon name="restart_alt" className="text-[14px]" />
+                        Đặt lại
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Lightbox canvas */}
+                  <div className="w-full bg-slate-955 rounded-2xl h-[300px] flex items-center justify-center relative overflow-hidden border border-slate-800 shadow-inner select-none">
+                    <img
+                      src={viewRecord.url || (viewRecord.id === 'F-112' || viewRecord.title?.toLowerCase().includes('niềng răng') ? '/braces_progress.png' : '/xray_panorama.png')}
+                      alt={viewRecord.title}
+                      style={{
+                        transform: `scale(${zoomScale}) rotate(${rotateDegree}deg)`,
+                        transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                      className="max-w-full max-h-full object-contain cursor-grab active:cursor-grabbing"
+                    />
+
+                    {/* Corner overlay info */}
+                    <div className="absolute top-3 left-3 bg-black/70 px-2.5 py-1 rounded text-[9px] text-white/80 font-mono tracking-wider flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
+                      IMAGING SCAN SOURCE: GOODSMILE DENTAL
+                    </div>
+                    <div className="absolute bottom-3 right-3 bg-black/70 px-2.5 py-1 rounded text-[9px] text-white/80 font-mono">
+                      SCALE: {Math.round(zoomScale * 100)}%
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full bg-slate-900 rounded-2xl h-[250px] flex flex-col items-center justify-center relative overflow-hidden mb-6 shadow-inner">
+                  <Icon name="description" className="text-white/20 text-[100px]" />
+                </div>
+              )}
+
+              <div className="w-full text-left mt-4">
+                <h4 className="font-extrabold text-on-surface text-base">{viewRecord.title}</h4>
+                <p className="text-xs text-on-surface-variant font-bold uppercase tracking-wider mt-1">Dung lượng: {viewRecord.size} • Định dạng: {viewRecord.type.toUpperCase()}</p>
+                <p className="text-[11px] text-on-surface-variant mt-2 italic">Ghi chú: Đây là phim chụp X-quang chẩn đoán y khoa chính thức, dùng để đánh giá lộ trình xương răng trong bệnh án EMR của bệnh nhân.</p>
+              </div>
+
+              <div className="flex gap-2 w-full mt-6">
+                <button
+                  onClick={() => alert(`Tải xuống: ${viewRecord.title}`)}
+                  className="flex-1 py-3 bg-primary text-on-primary rounded-xl font-bold cursor-pointer hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md text-xs"
+                >
+                  <Icon name="download" className="text-[18px]" />
+                  Tải File Về Máy
+                </button>
+                <button
+                  onClick={() => setViewRecord(null)}
+                  className="px-6 py-3 border border-outline-variant text-slate-700 hover:bg-slate-100 rounded-xl font-bold cursor-pointer active:scale-95 transition-all text-xs"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
           </div>
         </div>

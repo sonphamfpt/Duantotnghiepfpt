@@ -57,16 +57,17 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
         ];
       case 'receptionist':
         return [
-          { label: 'Bàn tiếp nhận',        icon: 'folder_shared',   path: '/dashboard/receptionist' },
-          { label: 'Hàng chờ trực tiếp',   icon: 'pending_actions', path: '/dashboard/receptionist?tab=queue' },
-          { label: 'Lịch hẹn phòng khám',  icon: 'receipt_long',    path: '/dashboard/receptionist?tab=appointments' },
-          { label: 'Gửi Zalo/SMS nhắc lịch', icon: 'chat_bubble',   path: '/dashboard/receptionist?tab=reminders' },
+          { label: 'Bàn tiếp nhận',          icon: 'folder_shared',   path: '/dashboard/receptionist' },
+          { label: 'Hàng chờ trực tiếp',      icon: 'pending_actions', path: '/dashboard/receptionist?tab=queue' },
+          { label: 'Lịch hẹn phòng khám',     icon: 'receipt_long',    path: '/dashboard/receptionist?tab=appointments' },
+          { label: 'Gửi Zalo/SMS nhắc lịch',  icon: 'chat_bubble',     path: '/dashboard/receptionist?tab=reminders' },
         ];
       case 'dentist':
         return [
           { label: 'Hàng chờ bác sĩ',   icon: 'pending_actions', path: '/dashboard/dentist' },
           { label: 'Bàn khám lâm sàng',  icon: 'dashboard',       path: '/dashboard/dentist?tab=workspace' },
           { label: 'Hồ sơ bệnh án EMR', icon: 'folder_shared',   path: '/dashboard/dentist?tab=records' },
+          { label: 'Lịch làm việc',      icon: 'calendar_month',  path: '/dashboard/dentist?tab=schedule' },
         ];
       case 'cashier':
         return [
@@ -79,6 +80,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Tổng quan phòng khám',   icon: 'monitoring',         path: '/dashboard/manager' },
           { label: 'Bảng theo dõi hàng chờ', icon: 'pending_actions',    path: '/dashboard/manager?tab=queue' },
           { label: 'Doanh thu phòng khám',    icon: 'receipt_long',       path: '/dashboard/manager?tab=revenue' },
+          { label: 'Lịch làm việc bác sĩ',   icon: 'calendar_month',     path: '/dashboard/manager?tab=schedule' },
           { label: 'Nhân sự & Phân quyền',   icon: 'groups',             path: '/dashboard/manager?tab=rbac' },
           { label: 'Cấu hình giá dịch vụ',   icon: 'settings',           path: '/dashboard/manager?tab=settings' },
         ];

@@ -45,7 +45,7 @@ const DentistHome: React.FC = () => {
   const initialQueueId = searchParams.get('queueId');
   const inChairItem = queue.find(q => q.dentistId === dentistId && q.status === 'In Chair');
   const [selectedQueueId, setSelectedQueueId] = useState<string | null>(inChairItem?.id || initialQueueId);
-  const [activeTab, setActiveTab] = useState<'teeth' | 'diagnosis' | 'services' | 'prescription'>('teeth');
+  const [activeTab, setActiveTab] = useState<'teeth' | 'diagnosis' | 'services' | 'prescription' | 'files'>('teeth');
   const [selectedToothNum, setSelectedToothNum] = useState<number | null>(null);
 
   const [formAllergy, setFormAllergy] = useState('');
@@ -65,6 +65,54 @@ const DentistHome: React.FC = () => {
   );
   const [selectedAddDrugId, setSelectedAddDrugId] = useState('');
   const [showSignModal, setShowSignModal] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; type: 'pdf' | 'image' | 'prescription'; title: string; size: string; url?: string }>>([]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const newFilesList = Array.from(files).map(file => {
+      const type = file.type.includes('pdf') ? 'pdf' as const : 'image' as const;
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      return {
+        id: `F-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
+        type,
+        title: file.name,
+        size: `${sizeMB} MB`,
+        url: URL.createObjectURL(file)
+      };
+    });
+    setUploadedFiles(prev => [...prev, ...newFilesList]);
+  };
+
+  const handleAddPresetFile = (presetType: 'xray' | 'clinical' | 'lab') => {
+    let newFile;
+    if (presetType === 'xray') {
+      newFile = {
+        id: `F-${Date.now()}-XR`,
+        type: 'image' as const,
+        title: 'Phim chụp X-quang Panorama toàn hàm.png',
+        size: '4.5 MB',
+        url: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=600&h=450&q=80'
+      };
+    } else if (presetType === 'clinical') {
+      newFile = {
+        id: `F-${Date.now()}-CL`,
+        type: 'image' as const,
+        title: 'Ảnh lâm sàng trạng thái răng miệng.png',
+        size: '1.8 MB',
+        url: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=600&h=450&q=80'
+      };
+    } else {
+      newFile = {
+        id: `F-${Date.now()}-PDF`,
+        type: 'pdf' as const,
+        title: 'Báo cáo xét nghiệm huyết học & Đông máu.pdf',
+        size: '1.2 MB',
+        url: '#'
+      };
+    }
+    setUploadedFiles(prev => [...prev, newFile]);
+  };
 
   const dentistQueue = queue.filter(q => q.dentistId === dentistId && q.status !== 'Completed');
   const activeQueueItem = queue.find(q => q.id === selectedQueueId);
@@ -141,6 +189,7 @@ const DentistHome: React.FC = () => {
     setRxTemplate('Sau điều trị sâu răng / Hàn răng');
     setTreatmentType('independent');
     setSelectedPlanId('');
+    setUploadedFiles([]);
     setActiveTab('teeth');
   };
 
@@ -204,7 +253,8 @@ const DentistHome: React.FC = () => {
       finalNotes,
       performedServices.length > 0 ? performedServices : ['S-08'],
       treatmentType,
-      selectedPlanId
+      selectedPlanId,
+      uploadedFiles
     );
     if (treatmentType === 'plan_session') {
       alert(`Đã hoàn tất phiên điều trị thuộc Phác đồ #${selectedPlanId} thành công (Không sinh thêm hóa đơn)!`);
@@ -219,6 +269,7 @@ const DentistHome: React.FC = () => {
     setPrescriptionDrugs([]);
     setTreatmentType('independent');
     setSelectedPlanId('');
+    setUploadedFiles([]);
   };
 
   return (
@@ -333,16 +384,21 @@ const DentistHome: React.FC = () => {
                   { key: 'diagnosis' as const, label: 'Bệnh sử & Chẩn đoán' },
                   { key: 'services' as const, label: 'Chỉ định dịch vụ' },
                   { key: 'prescription' as const, label: 'Đơn thuốc mẫu' },
-                ].map(t => (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => setActiveTab(t.key)}
-                    className={`font-bold px-4 py-2 rounded-lg transition-all cursor-pointer text-sm ${activeTab === t.key ? 'bg-white text-primary shadow-sm border border-outline-variant/20' : 'text-on-surface-variant hover:text-on-surface hover:bg-slate-200/50'}`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+                  { key: 'files' as const, label: 'Tài liệu & X-quang' },
+                ].map(t => {
+                  const isSelected = activeTab === t.key;
+                  const countBadge = t.key === 'files' && uploadedFiles.length > 0 ? ` (${uploadedFiles.length})` : '';
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setActiveTab(t.key)}
+                      className={`font-bold px-4 py-2 rounded-lg transition-all cursor-pointer text-sm ${isSelected ? 'bg-white text-primary shadow-sm border border-outline-variant/20' : 'text-on-surface-variant hover:text-on-surface hover:bg-slate-200/50'}`}
+                    >
+                      {t.label}{countBadge}
+                    </button>
+                  );
+                })}
               </div>
               <span className="text-xs font-semibold font-data-mono bg-surface-container px-3 py-1 rounded">
                 Phiên khám: #EMR-{activeQueueItem.id}
@@ -746,6 +802,128 @@ const DentistHome: React.FC = () => {
                 </div>
               )}
 
+              {/* Tab 5: Tài liệu & X-quang */}
+              {activeTab === 'files' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                    {/* Left: Upload controls */}
+                    <div className="md:col-span-5 space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-on-surface-variant mb-2">Tải tệp tin lên từ máy tính</label>
+                        <div className="border-2 border-dashed border-outline-variant rounded-2xl p-6 text-center hover:border-primary transition-colors cursor-pointer relative bg-slate-50 flex flex-col items-center justify-center">
+                          <input 
+                            type="file" 
+                            accept="image/*,application/pdf" 
+                            multiple 
+                            onChange={handleFileUpload}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                          <Icon name="cloud_upload" className="text-4xl text-primary/60 mb-2" />
+                          <p className="text-xs font-bold text-on-surface">Kéo thả tệp hoặc nhấp để chọn</p>
+                          <p className="text-[10px] text-outline mt-1 font-medium">Hỗ trợ JPG, PNG, PDF (Tối đa 15MB)</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-xs font-bold uppercase text-on-surface-variant">Thêm nhanh tệp mẫu kiểm thử</label>
+                        <div className="flex flex-col gap-2">
+                          <button 
+                            type="button"
+                            onClick={() => handleAddPresetFile('xray')}
+                            className="w-full text-left py-2 px-3 bg-white border border-outline-variant hover:border-primary rounded-xl text-xs font-semibold flex items-center gap-2 hover:bg-primary/5 transition-colors cursor-pointer text-slate-700"
+                          >
+                            <Icon name="photo_camera_back" className="text-primary text-sm" />
+                            + Phim X-quang Panorama chẩn đoán
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => handleAddPresetFile('clinical')}
+                            className="w-full text-left py-2 px-3 bg-white border border-outline-variant hover:border-primary rounded-xl text-xs font-semibold flex items-center gap-2 hover:bg-primary/5 transition-colors cursor-pointer text-slate-700"
+                          >
+                            <Icon name="image" className="text-secondary text-sm" />
+                            + Ảnh lâm sàng trạng thái răng miệng
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => handleAddPresetFile('lab')}
+                            className="w-full text-left py-2 px-3 bg-white border border-outline-variant hover:border-primary rounded-xl text-xs font-semibold flex items-center gap-2 hover:bg-primary/5 transition-colors cursor-pointer text-slate-700"
+                          >
+                            <Icon name="picture_as_pdf" className="text-red-600 text-sm" />
+                            + Phiếu xét nghiệm cận lâm sàng (.pdf)
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: List of uploaded files */}
+                    <div className="md:col-span-7 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-xs font-bold uppercase text-on-surface-variant">Danh sách tệp đính kèm ({uploadedFiles.length})</label>
+                        {uploadedFiles.length > 0 && (
+                          <button 
+                            type="button" 
+                            onClick={() => setUploadedFiles([])}
+                            className="text-xs text-error font-bold hover:underline cursor-pointer"
+                          >
+                            Xóa tất cả
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="border border-outline-variant rounded-2xl p-4 bg-slate-50 min-h-[250px] max-h-[350px] overflow-y-auto custom-scrollbar space-y-2">
+                        {uploadedFiles.map((file) => (
+                          <div 
+                            key={file.id} 
+                            className="bg-white border border-outline-variant/60 p-3 rounded-xl flex items-center gap-3 shadow-sm hover:shadow transition-all group"
+                          >
+                            <div className="w-10 h-10 bg-zinc-800 text-white rounded-lg flex items-center justify-center shrink-0 overflow-hidden relative border border-outline-variant/30">
+                              {file.type === 'image' && file.url ? (
+                                <img src={file.url} alt={file.title} className="w-full h-full object-cover" />
+                              ) : (
+                                <Icon name={file.type === 'pdf' ? 'picture_as_pdf' : 'description'} className="text-[18px] text-white/80" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-on-surface truncate" title={file.title}>{file.title}</p>
+                              <p className="text-[10px] text-outline font-bold uppercase mt-0.5">{file.size} • {file.type.toUpperCase()}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {file.url && file.url !== '#' && (
+                                <a 
+                                  href={file.url} 
+                                  target="_blank" 
+                                  rel="noreferrer"
+                                  className="p-1.5 hover:bg-slate-100 rounded text-on-surface-variant hover:text-primary transition-colors"
+                                  title="Xem phóng to"
+                                >
+                                  <Icon name="open_in_new" className="text-base" />
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setUploadedFiles(prev => prev.filter(f => f.id !== file.id))}
+                                className="p-1.5 hover:bg-red-50 rounded text-outline hover:text-error transition-colors cursor-pointer"
+                                title="Xóa bỏ"
+                              >
+                                <Icon name="delete" className="text-base" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                        {uploadedFiles.length === 0 && (
+                          <div className="flex flex-col items-center justify-center py-16 text-center text-outline">
+                            <Icon name="folder_open" className="text-4xl opacity-50 mb-2" />
+                            <p className="text-xs font-bold">Chưa có tệp đính kèm nào</p>
+                            <p className="text-[10px] mt-0.5">Vui lòng tải tệp lên hoặc sử dụng nút thêm nhanh</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Finalize bottom action bar */}
               <div className="pt-6 border-t border-outline-variant flex justify-between items-center">
                 <div className="text-xs text-on-surface-variant font-medium">
@@ -894,6 +1072,39 @@ const DentistHome: React.FC = () => {
                   </table>
                 </div>
 
+                {/* Attached scans */}
+                {uploadedFiles.filter(f => f.type === 'image').length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold text-primary uppercase border-b border-slate-200 pb-1">Hình ảnh đính kèm</p>
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      {uploadedFiles.filter(file => file.type === 'image').map(file => (
+                        <div key={file.id} className="border border-slate-200 rounded-xl p-2 bg-slate-50 flex items-center gap-2">
+                          <div className="w-8 h-8 rounded bg-zinc-800 overflow-hidden shrink-0 flex items-center justify-center border border-slate-300">
+                            {file.url ? (
+                              <img src={file.url} alt={file.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <Icon name="image" className="text-white text-sm" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-[10px] text-slate-800 truncate" title={file.title}>{file.title}</p>
+                            <p className="text-[8px] text-slate-400 font-mono">{file.size} • IMAGE</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {uploadedFiles.some(f => f.type === 'image') && (
+                      <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden bg-slate-900 flex items-center justify-center h-[180px]">
+                        <img 
+                          src={uploadedFiles.find(f => f.type === 'image')?.url} 
+                          alt="First Scan" 
+                          className="max-h-full max-w-full object-contain" 
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Prescription */}
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-bold text-primary uppercase border-b border-slate-200 pb-1">Đơn thuốc kèm theo</p>
@@ -984,7 +1195,7 @@ export const DentistDashboard: React.FC = () => {
   switch (tab) {
     case 'workspace': return <DentistHome />;
     case 'records':   return <DentistRecords />;
-    case 'schedule':  return <DentistSchedule />;
+    case 'schedule':  return <DentistSchedule dentistId="D-04" />;
     default:          return <DentistQueue />;
   }
 };

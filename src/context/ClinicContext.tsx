@@ -31,7 +31,8 @@ interface ClinicContextType {
     notes: string,
     performedServices: string[], // service ids
     treatmentType?: 'independent' | 'plan_init' | 'plan_session',
-    selectedPlanId?: string
+    selectedPlanId?: string,
+    files?: { id: string; type: 'pdf' | 'image' | 'prescription'; title: string; size: string; url?: string }[]
   ) => void;
   processPayment: (invoiceId: string, paymentMethod: Invoice['paymentMethod'], payAmount?: number) => void;
   addService: (service: Omit<Service, 'id' | 'isActive'>) => void;
@@ -45,6 +46,8 @@ interface ClinicContextType {
   swapShifts: (shiftId1: string, shiftId2: string) => void;
   transferShift: (shiftId: string, targetDentistId: string) => void;
   changeShiftRoom: (shiftId: string, newRoom: string) => void;
+  addShift: (shift: Omit<DoctorShift, 'id'>) => void;
+  deleteShift: (shiftId: string) => void;
 }
 
 const ClinicContext = createContext<ClinicContextType | undefined>(undefined);
@@ -185,7 +188,8 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     notes: string,
     performedServices: string[],
     treatmentType: 'independent' | 'plan_init' | 'plan_session' = 'independent',
-    selectedPlanId?: string
+    selectedPlanId?: string,
+    files?: { id: string; type: 'pdf' | 'image' | 'prescription'; title: string; size: string; url?: string }[]
   ) => {
     const queueItem = queue.find((q) => q.id === queueId);
     if (!queueItem) return;
@@ -221,17 +225,20 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       ? `[PHÁC ĐỒ ĐIỀU TRỊ] ${notes}`
       : notes;
 
+    const hasImage = files && files.some(f => f.type === 'image');
+
     const newRecord: MedicalRecord = {
       id: recordId,
       patientId: queueItem.patientId,
       title: recordTitle,
       date: dateStr,
-      size: '150 KB',
-      type: treatments.length > 0 ? 'pdf' : 'prescription',
+      size: files && files.length > 0 ? `${(files.length * 1.2).toFixed(1)} MB` : '150 KB',
+      type: hasImage ? 'image' : (treatments.length > 0 ? 'pdf' : 'prescription'),
       notes: prefixedNotes,
       teethMap: treatments,
       dentistName: queueItem.dentistName,
-      room: queueItem.room
+      room: queueItem.room,
+      files: files || []
     };
 
     setMedicalRecords((prev) => [newRecord, ...prev]);
@@ -501,6 +508,20 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
   };
 
+  const addShift = (shiftData: Omit<DoctorShift, 'id'>) => {
+    const id = `SH-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+    const newShift: DoctorShift = { ...shiftData, id };
+    setDoctorShifts((prev) => [...prev, newShift]);
+    addLog('SYSTEM', 'SUCCESS', `Thêm ca trực mới: ${shiftData.dentistName} ngày ${shiftData.date} (${shiftData.shiftType}) tại ${shiftData.room}`);
+  };
+
+  const deleteShift = (shiftId: string) => {
+    const shift = doctorShifts.find((s) => s.id === shiftId);
+    if (!shift) return;
+    setDoctorShifts((prev) => prev.filter((s) => s.id !== shiftId));
+    addLog('SYSTEM', 'WARN', `Xóa ca trực: ${shift.dentistName} ngày ${shift.date} (${shift.shiftType}) tại ${shift.room}`);
+  };
+
   return (
     <ClinicContext.Provider
       value={{
@@ -528,7 +549,9 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         doctorShifts,
         swapShifts,
         transferShift,
-        changeShiftRoom
+        changeShiftRoom,
+        addShift,
+        deleteShift
       }}
     >
       {children}

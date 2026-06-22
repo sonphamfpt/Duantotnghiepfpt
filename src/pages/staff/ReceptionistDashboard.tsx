@@ -10,6 +10,7 @@ import { ReceptionistQueue } from './receptionist-tabs/ReceptionistQueue';
 import { ReceptionistAppointments } from './receptionist-tabs/ReceptionistAppointments';
 import { ReceptionistReminders } from './receptionist-tabs/ReceptionistReminders';
 
+
 // ─── Home: Bàn tiếp nhận ──────────────────────────────────────────────────────
 const ReceptionistHome: React.FC = () => {
   const { queue, appointments, confirmAppointment, dentists } = useClinic();
@@ -294,6 +295,7 @@ export const ReceptionistDashboard: React.FC = () => {
     case 'queue':        return <ReceptionistQueue />;
     case 'appointments': return <ReceptionistAppointments />;
     case 'reminders':    return <ReceptionistReminders />;
+
     default:             return <ReceptionistHome />;
   }
 };
