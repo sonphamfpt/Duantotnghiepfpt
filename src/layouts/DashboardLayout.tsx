@@ -60,7 +60,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Bàn tiếp nhận',          icon: 'folder_shared',   path: '/dashboard/receptionist' },
           { label: 'Hàng chờ trực tiếp',      icon: 'pending_actions', path: '/dashboard/receptionist?tab=queue' },
           { label: 'Lịch hẹn phòng khám',     icon: 'receipt_long',    path: '/dashboard/receptionist?tab=appointments' },
-          { label: 'Gửi Zalo/SMS nhắc lịch',  icon: 'chat_bubble',     path: '/dashboard/receptionist?tab=reminders' },
+          { label: 'Trung tâm công việc',  icon: 'assignment_turned_in',     path: '/dashboard/receptionist?tab=reminders' },
         ];
       case 'dentist':
         return [
@@ -78,6 +78,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       case 'manager':
         return [
           { label: 'Tổng quan phòng khám',   icon: 'monitoring',         path: '/dashboard/manager' },
+          { label: 'Quản lý khách hàng',     icon: 'person_search',      path: '/dashboard/manager?tab=patients' },
           { label: 'Bảng theo dõi hàng chờ', icon: 'pending_actions',    path: '/dashboard/manager?tab=queue' },
           { label: 'Doanh thu phòng khám',    icon: 'receipt_long',       path: '/dashboard/manager?tab=revenue' },
           { label: 'Lịch làm việc bác sĩ',   icon: 'calendar_month',     path: '/dashboard/manager?tab=schedule' },

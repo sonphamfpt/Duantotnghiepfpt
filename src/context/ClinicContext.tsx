@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, ToothState, InvoiceItem, DoctorShift } from '../types/clinic';
+import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, ToothState, InvoiceItem, DoctorShift, ShiftChangeNotification } from '../types/clinic';
 import {
   INITIAL_SERVICES,
   INITIAL_DENTISTS,
@@ -9,7 +9,8 @@ import {
   INITIAL_INVOICES,
   INITIAL_LOGS,
   INITIAL_MEDICAL_RECORDS,
-  INITIAL_DENTIST_SHIFTS
+  INITIAL_DENTIST_SHIFTS,
+  INITIAL_SHIFT_NOTIFICATIONS
 } from '../services/mockData';
 
 interface ClinicContextType {
@@ -40,14 +41,21 @@ interface ClinicContextType {
   toggleServiceActive: (serviceId: string) => void;
   addPatient: (patient: Omit<Patient, 'id' | 'points' | 'tier' | 'balance'>) => Patient;
   rechargeWallet: (patientId: string, amount: number) => void;
-  confirmAppointment: (appointmentId: string) => void;
+  updatePatientDetails: (patientId: string, details: Partial<Pick<Patient, 'criticalAllergy' | 'condition' | 'name' | 'phone' | 'age' | 'gender'>>) => void;
+  unlockPatient: (patientId: string) => void;
+  lockPatient: (patientId: string) => void;
+  rescheduleAppointment: (appointmentId: string, newTime: string, newDentistId?: string, newDentistName?: string) => void;
+
   cancelAppointment: (appointmentId: string) => void;
   doctorShifts: DoctorShift[];
-  swapShifts: (shiftId1: string, shiftId2: string) => void;
-  transferShift: (shiftId: string, targetDentistId: string) => void;
+  swapShifts: (shiftId1: string, shiftId2: string, conflictAppointmentIds?: string[]) => void;
+  transferShift: (shiftId: string, targetDentistId: string, conflictAppointmentIds?: string[]) => void;
   changeShiftRoom: (shiftId: string, newRoom: string) => void;
   addShift: (shift: Omit<DoctorShift, 'id'>) => void;
   deleteShift: (shiftId: string) => void;
+  shiftChangeNotifications: ShiftChangeNotification[];
+  resolveShiftConflict_Update: (notifId: string, appointmentId: string) => void;
+  resolveShiftConflict_Cancel: (notifId: string, appointmentId: string) => void;
 }
 
 const ClinicContext = createContext<ClinicContextType | undefined>(undefined);
@@ -62,6 +70,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [logs, setLogs] = useState<ClinicLog[]>(INITIAL_LOGS);
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>(INITIAL_MEDICAL_RECORDS);
   const [doctorShifts, setDoctorShifts] = useState<DoctorShift[]>(INITIAL_DENTIST_SHIFTS);
+  const [shiftChangeNotifications, setShiftChangeNotifications] = useState<ShiftChangeNotification[]>(INITIAL_SHIFT_NOTIFICATIONS);
 
   // Auto-increment elapsed time for active treatments in queue to simulate real-time updates
   useEffect(() => {
@@ -121,6 +130,45 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           
           addLog('SYSTEM', 'SUCCESS', `Bệnh nhân ${p.name} nạp ₫${amount.toLocaleString()} vào ví. Số dư mới: ₫${newBalance.toLocaleString()}`);
           return { ...p, balance: newBalance, points: newPoints, tier };
+        }
+        return p;
+      })
+    );
+  };
+
+  const updatePatientDetails = (
+    patientId: string,
+    details: Partial<Pick<Patient, 'criticalAllergy' | 'condition' | 'name' | 'phone' | 'age' | 'gender'>>
+  ) => {
+    setPatients((prevPatients) =>
+      prevPatients.map((p) => {
+        if (p.id === patientId) {
+          addLog('SYSTEM', 'INFO', `Cập nhật thông tin bệnh nhân ${p.name} (ID: ${patientId})`);
+          return { ...p, ...details };
+        }
+        return p;
+      })
+    );
+  };
+
+  const unlockPatient = (patientId: string) => {
+    setPatients((prevPatients) =>
+      prevPatients.map((p) => {
+        if (p.id === patientId) {
+          addLog('SYSTEM', 'SUCCESS', `Mở khóa tài khoản cho bệnh nhân ${p.name} (ID: ${patientId})`);
+          return { ...p, isUnlocked: true, isLocked: false };
+        }
+        return p;
+      })
+    );
+  };
+
+  const lockPatient = (patientId: string) => {
+    setPatients((prevPatients) =>
+      prevPatients.map((p) => {
+        if (p.id === patientId) {
+          addLog('SYSTEM', 'WARN', `Khóa tài khoản bệnh nhân ${p.name} (ID: ${patientId})`);
+          return { ...p, isLocked: true, isUnlocked: false };
         }
         return p;
       })
@@ -411,7 +459,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     );
   };
 
-  const swapShifts = (shiftId1: string, shiftId2: string) => {
+  const swapShifts = (shiftId1: string, shiftId2: string, conflictAppointmentIds?: string[]) => {
     setDoctorShifts((prevShifts) => {
       const shift1 = prevShifts.find((s) => s.id === shiftId1);
       const shift2 = prevShifts.find((s) => s.id === shiftId2);
@@ -433,11 +481,39 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         `Đổi ca thành công: ${shift1.dentistName} (${shift1.date}) hoán đổi ca với ${shift2.dentistName} (${shift2.date})`
       );
 
+      // Tạo notification cho lễ tân nếu có conflict
+      if (conflictAppointmentIds && conflictAppointmentIds.length > 0) {
+        const affectedAppts = appointments.filter(a => conflictAppointmentIds.includes(a.id));
+        if (affectedAppts.length > 0) {
+          const notifId = `SCN-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+          const newNotif: ShiftChangeNotification = {
+            id: notifId,
+            createdAt: new Date().toISOString(),
+            shiftDate: shift1.date,
+            shiftType: shift1.shiftType,
+            originalDentistId: shift1.dentistId,
+            originalDentistName: shift1.dentistName,
+            newDentistId: shift2.dentistId,
+            newDentistName: shift2.dentistName,
+            affectedItems: affectedAppts.map(a => ({
+              appointmentId: a.id,
+              patientName: a.patientName,
+              patientPhone: a.patientPhone,
+              time: a.time,
+              serviceName: a.serviceName,
+              resolved: false,
+            })),
+          };
+          setShiftChangeNotifications(prev => [newNotif, ...prev]);
+          addLog('SYSTEM', 'WARN', `Thông báo đổi ca: Lễ tân cần liên hệ ${affectedAppts.length} bệnh nhân về việc đổi bác sĩ trực.`);
+        }
+      }
+
       return updatedShifts;
     });
   };
 
-  const transferShift = (shiftId: string, targetDentistId: string) => {
+  const transferShift = (shiftId: string, targetDentistId: string, conflictAppointmentIds?: string[]) => {
     const dentist = dentists.find((d) => d.id === targetDentistId);
     if (!dentist) return;
 
@@ -458,16 +534,118 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         `Chuyển ca thành công: ${shift.dentistName} chuyển ca ngày ${shift.date} cho ${dentist.name}`
       );
 
+      // Tạo notification cho lễ tân nếu có conflict
+      if (conflictAppointmentIds && conflictAppointmentIds.length > 0) {
+        const affectedAppts = appointments.filter(a => conflictAppointmentIds.includes(a.id));
+        if (affectedAppts.length > 0) {
+          const notifId = `SCN-${Date.now().toString(36).toUpperCase().slice(-6)}`;
+          const newNotif: ShiftChangeNotification = {
+            id: notifId,
+            createdAt: new Date().toISOString(),
+            shiftDate: shift.date,
+            shiftType: shift.shiftType,
+            originalDentistId: shift.dentistId,
+            originalDentistName: shift.dentistName,
+            newDentistId: targetDentistId,
+            newDentistName: dentist.name,
+            affectedItems: affectedAppts.map(a => ({
+              appointmentId: a.id,
+              patientName: a.patientName,
+              patientPhone: a.patientPhone,
+              time: a.time,
+              serviceName: a.serviceName,
+              resolved: false,
+            })),
+          };
+          setShiftChangeNotifications(prev => [newNotif, ...prev]);
+          addLog('SYSTEM', 'WARN', `Thông báo đổi ca: Lễ tân cần liên hệ ${affectedAppts.length} bệnh nhân về việc đổi bác sĩ trực.`);
+        }
+      }
+
       return updatedShifts;
     });
   };
 
-  const confirmAppointment = (appointmentId: string) => {
+  // ── Resolve conflict: Bệnh nhân đồng ý → cập nhật bác sĩ mới trong appointment ──
+  const resolveShiftConflict_Update = (notifId: string, appointmentId: string) => {
+    const notif = shiftChangeNotifications.find(n => n.id === notifId);
+    if (!notif) return;
+
+    // Cập nhật dentist trong appointment
+    setAppointments(prev => prev.map(a => {
+      if (a.id === appointmentId) {
+        addLog('RECEPTION', 'SUCCESS',
+          `Lễ tân cập nhật lịch hẹn ${appointmentId} của ${a.patientName}: đổi sang ${notif.newDentistName} (bệnh nhân đã đồng ý qua điện thoại).`);
+        return { ...a, dentistId: notif.newDentistId, dentistName: notif.newDentistName };
+      }
+      return a;
+    }));
+
+    // Đánh dấu item này đã resolved
+    setShiftChangeNotifications(prev => prev.map(n => {
+      if (n.id !== notifId) return n;
+      return {
+        ...n,
+        affectedItems: n.affectedItems.map(item =>
+          item.appointmentId === appointmentId
+            ? { ...item, resolved: true, resolvedAction: 'updated' as const }
+            : item
+        ),
+      };
+    }));
+  };
+
+  // ── Resolve conflict: Bệnh nhân từ chối → hủy appointment ──
+  const resolveShiftConflict_Cancel = (notifId: string, appointmentId: string) => {
+    const notif = shiftChangeNotifications.find(n => n.id === notifId);
+    if (!notif) return;
+
+    // Hủy appointment
+    setAppointments(prev => prev.map(a => {
+      if (a.id === appointmentId && a.status !== 'Completed') {
+        addLog('RECEPTION', 'WARN',
+          `Hủy lịch hẹn ${appointmentId} của ${a.patientName}: bệnh nhân không đồng ý đổi bác sĩ sau khi liên hệ qua điện thoại.`);
+        return { ...a, status: 'Cancelled' as const };
+      }
+      return a;
+    }));
+
+    // Đánh dấu item này đã resolved
+    setShiftChangeNotifications(prev => prev.map(n => {
+      if (n.id !== notifId) return n;
+      return {
+        ...n,
+        affectedItems: n.affectedItems.map(item =>
+          item.appointmentId === appointmentId
+            ? { ...item, resolved: true, resolvedAction: 'cancelled' as const }
+            : item
+        ),
+      };
+    }));
+  };
+
+
+
+  const rescheduleAppointment = (
+    appointmentId: string,
+    newTime: string,
+    newDentistId?: string,
+    newDentistName?: string
+  ) => {
     setAppointments((prev) =>
       prev.map((a) => {
-        if (a.id === appointmentId && a.status === 'Pending') {
-          addLog('RECEPTION', 'SUCCESS', `Xác nhận lịch hẹn ${appointmentId} cho bệnh nhân ${a.patientName}.`);
-          return { ...a, status: 'Confirmed' as const };
+        if (a.id === appointmentId) {
+          const updated = { ...a, time: newTime };
+          if (newDentistId && newDentistName) {
+            updated.dentistId = newDentistId;
+            updated.dentistName = newDentistName;
+          }
+          addLog(
+            'RECEPTION',
+            'SUCCESS',
+            `Dời lịch hẹn ${appointmentId} của ${a.patientName} sang lúc ${newTime} (Bác sĩ: ${updated.dentistName}).`
+          );
+          return updated;
         }
         return a;
       })
@@ -544,14 +722,21 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         toggleServiceActive,
         addPatient,
         rechargeWallet,
-        confirmAppointment,
+        updatePatientDetails,
+        unlockPatient,
+        lockPatient,
+        rescheduleAppointment,
+
         cancelAppointment,
         doctorShifts,
         swapShifts,
         transferShift,
         changeShiftRoom,
         addShift,
-        deleteShift
+        deleteShift,
+        shiftChangeNotifications,
+        resolveShiftConflict_Update,
+        resolveShiftConflict_Cancel,
       }}
     >
       {children}

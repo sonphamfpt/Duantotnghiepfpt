@@ -32,7 +32,7 @@ const TODAY = '2026-06-22';
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const ManagerSchedule: React.FC = () => {
-  const { doctorShifts, dentists, addShift, deleteShift, swapShifts, transferShift, changeShiftRoom } = useClinic();
+  const { doctorShifts, dentists, appointments, addShift, deleteShift, swapShifts, transferShift, changeShiftRoom } = useClinic();
 
   const [selectedWeekId, setSelectedWeekId] = useState('w4');
   const [filterDentistId, setFilterDentistId] = useState<string>('ALL');
@@ -56,6 +56,16 @@ export const ManagerSchedule: React.FC = () => {
 
   // Delete confirm
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+
+  // Conflict modal
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [conflictData, setConflictData] = useState<{
+    action: 'swap' | 'transfer';
+    conflictAppts: typeof appointments;
+    newDentistName: string;
+    pendingSwapTargetId?: string;
+    pendingTransferDentistId?: string;
+  } | null>(null);
 
   const week = WEEKS.find(w => w.id === selectedWeekId) || WEEKS[3];
 
@@ -131,15 +141,57 @@ export const ManagerSchedule: React.FC = () => {
         alert('Vui lòng chọn ca trực khác để hoán đổi!');
         return;
       }
+
+      // Kiểm tra conflict lịch hẹn của ca gốc
+      const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
+      if (sourceShift) {
+        const conflictAppts = appointments.filter(a =>
+          a.dentistId === sourceShift.dentistId &&
+          a.status !== 'Cancelled' && a.status !== 'Completed'
+        );
+        const targetShift = doctorShifts.find(s => s.id === editTargetShiftId);
+        if (conflictAppts.length > 0) {
+          setConflictData({
+            action: 'swap',
+            conflictAppts,
+            newDentistName: targetShift?.dentistName || 'Bác sĩ khác',
+            pendingSwapTargetId: editTargetShiftId,
+          });
+          setShowConflictModal(true);
+          return;
+        }
+      }
       swapShifts(selectedShiftId, editTargetShiftId);
       alert('Hoán đổi ca trực thành công!');
+
     } else if (editAction === 'transfer') {
       if (!editTargetDentistId) {
         alert('Vui lòng chọn bác sĩ nhận ca!');
         return;
       }
+
+      // Kiểm tra conflict lịch hẹn của ca gốc
+      const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
+      if (sourceShift) {
+        const conflictAppts = appointments.filter(a =>
+          a.dentistId === sourceShift.dentistId &&
+          a.status !== 'Cancelled' && a.status !== 'Completed'
+        );
+        const newDentist = dentists.find(d => d.id === editTargetDentistId);
+        if (conflictAppts.length > 0) {
+          setConflictData({
+            action: 'transfer',
+            conflictAppts,
+            newDentistName: newDentist?.name || 'Bác sĩ mới',
+            pendingTransferDentistId: editTargetDentistId,
+          });
+          setShowConflictModal(true);
+          return;
+        }
+      }
       transferShift(selectedShiftId, editTargetDentistId);
       alert('Chuyển giao ca trực thành công!');
+
     } else {
       if (!editTargetRoom) {
         alert('Vui lòng chọn phòng khám mới!');
@@ -154,6 +206,27 @@ export const ManagerSchedule: React.FC = () => {
     setEditTargetShiftId('');
     setEditTargetDentistId('');
     setEditTargetRoom('');
+  };
+
+  // ── Confirm Conflict Handler ──
+  const handleConfirmConflict = () => {
+    if (!selectedShiftId || !conflictData) return;
+    const conflictIds = conflictData.conflictAppts.map(a => a.id);
+
+    if (conflictData.action === 'swap' && conflictData.pendingSwapTargetId) {
+      swapShifts(selectedShiftId, conflictData.pendingSwapTargetId, conflictIds);
+    } else if (conflictData.action === 'transfer' && conflictData.pendingTransferDentistId) {
+      transferShift(selectedShiftId, conflictData.pendingTransferDentistId, conflictIds);
+    }
+
+    setShowConflictModal(false);
+    setConflictData(null);
+    setShowEditModal(false);
+    setSelectedShiftId(null);
+    setEditTargetShiftId('');
+    setEditTargetDentistId('');
+    setEditTargetRoom('');
+    alert('Đã đổi ca và gửi thông báo đến lễ tân thành công!');
   };
 
   return (
@@ -736,6 +809,90 @@ export const ManagerSchedule: React.FC = () => {
                   Xóa ca trực
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Conflict Confirm Modal ── */}
+      {showConflictModal && conflictData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          onClick={() => { setShowConflictModal(false); setConflictData(null); }}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-amber-500 px-6 py-4 text-white flex justify-between items-center shrink-0">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Icon name="warning" />
+                Cảnh báo: Ca trực có lịch hẹn bệnh nhân!
+              </h3>
+              <button onClick={() => { setShowConflictModal(false); setConflictData(null); }} className="p-1.5 hover:bg-white/20 rounded-full cursor-pointer">
+                <Icon name="close" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+              {/* Shift change summary */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+                <p className="text-amber-800 font-bold mb-1 flex items-center gap-1.5">
+                  <Icon name="swap_horiz" className="text-[16px]" />
+                  {conflictData.action === 'transfer' ? 'Chuyển giao ca trực' : 'Hoán đổi ca trực'}
+                </p>
+                <p className="text-amber-700 text-xs">
+                  Bác sĩ trực thay thế: <strong>{conflictData.newDentistName}</strong>
+                </p>
+              </div>
+
+              {/* Affected appointments list */}
+              <div>
+                <p className="text-xs font-extrabold text-on-surface-variant uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Icon name="event_busy" className="text-amber-500 text-sm" />
+                  {conflictData.conflictAppts.length} lịch hẹn bị ảnh hưởng
+                </p>
+                <div className="space-y-2">
+                  {conflictData.conflictAppts.map(appt => (
+                    <div key={appt.id} className="flex items-center gap-3 bg-slate-50 border border-outline-variant rounded-xl p-3">
+                      <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                        <Icon name="person" className="text-[18px]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-on-surface">{appt.patientName}</p>
+                        <p className="text-xs text-on-surface-variant">{appt.time} · {appt.serviceName}</p>
+                        <p className="text-xs text-primary font-semibold">{appt.patientPhone}</p>
+                      </div>
+                      <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full shrink-0">Cần liên hệ</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Info note */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2 text-xs text-blue-700">
+                <Icon name="info" className="text-[16px] text-blue-500 shrink-0 mt-0.5" />
+                <p>
+                  Sau khi xác nhận, <strong>lễ tân sẽ nhận thông báo</strong> và gọi điện trực tiếp đến từng bệnh nhân để xác nhận. Lễ tân sẽ cập nhật bác sĩ hoặc hủy lịch tùy theo phản hồi của bệnh nhân.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-outline-variant flex justify-end gap-2 shrink-0">
+              <button
+                onClick={() => { setShowConflictModal(false); setConflictData(null); }}
+                className="px-5 py-2.5 border border-outline-variant text-slate-700 hover:bg-slate-100 rounded-xl font-bold text-xs cursor-pointer active:scale-95 transition-all"
+              >
+                Hủy thao tác
+              </button>
+              <button
+                onClick={handleConfirmConflict}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all"
+              >
+                <Icon name="notifications_active" className="text-[16px]" />
+                Xác nhận &amp; Thông báo lễ tân
+              </button>
             </div>
           </div>
         </div>

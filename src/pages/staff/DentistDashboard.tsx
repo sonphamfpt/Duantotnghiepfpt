@@ -34,6 +34,11 @@ const TEMPLATE_PRESETS: Record<string, Array<{ name: string; quantity: number; u
   ]
 };
 
+const STATIC_TOOTH_MAP: Record<string, Record<number, string>> = {
+  'P-8821': { 38: 'missing', 48: 'missing', 15: 'treated', 25: 'treated', 16: 'crown' },
+  'P-9902': { 46: 'decay', 38: 'missing', 36: 'treated' },
+};
+
 // ─── Home (Bàn khám lâm sàng) ──────────────────────────────────────────────────
 const DentistHome: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -54,10 +59,7 @@ const DentistHome: React.FC = () => {
   const [icdCode, setIcdCode] = useState('K02.1 - Sâu ngà răng');
   const [rxTemplate, setRxTemplate] = useState('Sau điều trị sâu răng / Hàn răng');
 
-  const [activeTeethState, setActiveTeethState] = useState<ToothState[]>([
-    { toothNumber: 46, condition: 'decay', treatment: 'Sâu ngà mặt nhai' },
-    { toothNumber: 38, condition: 'missing', treatment: 'Đã nhổ' }
-  ]);
+  const [activeTeethState, setActiveTeethState] = useState<ToothState[]>([]);
   const [performedServices, setPerformedServices] = useState<string[]>([]);
   const [serviceSearch, setServiceSearch] = useState('');
   const [prescriptionDrugs, setPrescriptionDrugs] = useState<Array<{ name: string; quantity: number; unit: string; instruction: string }>>(
@@ -163,25 +165,46 @@ const DentistHome: React.FC = () => {
     if (activePatient) {
       setFormAllergy(activePatient.criticalAllergy || 'Không');
       setFormCondition(activePatient.condition || 'Bình thường');
+
+      // Sync active teeth state from EMR + static map
+      const pId = activePatient.id;
+      const pRecords = medicalRecords.filter(r => r.patientId === pId);
+      
+      const baseMap = { ...(STATIC_TOOTH_MAP[pId] || {}) };
+      const consolidated: Record<number, ToothState> = {};
+      
+      // Load baseline
+      Object.entries(baseMap).forEach(([num, cond]) => {
+        const tNum = Number(num);
+        consolidated[tNum] = {
+          toothNumber: tNum,
+          condition: cond as ToothState['condition'],
+          treatment: pRecords.flatMap(r => r.teethMap || []).find(t => t.toothNumber === tNum)?.treatment || 'Tình trạng ban đầu'
+        };
+      });
+      
+      // Overwrite from medical records (oldest to newest)
+      [...pRecords].reverse().forEach(r => {
+        r.teethMap?.forEach(t => {
+          consolidated[t.toothNumber] = {
+            toothNumber: t.toothNumber,
+            condition: t.condition,
+            treatment: t.treatment
+          };
+        });
+      });
+      
+      setActiveTeethState(Object.values(consolidated));
+    } else {
+      setActiveTeethState([]);
     }
-  }, [activePatient?.id]);
+  }, [activePatient?.id, medicalRecords]);
 
   const handleSelectQueueItem = (id: string) => {
     setSelectedQueueId(id);
     const item = queue.find(q => q.id === id);
     if (item && item.status === 'Waiting') {
       startTreatment(id);
-    }
-    if (item?.patientId === 'P-9902') {
-      setActiveTeethState([
-        { toothNumber: 46, condition: 'decay', treatment: 'Hàn răng Composite' },
-        { toothNumber: 38, condition: 'missing', treatment: 'Đã nhổ' }
-      ]);
-    } else {
-      setActiveTeethState([
-        { toothNumber: 46, condition: 'decay', treatment: 'Sâu ngà mặt nhai' },
-        { toothNumber: 38, condition: 'missing', treatment: 'Đã nhổ' }
-      ]);
     }
     setPerformedServices([]);
     setServiceSearch('');
@@ -211,7 +234,16 @@ const DentistHome: React.FC = () => {
     if (serviceId && !performedServices.includes(serviceId)) {
       setPerformedServices(prev => [...prev, serviceId]);
     }
-    alert(`Đã chẩn đoán Răng ${selectedToothNum}: ${condition.toUpperCase()}`);
+    
+    const conditionLabels: Record<string, string> = {
+      healthy: 'Khỏe mạnh',
+      decay: 'Sâu răng',
+      treated: 'Đã trám',
+      missing: 'Mất răng',
+      crown: 'Bọc sứ',
+      bridge: 'Cầu răng',
+    };
+    alert(`Đã chẩn đoán Răng ${selectedToothNum}: ${conditionLabels[condition] || condition}`);
     setSelectedToothNum(null);
   };
 

@@ -1,36 +1,109 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
+import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/Icon';
+import { OtpVerificationModal } from '../../components/OtpVerificationModal';
 
 export const BookingPage: React.FC = () => {
-  const { services, dentists, addAppointment } = useClinic();
-  const navigate = useNavigate();
+  const { services, dentists, appointments, addAppointment, addLog, patients } = useClinic();
+  const { role, user } = useAuth();
 
   const [patientName, setPatientName] = useState('');
   const [patientPhone, setPatientPhone] = useState('');
+
+  useEffect(() => {
+    if (role === 'patient' && user?.id) {
+      const p = patients.find(p => p.id === user.id);
+      if (p) {
+        setPatientName(p.name);
+        setPatientPhone(p.phone);
+      }
+    }
+  }, [role, user, patients]);
+
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [selectedDentistId, setSelectedDentistId] = useState('');
+
+  const todayObj = new Date();
+  const minDateStr = todayObj.toISOString().split('T')[0];
+  const maxDateObj = new Date();
+  maxDateObj.setDate(maxDateObj.getDate() + 7);
+  const maxDateStr = maxDateObj.toISOString().split('T')[0];
+
   const [date, setDate] = useState(() => {
-    const today = new Date();
-    // Return YYYY-MM-DD
-    return today.toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
   });
   const [timeSlot, setTimeSlot] = useState('09:00 AM');
   const [notes, setNotes] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdAppointment, setCreatedAppointment] = useState<any>(null);
 
+  // OTP state
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [antiSpamError, setAntiSpamError] = useState('');
+
+  // Anti-spam: Rate limit
+  const checkRateLimit = (phone: string): boolean => {
+    const activeAppts = appointments.filter(
+      a => a.patientPhone === phone.trim() &&
+      a.status !== 'Completed' && a.status !== 'Cancelled'
+    );
+    if (activeAppts.length >= 3) {
+      setAntiSpamError('Số điện thoại này đã có 3 lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.');
+      return false;
+    }
+    return true;
+  };
+
+  // Anti-spam: Duplicate detection
+  const checkDuplicate = (phone: string, dateStr: string, time: string): boolean => {
+    const timeStr = `${dateStr} @ ${time}`;
+    const duplicate = appointments.find(
+      a => a.patientPhone === phone.trim() &&
+      a.time === timeStr &&
+      a.status !== 'Cancelled'
+    );
+    if (duplicate) {
+      setAntiSpamError('Bạn đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.');
+      return false;
+    }
+    return true;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setAntiSpamError('');
+
     if (!patientName || !patientPhone || !selectedServiceId || !selectedDentistId) {
       alert('Vui lòng điền đầy đủ các trường thông tin bắt buộc (*)!');
       return;
     }
 
+    // Check if phone number is locked
+    const matchedPatient = patients.find(p => p.phone === patientPhone.trim());
+    if (matchedPatient) {
+      const cancelCount = appointments.filter(a => a.patientId === matchedPatient.id && a.status === 'Cancelled').length;
+      const isLocked = (cancelCount >= 3 || matchedPatient.isLocked) && !matchedPatient.isUnlocked;
+      if (isLocked) {
+        setAntiSpamError('Số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ phòng khám để biết thêm chi tiết.');
+        return;
+      }
+    }
+
+    // Anti-spam checks
+    if (!checkRateLimit(patientPhone)) return;
+    if (!checkDuplicate(patientPhone, date, timeSlot)) return;
+
+    // Show OTP modal
+    setShowOtpModal(true);
+  };
+
+  const createAppointment = () => {
     const service = services.find(s => s.id === selectedServiceId);
     const dentist = dentists.find(d => d.id === selectedDentistId);
-
     if (!service || !dentist) return;
 
     const newAppt = addAppointment({
@@ -43,8 +116,15 @@ export const BookingPage: React.FC = () => {
       time: `${date} @ ${timeSlot}`
     });
 
+    addLog('SYSTEM', 'SUCCESS', `OTP xác thực thành công cho SĐT ${patientPhone}. Lịch hẹn ${newAppt.id} đã được tạo.`);
+
     setCreatedAppointment(newAppt);
     setIsSuccess(true);
+  };
+
+  const handleOtpVerified = () => {
+    setShowOtpModal(false);
+    createAppointment();
   };
 
   const timeSlots = [
@@ -68,7 +148,7 @@ export const BookingPage: React.FC = () => {
             Đặt Lịch Hẹn Khám Bệnh
           </h1>
           <p className="text-white/85 text-base md:text-lg max-w-2xl leading-relaxed">
-            Đặt lịch hẹn trực tuyến nhanh chóng chỉ trong 1 phút. Nhận ngay cuộc hẹn ưu tiên cùng Hội đồng y khoa đầu ngành GoodSmile.
+            Đặt lịch hẹn trực tuyến nhanh chóng chỉ trong 1 phút. Xác thực OTP để đảm bảo an toàn lịch hẹn.
           </p>
         </div>
       </section>
@@ -82,8 +162,12 @@ export const BookingPage: React.FC = () => {
               <Icon name="check_circle" className="text-[48px]" />
             </div>
             <h2 className="text-3xl font-extrabold text-[#0f172a] mb-2">Đặt Hẹn Thành Công!</h2>
-            <p className="text-emerald-700 font-bold text-sm mb-6">
+            <p className="text-emerald-700 font-bold text-sm mb-1">
               Mã lịch hẹn của bạn là: {createdAppointment.id}
+            </p>
+            <p className="text-xs text-emerald-600 mb-6 flex items-center justify-center gap-1">
+              <Icon name="verified" className="text-[14px]" />
+              Đã xác thực qua OTP
             </p>
 
             <div className="bg-[#f8fafc] border border-[#e2e8f0] p-6 text-left space-y-3 max-w-md mx-auto mb-8 text-sm">
@@ -122,6 +206,7 @@ export const BookingPage: React.FC = () => {
                   setSelectedServiceId('');
                   setSelectedDentistId('');
                   setNotes('');
+                  setAntiSpamError('');
                 }}
                 className="bg-white text-[#005eb8] border border-[#005eb8] px-6 py-2.5 font-bold hover:bg-[#eff6ff] transition-colors cursor-pointer"
               >
@@ -161,10 +246,21 @@ export const BookingPage: React.FC = () => {
                   <li className="flex gap-3">
                     <span className="bg-[#eff6ff] text-[#1d4ed8] w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold shrink-0">3</span>
                     <p className="leading-relaxed">
-                      <strong>Xác nhận thông tin:</strong> Hệ thống sẽ lưu giữ thông tin đặt lịch để quầy Lễ tân chủ động chuẩn bị hồ sơ bệnh án đón tiếp khi bạn tới.
+                      <strong>Xác nhận OTP:</strong> Mã xác thực sẽ được gửi đến số điện thoại đăng ký để đảm bảo tính xác thực của lịch hẹn.
                     </p>
                   </li>
                 </ul>
+              </div>
+
+              {/* OTP Security Banner */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 p-6 shadow-sm">
+                <h4 className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+                  <Icon name="verified_user" className="text-[16px]" />
+                  Bảo Mật Lịch Hẹn
+                </h4>
+                <p className="text-sm text-blue-900 leading-relaxed">
+                  Mỗi lịch hẹn được xác thực qua <strong>mã OTP 6 số</strong> gửi đến số điện thoại đăng ký, giúp ngăn chặn đặt lịch spam và đảm bảo an toàn cho bạn.
+                </p>
               </div>
 
               <div className="bg-gradient-to-br from-[#eff6ff] to-[#f0fdf4] border border-[#bfdbfe] p-6 shadow-sm">
@@ -212,7 +308,7 @@ export const BookingPage: React.FC = () => {
                         type="tel"
                         required
                         value={patientPhone}
-                        onChange={(e) => setPatientPhone(e.target.value)}
+                        onChange={(e) => { setPatientPhone(e.target.value); setAntiSpamError(''); }}
                         placeholder="Ví dụ: 0912 345 678"
                         className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all"
                       />
@@ -270,8 +366,10 @@ export const BookingPage: React.FC = () => {
                       <input
                         type="date"
                         required
+                        min={minDateStr}
+                        max={maxDateStr}
                         value={date}
-                        onChange={(e) => setDate(e.target.value)}
+                        onChange={(e) => { setDate(e.target.value); setAntiSpamError(''); }}
                         className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all"
                       />
                     </div>
@@ -284,7 +382,7 @@ export const BookingPage: React.FC = () => {
                       <select
                         required
                         value={timeSlot}
-                        onChange={(e) => setTimeSlot(e.target.value)}
+                        onChange={(e) => { setTimeSlot(e.target.value); setAntiSpamError(''); }}
                         className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all"
                       >
                         {timeSlots.map(slot => (
@@ -308,21 +406,36 @@ export const BookingPage: React.FC = () => {
                     ></textarea>
                   </div>
 
+                  {/* Anti-spam error */}
+                  {antiSpamError && (
+                    <div className="flex items-start gap-3 text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm animate-in fade-in">
+                      <Icon name="gpp_bad" className="text-[20px] shrink-0 mt-0.5" />
+                      <span className="font-medium">{antiSpamError}</span>
+                    </div>
+                  )}
+
                   {/* Submit buttons */}
-                  <div className="pt-4 border-t border-slate-100 flex gap-4 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/')}
-                      className="bg-white border border-slate-300 text-slate-700 px-6 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer"
-                    >
-                      Hủy bỏ
-                    </button>
-                    <button
-                      type="submit"
-                      className="bg-[#005eb8] hover:bg-[#004a94] text-white font-bold px-8 py-2.5 shadow hover:shadow-md transition-all cursor-pointer"
-                    >
-                      Đăng Ký Đặt Hẹn
-                    </button>
+                  <div className="pt-4 border-t border-slate-100 flex gap-4 justify-between items-center">
+                    <div className="flex items-center gap-2 text-xs text-blue-700">
+                      <Icon name="lock" className="text-[14px]" />
+                      <span className="font-medium">Xác thực OTP bảo mật</span>
+                    </div>
+                    <div className="flex gap-4">
+                      <button
+                        type="button"
+                        onClick={() => window.history.back()}
+                        className="bg-white border border-slate-300 text-slate-700 px-6 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
+                        Hủy bỏ
+                      </button>
+                      <button
+                        type="submit"
+                        className="bg-[#005eb8] hover:bg-[#004a94] text-white font-bold px-8 py-2.5 shadow hover:shadow-md transition-all cursor-pointer flex items-center gap-2"
+                      >
+                        <Icon name="verified_user" className="text-[18px]" />
+                        Xác Nhận & Gửi OTP
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>
@@ -330,6 +443,14 @@ export const BookingPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* OTP Modal */}
+      <OtpVerificationModal
+        isOpen={showOtpModal}
+        onClose={() => setShowOtpModal(false)}
+        onVerified={handleOtpVerified}
+        phoneNumber={patientPhone}
+      />
     </div>
   );
 };

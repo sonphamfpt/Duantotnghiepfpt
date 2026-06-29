@@ -15,7 +15,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
   onClose,
   title = 'Đón tiếp & Check-in',
 }) => {
-  const { queue, patients, dentists, services, checkInPatient, addPatient } = useClinic();
+  const { queue, patients, dentists, services, checkInPatient, addPatient, appointments } = useClinic();
 
   const [mode, setMode] = useState<CheckInMode>('existing');
   const [isScanning, setIsScanning] = useState(false);
@@ -38,6 +38,11 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
   );
 
   const duplicatePatient = patients.find(p => p.phone === newPhone.trim());
+  const selectedPatient = existingPatientId ? patients.find(p => p.id === existingPatientId) : null;
+  const cancelCount = selectedPatient 
+    ? appointments.filter(a => a.patientId === selectedPatient.id && a.status === 'Cancelled').length 
+    : 0;
+  const isLocked = cancelCount >= 3 && !selectedPatient?.isUnlocked;
 
   if (!isOpen) return null;
 
@@ -104,6 +109,11 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
 
     if (!patientId || !selectedDentistId) {
       alert('Vui lòng chọn bệnh nhân và bác sĩ khám!');
+      return;
+    }
+
+    if (isLocked) {
+      alert('Tài khoản số điện thoại này đã bị khóa do hủy lịch/không đến quá 3 lần!');
       return;
     }
 
@@ -209,14 +219,26 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
                       </div>
                       
                       {existingPatientId && (
-                        <div className="mt-3 p-3 bg-primary-container text-on-primary-container rounded-xl flex justify-between items-center text-sm border border-primary/20 animate-in fade-in slide-in-from-top-1">
-                          <div>
-                            <p className="font-bold">{patients.find(p => p.id === existingPatientId)?.name}</p>
-                            <p className="text-xs opacity-80 mt-0.5">{patients.find(p => p.id === existingPatientId)?.phone}</p>
+                        <div className={`mt-3 p-3 rounded-xl flex flex-col gap-2 text-sm border animate-in fade-in slide-in-from-top-1 ${
+                          isLocked 
+                            ? 'bg-error-container text-on-error-container border-error/20' 
+                            : 'bg-primary-container text-on-primary-container border-primary/20'
+                        }`}>
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="font-bold">{selectedPatient?.name}</p>
+                              <p className="text-xs opacity-80 mt-0.5">{selectedPatient?.phone} • Số lần hủy: {cancelCount} lần</p>
+                            </div>
+                            <button type="button" onClick={() => { setExistingPatientId(''); setSearchQuery(''); }} className="hover:bg-black/10 p-1.5 rounded-full transition-colors">
+                              <Icon name="close" className="text-[18px]" />
+                            </button>
                           </div>
-                          <button type="button" onClick={() => { setExistingPatientId(''); setSearchQuery(''); }} className="hover:bg-white/20 p-1.5 rounded-full transition-colors">
-                            <Icon name="close" className="text-[18px]" />
-                          </button>
+                          {isLocked && (
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-error border-t border-error/10 pt-2">
+                              <Icon name="block" className="text-[16px]" />
+                              <span>SĐT NÀY ĐÃ BỊ KHÓA: Hủy lịch/Không đến quá {cancelCount}/3 lần!</span>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -340,57 +362,149 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
                       </div>
                       <div className="flex flex-col gap-3">
                         {dentists.map((dentist) => {
-                          const inChair = queue.some((item) => item.dentistId === dentist.id && item.status === 'In Chair');
-                          const waitingCount = queue.filter((item) => item.dentistId === dentist.id && item.status === 'Waiting').length;
+                          const inChairQueue = queue.filter((item) => item.dentistId === dentist.id && item.status === 'In Chair');
+                          const inChair = inChairQueue.length > 0;
+                          const waitingQueue = queue.filter((item) => item.dentistId === dentist.id && item.status === 'Waiting')
+                            .sort((a, b) => (b.waitTimeMin || 0) - (a.waitTimeMin || 0));
+                          const waitingCount = waitingQueue.length;
                           
+                          // Chỉ lấy các lịch hẹn của ngày hôm nay (loại bỏ các lịch hẹn chứa "Ngày mai" hoặc định dạng ngày dd/mm/yyyy)
+                          const upcomingAppts = appointments.filter(a => 
+                            a.dentistId === dentist.id && 
+                            a.status === 'Confirmed' && 
+                            !a.time.includes('Ngày mai') && 
+                            !a.time.includes('/')
+                          );
+                          const upcomingCount = upcomingAppts.length;
+
+                          const isSelected = selectedDentistId === dentist.id;
                           const isRecommended = !inChair && waitingCount === 0;
 
                           return (
-                            <button
+                            <div
                               key={dentist.id}
-                              type="button"
-                              onClick={() => setSelectedDentistId(dentist.id)}
-                              className={`p-4 rounded-xl border-2 text-left transition-all cursor-pointer relative overflow-hidden flex items-center gap-4 ${
-                                selectedDentistId === dentist.id
-                                  ? 'border-primary bg-primary-container/10 shadow-md scale-[1.01]'
-                                  : 'border-outline-variant hover:border-primary/40 hover:bg-surface bg-white'
+                              className={`rounded-xl border-2 transition-all overflow-hidden bg-white ${
+                                isSelected
+                                  ? 'border-primary shadow-md'
+                                  : 'border-outline-variant hover:border-primary/40'
                               }`}
                             >
-                              {/* Left Edge Indicator for Selection */}
-                              {selectedDentistId === dentist.id && (
-                                <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary rounded-l-xl" />
-                              )}
+                              <div
+                                onClick={() => setSelectedDentistId(dentist.id)}
+                                className={`p-4 cursor-pointer relative flex items-center gap-4 ${isSelected ? 'bg-primary-container/10' : ''}`}
+                              >
+                                {/* Left Edge Indicator for Selection */}
+                                {isSelected && (
+                                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary" />
+                                )}
 
-                              <div className="flex-1 min-w-0 pl-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <p className="text-base font-bold text-on-surface">{dentist.name}</p>
-                                  {isRecommended && (
-                                    <span className="bg-amber-400 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                      Ưu tiên
-                                    </span>
-                                  )}
+                                <div className="flex-1 min-w-0 pl-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="text-base font-bold text-on-surface">{dentist.name}</p>
+                                    {isRecommended && (
+                                      <span className="bg-amber-400 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                        Ưu tiên
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-on-surface-variant flex items-center gap-1">
+                                    <Icon name="meeting_room" className="text-[16px]" />
+                                    {dentist.room}
+                                  </p>
                                 </div>
-                                <p className="text-sm text-on-surface-variant flex items-center gap-1">
-                                  <Icon name="meeting_room" className="text-[16px]" />
-                                  {dentist.room}
-                                </p>
+                                
+                                <div className="shrink-0 text-right">
+                                  <div className={`text-xs font-bold py-1.5 px-3 rounded-lg inline-flex items-center gap-1.5 ${
+                                    inChair 
+                                      ? 'bg-error-container/50 text-error' 
+                                      : waitingCount > 0 
+                                        ? 'bg-amber-100 text-amber-800' 
+                                        : 'bg-secondary-container/50 text-secondary'
+                                  }`}>
+                                    <Icon name="circle" className={`text-[10px] ${inChair ? 'animate-pulse' : ''}`} />
+                                    <span>
+                                      {inChair ? `Đang khám (${waitingCount} chờ)` : waitingCount > 0 ? `${waitingCount} chờ` : 'Trống lịch'}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                               
-                              <div className="shrink-0 text-right">
-                                <div className={`text-xs font-bold py-1.5 px-3 rounded-lg inline-flex items-center gap-1.5 ${
-                                  inChair 
-                                    ? 'bg-error-container/50 text-error' 
-                                    : waitingCount > 0 
-                                      ? 'bg-amber-100 text-amber-800' 
-                                      : 'bg-secondary-container/50 text-secondary'
-                                }`}>
-                                  <Icon name="circle" className={`text-[10px] ${inChair ? 'animate-pulse' : ''}`} />
-                                  <span>
-                                    {inChair ? `Đang khám (${waitingCount} chờ)` : waitingCount > 0 ? `${waitingCount} chờ` : 'Trống lịch'}
-                                  </span>
+                              {/* Expanded Dashboard */}
+                              {isSelected && (
+                                <div className="bg-surface-container-lowest border-t border-primary/20 p-4 animate-in fade-in slide-in-from-top-2">
+                                  <h5 className="text-[11px] font-bold uppercase text-primary mb-3 flex items-center gap-1.5">
+                                    <Icon name="view_kanban" className="text-[14px]" />
+                                    Luồng khách hôm nay
+                                  </h5>
+                                  
+                                  <div className="space-y-3">
+                                    {/* In Chair */}
+                                    {inChairQueue.length > 0 && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-on-surface-variant mb-1 flex items-center gap-1">
+                                          <Icon name="medical_services" className="text-[12px] text-primary" /> Đang khám trên ghế
+                                        </p>
+                                        <div className="space-y-1.5">
+                                          {inChairQueue.map(q => (
+                                            <div key={q.id} className="bg-primary-container text-on-primary-container px-3 py-2 rounded-lg text-xs font-bold border border-primary/20 flex justify-between">
+                                              <span>{q.patientName}</span>
+                                              <span className="animate-pulse">⏱ {q.elapsedTimeMin || 0}p</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Waiting */}
+                                    {waitingQueue.length > 0 && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-on-surface-variant mb-1 flex items-center gap-1 mt-3">
+                                          <Icon name="hourglass_top" className="text-[12px] text-amber-600" /> Đang chờ ở sảnh ({waitingCount})
+                                        </p>
+                                        <div className="space-y-1.5">
+                                          {waitingQueue.map(q => (
+                                            <div key={q.id} className="bg-amber-50 text-amber-900 px-3 py-2 rounded-lg text-xs font-bold border border-amber-200 flex justify-between items-center">
+                                              <div className="flex flex-col">
+                                                <span>{q.patientName}</span>
+                                                {q.serviceName && <span className="text-[10px] font-medium opacity-80 mt-0.5">{q.serviceName}</span>}
+                                              </div>
+                                              <span>⏳ {q.waitTimeMin}p</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Upcoming (Not Checked In) */}
+                                    {upcomingAppts.length > 0 && (
+                                      <div>
+                                        <p className="text-[10px] font-bold text-on-surface-variant mb-1 flex items-center gap-1 mt-3">
+                                          <Icon name="event_upcoming" className="text-[12px]" /> Chưa Check-in ({upcomingCount})
+                                        </p>
+                                        <div className="space-y-1.5">
+                                          {upcomingAppts.map(a => (
+                                            <div key={a.id} className="bg-surface-container-low text-on-surface-variant px-3 py-2 rounded-lg text-xs font-bold border border-outline-variant flex justify-between items-center">
+                                              <div className="flex flex-col">
+                                                <span>{a.patientName}</span>
+                                                <span className="text-[10px] font-medium mt-0.5 text-primary">{a.serviceName}</span>
+                                              </div>
+                                              <span className="text-secondary">{a.time}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Empty State */}
+                                    {inChairQueue.length === 0 && waitingQueue.length === 0 && upcomingAppts.length === 0 && (
+                                      <div className="text-center py-5 text-xs font-medium text-on-surface-variant border border-dashed border-outline-variant rounded-xl bg-white mt-2">
+                                        Bác sĩ đang hoàn toàn trống lịch.
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            </button>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
@@ -409,7 +523,15 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
                 <button type="button" onClick={resetAndClose} className="px-6 py-2.5 border border-outline-variant text-on-surface rounded-xl font-bold cursor-pointer hover:bg-surface-container-high transition-colors">
                   Hủy
                 </button>
-                <button type="submit" className="px-8 py-2.5 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md flex items-center justify-center gap-2">
+                <button 
+                  type="submit" 
+                  disabled={isLocked}
+                  className={`px-8 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-md ${
+                    isLocked 
+                      ? 'bg-outline/25 text-on-surface-variant/45 cursor-not-allowed border border-outline/10' 
+                      : 'bg-primary text-on-primary hover:opacity-90 active:scale-95 cursor-pointer'
+                  }`}
+                >
                   <Icon name="how_to_reg" />
                   Xác nhận Check-in
                 </button>

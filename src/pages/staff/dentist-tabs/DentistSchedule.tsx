@@ -22,7 +22,7 @@ export interface DentistScheduleProps {
 }
 
 export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D-04' }) => {
-  const { doctorShifts, dentists, swapShifts, transferShift, changeShiftRoom } = useClinic();
+  const { doctorShifts, dentists, appointments, swapShifts, transferShift, changeShiftRoom } = useClinic();
 
   // Swap / Transfer Modal State
   const [showSwapModal, setShowSwapModal] = useState(false);
@@ -32,24 +32,37 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
   const [targetDentistId, setTargetDentistId] = useState('');
   const [targetRoom, setTargetRoom] = useState('');
 
-  // Today is June 12, 2026
-  const todayDateStr = '2026-06-12';
+  // Conflict modal
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [conflictData, setConflictData] = useState<{
+    action: 'swap' | 'transfer';
+    conflictAppts: typeof appointments;
+    newDentistName: string;
+    pendingSwapTargetId?: string;
+    pendingTransferDentistId?: string;
+  } | null>(null);
+
+  // Dùng ngày thực tế, không hardcode
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowDateStr = tomorrowDate.toISOString().slice(0, 10);
 
   const currentDentist = dentists.find(d => d.id === dentistId);
   const dentistName = currentDentist?.name || 'Bác sĩ';
 
-  // My working dates in June
+  // Tất cả ngày có ca trong tuyển lịch (cho calendar highlight)
   const myShiftDates = React.useMemo(() =>
     doctorShifts.filter(s => s.dentistId === dentistId).map(s => s.date),
     [doctorShifts, dentistId]
   );
 
-  // My shifts in June sorted chronologically
+  // Ca sắp tới (từ hôm nay trở đi) — sắp xếp tăng dần
   const myShifts = React.useMemo(() =>
     doctorShifts
-      .filter(s => s.dentistId === dentistId)
+      .filter(s => s.dentistId === dentistId && s.date >= todayDateStr)
       .sort((a, b) => a.date.localeCompare(b.date)),
-    [doctorShifts, dentistId]
+    [doctorShifts, dentistId, todayDateStr]
   );
 
   const openSwapForShift = (shiftId: string) => {
@@ -64,6 +77,8 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
       return;
     }
 
+    const originShift = doctorShifts.find(s => s.id === originShiftId);
+
     if (actionType === 'swap') {
       if (!targetShiftId) {
         alert('Vui lòng chọn ca làm việc muốn đổi!');
@@ -73,27 +88,65 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
         alert('Không thể đổi ca làm việc với chính nó!');
         return;
       }
+
+      // Kiểm tra conflict lịch hẹn của ca gốc
+      if (originShift) {
+        const conflictAppts = appointments.filter(a =>
+          a.dentistId === originShift.dentistId &&
+          a.status !== 'Cancelled' && a.status !== 'Completed'
+        );
+        const targetShift = doctorShifts.find(s => s.id === targetShiftId);
+        if (conflictAppts.length > 0) {
+          setConflictData({
+            action: 'swap',
+            conflictAppts,
+            newDentistName: targetShift?.dentistName || 'Bác sĩ khác',
+            pendingSwapTargetId: targetShiftId,
+          });
+          setShowConflictModal(true);
+          return;
+        }
+      }
       swapShifts(originShiftId, targetShiftId);
       alert('Gửi yêu cầu hoán đổi ca trực thành công! Ca trực đã được cập nhật.');
+
     } else if (actionType === 'transfer') {
       if (!targetDentistId) {
         alert('Vui lòng chọn bác sĩ nhận ca trực!');
         return;
       }
-      const originShift = doctorShifts.find(s => s.id === originShiftId);
       if (originShift && originShift.dentistId === targetDentistId) {
         alert('Bác sĩ nhận ca phải khác bác sĩ hiện tại của ca trực!');
         return;
       }
+
+      // Kiểm tra conflict lịch hẹn của ca gốc
+      if (originShift) {
+        const conflictAppts = appointments.filter(a =>
+          a.dentistId === originShift.dentistId &&
+          a.status !== 'Cancelled' && a.status !== 'Completed'
+        );
+        const newDentist = dentists.find(d => d.id === targetDentistId);
+        if (conflictAppts.length > 0) {
+          setConflictData({
+            action: 'transfer',
+            conflictAppts,
+            newDentistName: newDentist?.name || 'Bác sĩ mới',
+            pendingTransferDentistId: targetDentistId,
+          });
+          setShowConflictModal(true);
+          return;
+        }
+      }
       transferShift(originShiftId, targetDentistId);
       alert('Chuyển giao ca trực thành công! Lịch làm việc đã được cập nhật.');
+
     } else {
       // actionType === 'change_room'
       if (!targetRoom) {
         alert('Vui lòng chọn phòng khám mới!');
         return;
       }
-      const originShift = doctorShifts.find(s => s.id === originShiftId);
       if (originShift && originShift.room === targetRoom) {
         alert('Phòng khám mới phải khác phòng khám hiện tại của ca trực!');
         return;
@@ -108,6 +161,27 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
     setTargetShiftId('');
     setTargetDentistId('');
     setTargetRoom('');
+  };
+
+  // ── Confirm Conflict Handler ──
+  const handleConfirmConflict = () => {
+    if (!originShiftId || !conflictData) return;
+    const conflictIds = conflictData.conflictAppts.map(a => a.id);
+
+    if (conflictData.action === 'swap' && conflictData.pendingSwapTargetId) {
+      swapShifts(originShiftId, conflictData.pendingSwapTargetId, conflictIds);
+    } else if (conflictData.action === 'transfer' && conflictData.pendingTransferDentistId) {
+      transferShift(originShiftId, conflictData.pendingTransferDentistId, conflictIds);
+    }
+
+    setShowConflictModal(false);
+    setConflictData(null);
+    setShowSwapModal(false);
+    setOriginShiftId('');
+    setTargetShiftId('');
+    setTargetDentistId('');
+    setTargetRoom('');
+    alert('Đã đổi ca và gửi thông báo đến lễ tân thành công! Lễ tân sẽ liên hệ bệnh nhân.');
   };
 
   // List of possible targets to swap with (shifts from other dentists)
@@ -281,22 +355,24 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
           <div className="md:col-span-8 space-y-4">
             <div className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm space-y-4 font-sans">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                <h4 className="font-extrabold text-sm text-slate-800">Lịch làm việc của tôi trong tháng</h4>
+                <h4 className="font-extrabold text-sm text-slate-800">Ca trực sắp tới</h4>
                 <span className="text-[10px] bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-bold">
-                  Tháng 6/2026
+                  {myShifts.length} ca sắp tới
                 </span>
               </div>
 
               <div className="space-y-2.5 max-h-[460px] overflow-y-auto custom-scrollbar pr-1">
                 {myShifts.length === 0 ? (
                   <div className="text-center py-12 text-slate-400 italic text-xs">
-                    Bạn không có ca trực nào trong lịch làm việc tháng này.
+                    <Icon name="event_available" className="text-3xl opacity-30 mb-2 block" />
+                    Không có ca trực nào sắp tới.
                   </div>
                 ) : (
                   myShifts.map(shift => {
                     const conf = SHIFT_TYPES[shift.shiftType as keyof typeof SHIFT_TYPES];
                     const isShiftToday = shift.date === todayDateStr;
-                    const dateObj = new Date(shift.date);
+                    const isShiftTomorrow = shift.date === tomorrowDateStr;
+                    const dateObj = new Date(shift.date + 'T00:00:00');
                     const dayOfWeekStr = dateObj.getDay() === 0 ? 'Chủ Nhật' : `Thứ ${dateObj.getDay() + 1}`;
                     const formattedDate = `${dayOfWeekStr}, ${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`;
 
@@ -305,22 +381,38 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
                         key={shift.id}
                         className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
                           isShiftToday 
-                            ? 'bg-blue-50/20 border-primary shadow-sm font-bold' 
+                            ? 'bg-blue-50/20 border-primary shadow-sm' 
+                            : isShiftTomorrow
+                            ? 'bg-amber-50 border-amber-300 shadow-sm'
                             : 'bg-white border-outline-variant/65 hover:border-slate-300'
                         }`}
                       >
                         {/* Left: Date details */}
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center text-[10px] font-black shrink-0 ${
-                            isShiftToday ? 'bg-primary text-white shadow-sm' : 'bg-slate-100 text-slate-600'
+                            isShiftToday ? 'bg-primary text-white shadow-sm' 
+                            : isShiftTomorrow ? 'bg-amber-500 text-white shadow-sm'
+                            : 'bg-slate-100 text-slate-600'
                           }`}>
                             <span className="uppercase text-[8px] opacity-80">{dayOfWeekStr.replace('Thứ ', 'T')}</span>
                             <span className="text-xs font-black">{dateObj.getDate()}</span>
                           </div>
                           <div>
-                            <p className={`text-xs font-bold ${isShiftToday ? 'text-primary' : 'text-slate-800'}`}>
-                              {formattedDate}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className={`text-xs font-bold ${
+                                isShiftToday ? 'text-primary' 
+                                : isShiftTomorrow ? 'text-amber-700'
+                                : 'text-slate-800'
+                              }`}>
+                                {formattedDate}
+                              </p>
+                              {isShiftToday && (
+                                <span className="text-[9px] font-black bg-primary text-white px-1.5 py-0.5 rounded-full">Hôm nay</span>
+                              )}
+                              {isShiftTomorrow && (
+                                <span className="text-[9px] font-black bg-amber-500 text-white px-1.5 py-0.5 rounded-full animate-pulse">⚠️ Ngày mai</span>
+                              )}
+                            </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <Icon name="meeting_room" className="text-slate-400 text-xs" />
                               <span className="text-[10px] text-slate-500 font-bold">{shift.room}</span>
@@ -497,6 +589,89 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
               >
                 <Icon name="check_circle" className="text-[16px]" />
                 Xác nhận đổi ca
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Conflict Confirm Modal ── */}
+      {showConflictModal && conflictData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          onClick={() => { setShowConflictModal(false); setConflictData(null); }}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-amber-500 px-6 py-4 text-white flex justify-between items-center shrink-0">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Icon name="warning" />
+                Lưu ý: Ca trực này có lịch hẹn bệnh nhân!
+              </h3>
+              <button onClick={() => { setShowConflictModal(false); setConflictData(null); }} className="p-1.5 hover:bg-white/20 rounded-full cursor-pointer">
+                <Icon name="close" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+              {/* Shift change summary */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+                <p className="text-amber-800 font-bold mb-1 flex items-center gap-1.5">
+                  <Icon name="swap_horiz" className="text-[16px]" />
+                  {conflictData.action === 'transfer' ? 'Bạn đang nhờ trực thay' : 'Bạn đang hoán đổi ca trực'}
+                </p>
+                <p className="text-amber-700 text-xs">
+                  Bác sĩ thay thế: <strong>{conflictData.newDentistName}</strong>
+                </p>
+              </div>
+
+              {/* Affected appointments list */}
+              <div>
+                <p className="text-xs font-extrabold text-on-surface-variant uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Icon name="event_busy" className="text-amber-500 text-sm" />
+                  {conflictData.conflictAppts.length} lịch hẹn của bạn bị ảnh hưởng
+                </p>
+                <div className="space-y-2">
+                  {conflictData.conflictAppts.map(appt => (
+                    <div key={appt.id} className="flex items-center gap-3 bg-slate-50 border border-outline-variant rounded-xl p-3">
+                      <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                        <Icon name="person" className="text-[18px]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-on-surface">{appt.patientName}</p>
+                        <p className="text-xs text-on-surface-variant">{appt.time} · {appt.serviceName}</p>
+                        <p className="text-xs text-primary font-semibold">{appt.patientPhone}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Info note */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2 text-xs text-blue-700">
+                <Icon name="info" className="text-[16px] text-blue-500 shrink-0 mt-0.5" />
+                <p>
+                  Sau khi xác nhận, <strong>lễ tân sẽ nhận thông báo</strong> và gọi điện trực tiếp đến từng bệnh nhân để thông báo thay đổi bác sĩ và xác nhận lịch hẹn.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-outline-variant flex justify-end gap-2 shrink-0">
+              <button
+                onClick={() => { setShowConflictModal(false); setConflictData(null); }}
+                className="px-5 py-2.5 border border-outline-variant text-slate-700 hover:bg-slate-100 rounded-xl font-bold text-xs cursor-pointer active:scale-95 transition-all"
+              >
+                Hủy thao tác
+              </button>
+              <button
+                onClick={handleConfirmConflict}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all"
+              >
+                <Icon name="notifications_active" className="text-[16px]" />
+                Xác nhận &amp; Thông báo lễ tân
               </button>
             </div>
           </div>

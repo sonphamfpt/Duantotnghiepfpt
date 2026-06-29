@@ -29,6 +29,8 @@ export interface Patient {
   balance: number;
   tier: 'Platinum' | 'Diamond' | 'Gold' | 'Standard';
   points: number;
+  isUnlocked?: boolean;
+  isLocked?: boolean;
 }
 
 export interface Appointment {
@@ -40,7 +42,7 @@ export interface Appointment {
   dentistId: string;
   dentistName: string;
   time: string;
-  status: 'Confirmed' | 'In-Progress' | 'Pending' | 'Completed' | 'Cancelled';
+  status: 'Confirmed' | 'In-Progress' | 'Completed' | 'Cancelled';
 }
 
 export interface QueueItem {
@@ -143,4 +145,26 @@ export interface DoctorShift {
   date: string; // YYYY-MM-DD format
   shiftType: 'Morning' | 'Afternoon' | 'Full';
   room: string; // Clinic room name
+}
+
+export interface ShiftConflictItem {
+  appointmentId: string;
+  patientName: string;
+  patientPhone: string;
+  time: string;
+  serviceName: string;
+  resolved: boolean;
+  resolvedAction?: 'updated' | 'cancelled';
+}
+
+export interface ShiftChangeNotification {
+  id: string;
+  createdAt: string;              // ISO timestamp
+  shiftDate: string;              // YYYY-MM-DD
+  shiftType: 'Morning' | 'Afternoon' | 'Full';
+  originalDentistId: string;
+  originalDentistName: string;
+  newDentistId: string;
+  newDentistName: string;
+  affectedItems: ShiftConflictItem[];
 }

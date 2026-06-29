@@ -7,6 +7,7 @@ import { ManagerRevenue } from './manager-tabs/ManagerRevenue';
 import { ManagerRbac } from './manager-tabs/ManagerRbac';
 import { ManagerSettings } from './manager-tabs/ManagerSettings';
 import { ManagerSchedule } from './manager-tabs/ManagerSchedule';
+import { ManagerPatients } from './manager-tabs/ManagerPatients';
 
 export const ManagerDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -24,6 +25,8 @@ export const ManagerDashboard: React.FC = () => {
         return <ManagerRbac />;
       case 'settings':
         return <ManagerSettings />;
+      case 'patients':
+        return <ManagerPatients />;
       default:
         return <ManagerOverview />;
     }

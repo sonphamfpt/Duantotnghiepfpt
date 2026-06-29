@@ -14,13 +14,39 @@ export const ReceptionistQueue: React.FC = () => {
 
   const [showCheckinModal, setShowCheckinModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'Waiting' | 'In Chair' | 'Completed'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterDentistId, setFilterDentistId] = useState('all');
 
   const filteredQueue = queue
-    .filter(q => filterStatus === 'all' || q.status === filterStatus)
+    .filter(q => {
+      // 1. Status Filter
+      if (filterStatus !== 'all' && q.status !== filterStatus) return false;
+      
+      // 2. Dentist Filter
+      if (filterDentistId !== 'all' && q.dentistId !== filterDentistId) return false;
+      
+      // 3. Search Filter
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const p = patients.find(pt => pt.id === q.patientId);
+        const nameMatch = q.patientName.toLowerCase().includes(term);
+        const phoneMatch = p?.phone.toLowerCase().includes(term);
+        if (!nameMatch && !phoneMatch) return false;
+      }
+      return true;
+    })
     .sort((a, b) => {
       const pa = STATUS_CONFIG[a.status as keyof typeof STATUS_CONFIG]?.priority ?? 9;
       const pb = STATUS_CONFIG[b.status as keyof typeof STATUS_CONFIG]?.priority ?? 9;
-      return pa - pb;
+      
+      // Khác trạng thái -> Xếp theo priority (In Chair -> Waiting -> Completed)
+      if (pa !== pb) return pa - pb;
+      
+      // Cùng trạng thái Waiting -> Ưu tiên chờ lâu nhất (waitTimeMin giảm dần)
+      if (a.status === 'Waiting' && b.status === 'Waiting') {
+        return (b.waitTimeMin || 0) - (a.waitTimeMin || 0);
+      }
+      return 0;
     });
 
   const waitingCount  = queue.filter(q => q.status === 'Waiting').length;
@@ -80,27 +106,55 @@ export const ReceptionistQueue: React.FC = () => {
         ))}
       </div>
 
-      {/* ── Filter Tabs ── */}
-      <div className="flex gap-2 mb-5">
-        {[
-          { key: 'all' as const,       label: `Tất cả (${queue.length})` },
-          { key: 'Waiting' as const,   label: `Đang chờ (${waitingCount})` },
-          { key: 'In Chair' as const,  label: `Đang khám (${inChairCount})` },
-          { key: 'Completed' as const, label: `Hoàn tất (${completedCount})` },
-        ].map(f => (
-          <button
-            key={f.key}
-            id={`btn-queue-filter-${f.key}`}
-            onClick={() => setFilterStatus(f.key)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-              filterStatus === f.key
-                ? 'bg-primary text-on-primary border-primary'
-                : 'bg-white border-outline-variant text-on-surface-variant hover:border-primary/40'
-            }`}
+      {/* ── Toolbar: Filters & Search ── */}
+      <div className="flex flex-col lg:flex-row gap-4 mb-5 items-start lg:items-center justify-between bg-surface-container-low p-3 rounded-2xl border border-outline-variant">
+        
+        {/* Status Filter Tabs */}
+        <div className="flex gap-2 flex-wrap">
+          {[
+            { key: 'all' as const,       label: `Tất cả (${queue.length})` },
+            { key: 'Waiting' as const,   label: `Đang chờ (${waitingCount})` },
+            { key: 'In Chair' as const,  label: `Đang khám (${inChairCount})` },
+            { key: 'Completed' as const, label: `Hoàn tất (${completedCount})` },
+          ].map(f => (
+            <button
+              key={f.key}
+              id={`btn-queue-filter-${f.key}`}
+              onClick={() => setFilterStatus(f.key)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                filterStatus === f.key
+                  ? 'bg-primary text-on-primary border-primary shadow-sm'
+                  : 'bg-white border-outline-variant text-on-surface-variant hover:border-primary/40 hover:bg-surface-container'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search & Dentist Filter */}
+        <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+          <div className="relative flex-1 sm:w-64">
+            <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]" />
+            <input
+              type="text"
+              placeholder="Tìm tên, SĐT bệnh nhân..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 rounded-xl border border-outline-variant text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-shadow bg-white"
+            />
+          </div>
+          <select
+            value={filterDentistId}
+            onChange={(e) => setFilterDentistId(e.target.value)}
+            className="w-full sm:w-48 px-4 py-2 rounded-xl border border-outline-variant text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none bg-white cursor-pointer"
           >
-            {f.label}
-          </button>
-        ))}
+            <option value="all">Tất cả Bác sĩ</option>
+            {dentists.map(d => (
+              <option key={d.id} value={d.id}>{d.name.replace('Bác sĩ ', 'BS. ')} ({d.room})</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* ── Queue Table ── */}
@@ -151,7 +205,14 @@ export const ReceptionistQueue: React.FC = () => {
                     <td className="px-4 py-3 text-sm text-on-surface-variant">{item.checkInTime}</td>
                     <td className="px-4 py-3">
                       {item.status === 'Waiting' && (
-                        <span className="text-xs text-amber-700 font-bold">⏳ {item.waitTimeMin} phút</span>
+                        <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg ${
+                          item.waitTimeMin > 30 ? 'bg-error-container text-on-error-container animate-pulse border border-error/20' :
+                          item.waitTimeMin > 15 ? 'bg-orange-100 text-orange-800 border border-orange-200' :
+                          'text-amber-700 bg-amber-50 border border-amber-200'
+                        }`}>
+                          {item.waitTimeMin > 30 && <Icon name="warning" className="text-[14px]" />}
+                          ⏳ {item.waitTimeMin} phút
+                        </span>
                       )}
                       {item.status === 'In Chair' && (
                         <span className="text-xs text-primary font-bold animate-pulse">⏱ {item.elapsedTimeMin ?? 0} phút</span>
@@ -177,9 +238,9 @@ export const ReceptionistQueue: React.FC = () => {
                         </button>
                         {item.status === 'Waiting' && (
                           <button
-                            onClick={() => alert(`Đã thông báo gọi bệnh nhân: ${item.patientName}`)}
+                            onClick={() => alert(`Đã thông báo gọi loa bệnh nhân: ${item.patientName}`)}
                             className="px-2.5 py-1.5 bg-primary-container text-on-primary-container rounded-lg text-xs font-bold hover:opacity-90 transition-all cursor-pointer"
-                            title="Gọi bệnh nhân"
+                            title="Gọi loa thông báo"
                           >
                             <Icon name="campaign" className="text-[16px]" />
                           </button>

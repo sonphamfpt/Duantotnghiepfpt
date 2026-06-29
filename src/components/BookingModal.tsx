@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useClinic } from '../context/ClinicContext';
+import { useAuth } from '../context/AuthContext';
 import { Icon } from './Icon';
+import { OtpVerificationModal } from './OtpVerificationModal';
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -17,7 +19,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   defaultPatientPhone = '',
   defaultDentistName = ''
 }) => {
-  const { services, dentists, patients, addAppointment } = useClinic();
+  const { services, dentists, patients, appointments, addAppointment, addLog } = useClinic();
+  const { role, user } = useAuth();
   
   const [patientName, setPatientName] = useState(defaultPatientName);
   const [patientPhone, setPatientPhone] = useState(defaultPatientPhone);
@@ -26,11 +29,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const initialDentistId = dentists.find(d => d.name === defaultDentistName)?.id || '';
   const [selectedDentistId, setSelectedDentistId] = useState(initialDentistId);
   
+  const todayObj = new Date();
+  const minDateStr = todayObj.toISOString().split('T')[0];
+  const maxDateObj = new Date();
+  maxDateObj.setDate(maxDateObj.getDate() + 7);
+  const maxDateStr = maxDateObj.toISOString().split('T')[0];
+
   // Set default date to tomorrow
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const [date, setDate] = useState(tomorrow.toISOString().split('T')[0]);
   const [timeSlot, setTimeSlot] = useState('');
+
+  // OTP state
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [antiSpamError, setAntiSpamError] = useState('');
 
   // Auto-fill patient name if phone exists
   const existingPatient = patients.find(p => p.phone === patientPhone.trim());
@@ -40,18 +53,86 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [existingPatient, defaultPatientName, patientName]);
 
+  // Sync patient info if logged in as patient
+  useEffect(() => {
+    if (role === 'patient' && user?.id && !defaultPatientName) {
+      const p = patients.find(p => p.id === user.id);
+      if (p) {
+        setPatientName(p.name);
+        setPatientPhone(p.phone);
+      }
+    }
+  }, [role, user, patients, defaultPatientName]);
+
   if (!isOpen) return null;
+
+  // Lễ tân bỏ qua OTP
+  const isStaffBooking = role === 'receptionist' || role === 'manager';
+
+  // Anti-spam: Rate limit — max 3 active appointments per phone
+  const checkRateLimit = (phone: string): boolean => {
+    const activeAppts = appointments.filter(
+      a => a.patientPhone === phone.trim() && 
+      a.status !== 'Completed' && a.status !== 'Cancelled'
+    );
+    if (activeAppts.length >= 3) {
+      setAntiSpamError('Số điện thoại này đã có 3 lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.');
+      return false;
+    }
+    return true;
+  };
+
+  // Anti-spam: Duplicate detection — same phone + same date + same time
+  const checkDuplicate = (phone: string, dateStr: string, time: string): boolean => {
+    const timeStr = `${dateStr} @ ${time}`;
+    const duplicate = appointments.find(
+      a => a.patientPhone === phone.trim() && 
+      a.time === timeStr &&
+      a.status !== 'Cancelled'
+    );
+    if (duplicate) {
+      setAntiSpamError('Bạn đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.');
+      return false;
+    }
+    return true;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setAntiSpamError('');
+
     if (!patientName || !patientPhone || !selectedServiceId || !selectedDentistId || !timeSlot || !date) {
       alert('Vui lòng điền đầy đủ thông tin bắt buộc!');
       return;
     }
 
+    // Check if phone number is locked
+    const matchedPatient = patients.find(p => p.phone === patientPhone.trim());
+    if (matchedPatient) {
+      const cancelCount = appointments.filter(a => a.patientId === matchedPatient.id && a.status === 'Cancelled').length;
+      const isLocked = (cancelCount >= 3 || matchedPatient.isLocked) && !matchedPatient.isUnlocked;
+      if (isLocked) {
+        setAntiSpamError('Số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ phòng khám để biết thêm chi tiết.');
+        return;
+      }
+    }
+
+    // Anti-spam checks
+    if (!checkRateLimit(patientPhone)) return;
+    if (!checkDuplicate(patientPhone, date, timeSlot)) return;
+
+    if (isStaffBooking) {
+      // Lễ tân/quản lý: tạo ngay, không cần OTP
+      createAppointment();
+    } else {
+      // Bệnh nhân: cần OTP
+      setShowOtpModal(true);
+    }
+  };
+
+  const createAppointment = () => {
     const service = services.find(s => s.id === selectedServiceId);
     const dentist = dentists.find(d => d.id === selectedDentistId);
-
     if (!service || !dentist) return;
 
     addAppointment({
@@ -64,6 +145,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       time: `${date} @ ${timeSlot}`
     });
 
+    if (!isStaffBooking) {
+      addLog('SYSTEM', 'SUCCESS', `OTP xác thực thành công cho SĐT ${patientPhone}. Lịch hẹn đã được tạo.`);
+    }
+
     alert('Đăng ký lịch hẹn thành công!');
     
     // Reset form
@@ -72,7 +157,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setSelectedServiceId('');
     setSelectedDentistId('');
     setTimeSlot('');
+    setAntiSpamError('');
     onClose();
+  };
+
+  const handleOtpVerified = () => {
+    setShowOtpModal(false);
+    createAppointment();
   };
 
   const timeSlots = [
@@ -117,7 +208,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       type="tel"
                       required
                       value={patientPhone}
-                      onChange={(e) => setPatientPhone(e.target.value)}
+                      onChange={(e) => { setPatientPhone(e.target.value); setAntiSpamError(''); }}
                       placeholder="Nhập SĐT..."
                       className="w-full bg-surface-container-low border border-outline-variant rounded-xl pl-10 pr-3 py-3 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all"
                     />
@@ -175,12 +266,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <input
                     type="date"
                     required
+                    min={minDateStr}
+                    max={maxDateStr}
                     value={date}
-                    onChange={(e) => setDate(e.target.value)}
+                    onChange={(e) => { setDate(e.target.value); setAntiSpamError(''); }}
                     className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-3 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all cursor-pointer"
                   />
                 </div>
               </div>
+
+              {/* Anti-spam error */}
+              {antiSpamError && (
+                <div className="flex items-start gap-2 text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm animate-in fade-in">
+                  <Icon name="gpp_bad" className="text-[20px] shrink-0 mt-0.5" />
+                  <span className="font-medium">{antiSpamError}</span>
+                </div>
+              )}
             </div>
 
             {/* RIGHT COLUMN: Doctor & Time */}
@@ -195,7 +296,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <button
                       key={slot}
                       type="button"
-                      onClick={() => setTimeSlot(slot)}
+                      onClick={() => { setTimeSlot(slot); setAntiSpamError(''); }}
                       className={`py-2 px-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
                         timeSlot === slot
                           ? 'bg-secondary text-on-secondary border-secondary shadow-md scale-105'
@@ -254,6 +355,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </div>
           </div>
 
+          {/* OTP info banner for patient */}
+          {!isStaffBooking && (
+            <div className="px-6 py-2 bg-blue-50 border-t border-blue-200 flex items-center gap-2 text-xs text-blue-800">
+              <Icon name="verified_user" className="text-[16px] text-blue-600" />
+              <span className="font-medium">Mã OTP sẽ được gửi đến số điện thoại để xác thực lịch hẹn</span>
+            </div>
+          )}
+
           {/* Sticky Footer */}
           <div className="p-4 border-t border-outline-variant bg-surface-container-low shrink-0 flex justify-end gap-3 rounded-b-2xl">
             <button
@@ -268,12 +377,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               className="px-8 py-2.5 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
             >
               <Icon name="event_available" />
-              Đăng Ký Hẹn
+              {isStaffBooking ? 'Đăng Ký Hẹn' : 'Xác Nhận & Gửi OTP'}
             </button>
           </div>
         </form>
       </div>
+
+      {/* OTP Modal */}
+      <OtpVerificationModal
+        isOpen={showOtpModal}
+        onClose={() => setShowOtpModal(false)}
+        onVerified={handleOtpVerified}
+        phoneNumber={patientPhone}
+      />
     </div>
   );
 };
-

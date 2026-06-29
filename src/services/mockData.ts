@@ -1,4 +1,4 @@
-import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, DoctorShift } from '../types/clinic';
+import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, DoctorShift, ShiftChangeNotification } from '../types/clinic';
 
 export const INITIAL_SERVICES: Service[] = [
   { id: 'S-01', name: 'Lấy cao răng & Vệ sinh', price: 300000, durationMin: 30, isActive: true },
@@ -75,10 +75,46 @@ export const INITIAL_PATIENTS: Patient[] = [
 ];
 
 export const INITIAL_APPOINTMENTS: Appointment[] = [
+  // ── Lịch hẹn hôm nay (không có ngày = hôm nay) ──
   { id: 'A-01', patientId: 'P-0012', patientName: 'Nguyễn Văn A', patientPhone: '0912 345 678', serviceName: 'Điều trị tủy răng', dentistId: 'D-01', dentistName: 'Bác sĩ Lê Minh', time: '09:00 AM', status: 'Confirmed' },
   { id: 'A-02', patientId: 'P-4490', patientName: 'Trần Thị B', patientPhone: '0987 654 321', serviceName: 'Tẩy trắng răng thẩm mỹ', dentistId: 'D-02', dentistName: 'Bác sĩ Hoàng Nam', time: '09:30 AM', status: 'In-Progress' },
-  { id: 'A-03', patientId: 'P-3129', patientName: 'Lê Quang C', patientPhone: '0976 543 210', serviceName: 'Nhổ răng khôn thường', dentistId: 'D-01', dentistName: 'Bác sĩ Lê Minh', time: '10:15 AM', status: 'Pending' },
-  { id: 'A-04', patientId: 'P-7721', patientName: 'Phạm Thu D', patientPhone: '0909 999 888', serviceName: 'Khám tổng quát & Tư vấn', dentistId: 'D-03', dentistName: 'Bác sĩ Mai Lan', time: '11:00 AM', status: 'Confirmed' }
+  { id: 'A-03', patientId: 'P-3129', patientName: 'Lê Quang C', patientPhone: '0976 543 210', serviceName: 'Nhổ răng khôn thường', dentistId: 'D-01', dentistName: 'Bác sĩ Lê Minh', time: '10:15 AM', status: 'Confirmed' },
+  { id: 'A-04', patientId: 'P-7721', patientName: 'Phạm Thu D', patientPhone: '0909 999 888', serviceName: 'Khám tổng quát & Tư vấn', dentistId: 'D-03', dentistName: 'Bác sĩ Mai Lan', time: '11:00 AM', status: 'Confirmed' },
+
+  // ── Lịch hẹn ngày mai 29/06 — Bác sĩ Nguyễn Hương (TEST FLOW ĐỔI CA) ──
+  {
+    id: 'A-10',
+    patientId: 'P-8821',
+    patientName: 'Trần Nguyễn Minh',
+    patientPhone: '0901 234 567',
+    serviceName: 'Niềng răng/Chỉnh nha',
+    dentistId: 'D-04',
+    dentistName: 'Bác sĩ Nguyễn Hương',
+    time: '29/06/2026 @ 09:00 AM',
+    status: 'Confirmed',
+  },
+  {
+    id: 'A-11',
+    patientId: 'P-9902',
+    patientName: 'Nguyễn Thị Lan',
+    patientPhone: '0901 222 333',
+    serviceName: 'Khám tổng quát & Tư vấn',
+    dentistId: 'D-04',
+    dentistName: 'Bác sĩ Nguyễn Hương',
+    time: '29/06/2026 @ 10:00 AM',
+    status: 'Confirmed',
+  },
+  {
+    id: 'A-12',
+    patientId: 'P-7721',
+    patientName: 'Phạm Thu D',
+    patientPhone: '0909 999 888',
+    serviceName: 'Bọc răng sứ toàn sứ',
+    dentistId: 'D-04',
+    dentistName: 'Bác sĩ Nguyễn Hương',
+    time: '29/06/2026 @ 02:00 PM',
+    status: 'Confirmed',
+  },
 ];
 
 export const INITIAL_QUEUE: QueueItem[] = [
@@ -299,6 +335,49 @@ export const INITIAL_DENTIST_SHIFTS: DoctorShift[] = [
 
   { id: 'SH-53', dentistId: 'D-01', dentistName: 'Bác sĩ Lê Minh', date: '2026-06-29', shiftType: 'Morning', room: 'Phòng 102' },
   { id: 'SH-54', dentistId: 'D-02', dentistName: 'Bác sĩ Hoàng Nam', date: '2026-06-29', shiftType: 'Afternoon', room: 'Phòng 105' },
+  { id: 'SH-57', dentistId: 'D-04', dentistName: 'Bác sĩ Nguyễn Hương', date: '2026-06-29', shiftType: 'Full', room: 'Phòng 110' },
   { id: 'SH-55', dentistId: 'D-03', dentistName: 'Bác sĩ Mai Lan', date: '2026-06-30', shiftType: 'Morning', room: 'Phòng 108' },
   { id: 'SH-56', dentistId: 'D-04', dentistName: 'Bác sĩ Nguyễn Hương', date: '2026-06-30', shiftType: 'Afternoon', room: 'Phòng 110' }
+];
+
+// ─── MOCK: Shift Change Notifications ────────────────────────────────────────
+// Kịch bản TEST: Manager nhờ trực thay — BS Nguyễn Hương đổi ca Cả ngày 29/06
+// sang BS Lê Minh. Có 3 bệnh nhân đã đặt lịch với BS Nguyễn Hương hôm đó.
+export const INITIAL_SHIFT_NOTIFICATIONS: ShiftChangeNotification[] = [
+  {
+    id: 'SCN-001',
+    createdAt: '2026-06-28T09:00:00.000Z',
+    shiftDate: '2026-06-29',
+    shiftType: 'Full',
+    originalDentistId: 'D-04',
+    originalDentistName: 'Bác sĩ Nguyễn Hương',
+    newDentistId: 'D-01',
+    newDentistName: 'Bác sĩ Lê Minh',
+    affectedItems: [
+      {
+        appointmentId: 'A-10',
+        patientName: 'Trần Nguyễn Minh',
+        patientPhone: '0901 234 567',
+        time: '29/06/2026 @ 09:00 AM',
+        serviceName: 'Niềng răng/Chỉnh nha',
+        resolved: false,
+      },
+      {
+        appointmentId: 'A-11',
+        patientName: 'Nguyễn Thị Lan',
+        patientPhone: '0901 222 333',
+        time: '29/06/2026 @ 10:00 AM',
+        serviceName: 'Khám tổng quát & Tư vấn',
+        resolved: false,
+      },
+      {
+        appointmentId: 'A-12',
+        patientName: 'Phạm Thu D',
+        patientPhone: '0909 999 888',
+        time: '29/06/2026 @ 02:00 PM',
+        serviceName: 'Bọc răng sứ toàn sứ',
+        resolved: false,
+      },
+    ],
+  },
 ];

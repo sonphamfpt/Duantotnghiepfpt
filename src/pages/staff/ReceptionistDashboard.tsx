@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Icon } from '../../components/Icon';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { BookingModal } from '../../components/BookingModal';
 import { CheckInModal } from '../../components/CheckInModal';
@@ -13,7 +13,8 @@ import { ReceptionistReminders } from './receptionist-tabs/ReceptionistReminders
 
 // ─── Home: Bàn tiếp nhận ──────────────────────────────────────────────────────
 const ReceptionistHome: React.FC = () => {
-  const { queue, appointments, confirmAppointment, dentists } = useClinic();
+  const { queue, appointments, dentists, shiftChangeNotifications } = useClinic();
+  const navigate = useNavigate();
 
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
@@ -27,8 +28,14 @@ const ReceptionistHome: React.FC = () => {
   const waitingCount = queue.filter(q => q.status === 'Waiting').length;
   const inChairCount = queue.filter(q => q.status === 'In Chair').length;
   const completedToday = queue.filter(q => q.status === 'Completed').length;
-  const pendingAppts = appointments.filter(a => a.status === 'Pending');
-  const confirmedAppts = appointments.filter(a => a.status === 'Confirmed');
+
+  const todayDateStr = new Date().toLocaleDateString('vi-VN');
+  const todayAppointments = appointments.filter(a => {
+    const timeDate = a.time.includes('@') ? a.time.split('@')[0].trim() : todayDateStr;
+    return timeDate === todayDateStr;
+  });
+
+  const confirmedAppts = todayAppointments.filter(a => a.status === 'Confirmed');
   const avgWait = waitingCount > 0
     ? (queue.filter(q => q.status === 'Waiting').reduce((s, q) => s + q.waitTimeMin, 0) / waitingCount).toFixed(0)
     : '0';
@@ -42,19 +49,53 @@ const ReceptionistHome: React.FC = () => {
           <p className="text-sm opacity-75">{dayStr}</p>
           <h2 className="font-headline-lg text-headline-lg mt-1">{greeting}, Lễ tân! 👋</h2>
           <p className="text-sm opacity-80 mt-1">
-            Hôm nay có <strong>{appointments.length}</strong> lịch hẹn •{' '}
+            Hôm nay có <strong>{todayAppointments.length}</strong> lịch hẹn •{' '}
             <strong>{waitingCount}</strong> bệnh nhân đang chờ •{' '}
-            {pendingAppts.length > 0 && (
-              <span className="bg-amber-400/30 text-amber-200 font-bold px-2 py-0.5 rounded-full">
-                ⚠ {pendingAppts.length} lịch chờ xác nhận
-              </span>
-            )}
+
           </p>
         </div>
         <div className="absolute right-0 top-0 bottom-0 opacity-10 flex items-center pr-8 pointer-events-none">
           <Icon name="support_agent" className="text-[130px]" />
         </div>
       </div>
+
+      {/* ── Shift Change Alert Banner ── */}
+      {(() => {
+        const pendingNotifs = shiftChangeNotifications.filter(n =>
+          n.affectedItems.some(item => !item.resolved)
+        );
+        const pendingCount = pendingNotifs.reduce(
+          (sum, n) => sum + n.affectedItems.filter(item => !item.resolved).length, 0
+        );
+        if (pendingNotifs.length === 0) return null;
+        return (
+          <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-4 text-white flex items-center gap-4 shadow-lg shadow-amber-200/50">
+            <div className="relative shrink-0">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                <Icon name="notifications_active" className="text-[22px]" />
+              </div>
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-black animate-bounce">
+                {pendingCount}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm">
+                Có {pendingCount} lịch hẹn cần xử lý do đổi ca bác sĩ
+              </p>
+              <p className="text-xs opacity-80 mt-0.5">
+                {pendingNotifs.map(n => `${n.originalDentistName.replace('Bác sĩ ', 'BS. ')} → ${n.newDentistName.replace('Bác sĩ ', 'BS. ')}`).join(' · ')}
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('?tab=reminders')}
+              className="shrink-0 flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl font-bold text-xs cursor-pointer transition-all active:scale-95"
+            >
+              Xem &amp; Xử lý
+              <Icon name="chevron_right" className="text-[16px]" />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* ── 2 Action Buttons Primary ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -116,41 +157,7 @@ const ReceptionistHome: React.FC = () => {
         {/* LEFT: Pending Alert + Confirmed appointments */}
         <div className="col-span-12 lg:col-span-8 space-y-5">
 
-          {/* Pending Alert Panel */}
-          {pendingAppts.length > 0 && (
-            <div className="bg-amber-50 border border-amber-300 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-5 py-3.5 bg-amber-100 border-b border-amber-200 flex items-center gap-2">
-                <Icon name="notification_important" className="text-amber-700" />
-                <h3 className="font-bold text-amber-800">
-                  {pendingAppts.length} lịch hẹn chờ xác nhận
-                </h3>
-                <span className="ml-auto text-xs text-amber-700 font-medium">Cần xử lý sớm</span>
-              </div>
-              <div className="divide-y divide-amber-100">
-                {pendingAppts.map(appt => (
-                  <div key={appt.id} className="px-5 py-3 flex items-center gap-4 hover:bg-amber-50/80 transition-colors">
-                    <div className="w-10 h-10 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center font-bold text-sm shrink-0">
-                      {appt.patientName.split(' ').pop()?.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-on-surface text-sm truncate">{appt.patientName}</p>
-                      <p className="text-xs text-on-surface-variant truncate">{appt.serviceName} • {appt.dentistName} • {appt.time}</p>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        id={`btn-confirm-appt-${appt.id}`}
-                        onClick={() => confirmAppointment(appt.id)}
-                        className="px-3 py-1.5 bg-secondary text-on-secondary rounded-lg text-xs font-bold hover:opacity-90 cursor-pointer flex items-center gap-1 transition-all active:scale-95"
-                      >
-                        <Icon name="check" className="text-[14px]" />
-                        Xác nhận
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+
 
           {/* Confirmed Appointments for Today */}
           <div className="bg-white rounded-2xl border border-outline-variant overflow-hidden shadow-sm">

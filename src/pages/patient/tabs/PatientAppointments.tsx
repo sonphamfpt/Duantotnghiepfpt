@@ -5,25 +5,24 @@ import { useClinic } from '../../../context/ClinicContext';
 const STATUS_CONFIG = {
   Confirmed: { label: 'Đã xác nhận', color: 'bg-secondary-container text-on-secondary-container border-secondary/20', icon: 'event_available' },
   'In-Progress': { label: 'Đang khám', color: 'bg-primary-container text-on-primary-container border-primary/20', icon: 'medical_services' },
-  Pending: { label: 'Chờ xác nhận', color: 'bg-amber-100 text-amber-800 border-amber-200', icon: 'pending' },
   Completed: { label: 'Hoàn thành', color: 'bg-surface-container text-on-surface-variant border-outline-variant', icon: 'check_circle' },
   Cancelled: { label: 'Đã huỷ', color: 'bg-error-container text-on-error-container border-error/20', icon: 'cancel' },
 } as const;
 
-const UPCOMING_APPOINTMENTS = [
+const INITIAL_UPCOMING_APPOINTMENTS = [
   {
     id: 'MY-01',
     service: 'Tái khám chỉnh nha (Khay 8)',
     dentist: 'Bác sĩ Nguyễn Hương',
     room: 'Phòng 110',
     avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=150&h=150&q=80',
-    date: 'Thứ Ba, 10/06/2026', // Lịch gần nhất (giả định hôm nay)
+    date: 'Thứ Bảy, 27/06/2026', // Lịch ngày mai (sát giờ)
     time: '09:00 AM',
     status: 'Confirmed' as const,
     duration: 45,
     price: 0,
     notes: 'Mang theo khay niềng cũ và vệ sinh răng trước khi đến',
-    isNext24h: true, // Cờ đánh dấu lịch hẹn trong 24h
+    isLateCancel: true, // Chỉ còn dưới 1 tiếng
   },
   {
     id: 'MY-02',
@@ -31,13 +30,13 @@ const UPCOMING_APPOINTMENTS = [
     dentist: 'Bác sĩ Mai Lan',
     room: 'Phòng 108',
     avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=150&h=150&q=80',
-    date: 'Thứ Sáu, 14/06/2026',
+    date: 'Thứ Ba, 30/06/2026', // Lịch tuần sau
     time: '11:00 AM',
     status: 'Confirmed' as const,
     duration: 30,
     price: 300000,
     notes: '',
-    isNext24h: false,
+    isLateCancel: false,
   },
 ];
 
@@ -85,9 +84,9 @@ const PAST_APPOINTMENTS = [
 ];
 
 export const PatientAppointments: React.FC = () => {
+  const [upcomingAppointments, setUpcomingAppointments] = useState(INITIAL_UPCOMING_APPOINTMENTS);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [cancelId, setCancelId] = useState<string | null>(null);
-  const [rescheduleId, setRescheduleId] = useState<string | null>(null);
   const [qrCodeApptId, setQrCodeApptId] = useState<string | null>(null);
   const [reviewMap, setReviewMap] = useState<Record<string, { rating: number; comment: string }>>({
     'PAST-01': { rating: 5, comment: 'Bác sĩ Hương rất nhẹ nhàng, tư vấn kỹ lưỡng, chỉnh nha không đau!' },
@@ -99,7 +98,7 @@ export const PatientAppointments: React.FC = () => {
   const [historyFilter, setHistoryFilter] = useState<'All' | 'Completed' | 'Cancelled'>('All');
 
   const tabs = [
-    { key: 'upcoming' as const, label: 'Sắp tới', count: UPCOMING_APPOINTMENTS.length },
+    { key: 'upcoming' as const, label: 'Sắp tới', count: upcomingAppointments.length },
     { key: 'past' as const, label: 'Lịch sử', count: PAST_APPOINTMENTS.length },
   ];
 
@@ -123,8 +122,8 @@ export const PatientAppointments: React.FC = () => {
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {[
-          { label: 'Tổng lịch hẹn', value: UPCOMING_APPOINTMENTS.length + PAST_APPOINTMENTS.length, icon: 'calendar_month', color: 'text-primary bg-primary-container' },
-          { label: 'Sắp tới', value: UPCOMING_APPOINTMENTS.length, icon: 'event_upcoming', color: 'text-secondary bg-secondary-container' },
+          { label: 'Tổng lịch hẹn', value: upcomingAppointments.length + PAST_APPOINTMENTS.length, icon: 'calendar_month', color: 'text-primary bg-primary-container' },
+          { label: 'Sắp tới', value: upcomingAppointments.length, icon: 'event_upcoming', color: 'text-secondary bg-secondary-container' },
           { label: 'Hoàn thành', value: PAST_APPOINTMENTS.filter(a => a.status === 'Completed').length, icon: 'task_alt', color: 'text-on-surface bg-surface-container' },
         ].map((stat) => (
           <div key={stat.label} className="bg-white rounded-xl border border-outline-variant p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
@@ -176,20 +175,20 @@ export const PatientAppointments: React.FC = () => {
       {/* Upcoming Appointments */}
       {activeTab === 'upcoming' && (
         <div className="space-y-6">
-          {UPCOMING_APPOINTMENTS.map((appt) => {
+          {upcomingAppointments.map((appt) => {
             const status = STATUS_CONFIG[appt.status];
             return (
               <div key={appt.id} className="relative bg-white rounded-2xl border border-outline-variant shadow-sm hover:shadow-md transition-all duration-300">
-                {/* 24h Alert Banner */}
-                {appt.isNext24h && (
+                {/* Late Cancel Alert Banner */}
+                {appt.isLateCancel && (
                   <div className="bg-amber-100 text-amber-800 px-4 py-2 rounded-t-2xl flex items-center gap-2 text-xs font-bold border-b border-amber-200">
                     <Icon name="notifications_active" className="text-[16px] animate-pulse" />
-                    Lịch hẹn của bạn sẽ diễn ra trong vòng 24h tới. Vui lòng đến đúng giờ.
+                    Lịch hẹn của bạn sẽ diễn ra trong vòng 1 tiếng tới. Vui lòng đến đúng giờ.
                   </div>
                 )}
                 
                 {/* Top accent bar if no banner */}
-                {!appt.isNext24h && <div className="h-1.5 bg-gradient-to-r from-primary to-secondary rounded-t-2xl" />}
+                {!appt.isLateCancel && <div className="h-1.5 bg-gradient-to-r from-primary to-secondary rounded-t-2xl" />}
                 
                 <div className="p-6 sm:p-8">
                   <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
@@ -250,15 +249,18 @@ export const PatientAppointments: React.FC = () => {
                         Mã Check-in
                       </button>
                       <button
-                        onClick={() => setRescheduleId(appt.id)}
-                        className="flex-1 sm:flex-none px-4 py-2.5 bg-surface-container text-on-surface rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-surface-container-high transition-all cursor-pointer border border-outline-variant"
-                      >
-                        <Icon name="update" className="text-[18px]" />
-                        Dời lịch
-                      </button>
-                      <button
-                        onClick={() => setCancelId(appt.id)}
-                        className="flex-1 sm:flex-none px-4 py-2.5 border border-error/30 text-error rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-error-container/30 transition-all cursor-pointer"
+                        onClick={() => {
+                          if (appt.isLateCancel) {
+                            alert('Chỉ được hủy lịch trực tuyến trước giờ khám ít nhất 1 tiếng. Vui lòng gọi Hotline 1900-xxxx để được hỗ trợ.');
+                          } else {
+                            setCancelId(appt.id);
+                          }
+                        }}
+                        className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border ${
+                          appt.isLateCancel
+                            ? 'bg-surface-container-low text-error/30 border-dashed border-error/20 cursor-not-allowed'
+                            : 'border-error/30 text-error hover:bg-error-container/30 cursor-pointer'
+                        }`}
                       >
                         <Icon name="event_busy" className="text-[18px]" />
                         Huỷ lịch
@@ -270,7 +272,7 @@ export const PatientAppointments: React.FC = () => {
             );
           })}
 
-          {UPCOMING_APPOINTMENTS.length === 0 && (
+          {upcomingAppointments.length === 0 && (
             <div className="text-center py-20 bg-white rounded-2xl border border-outline-variant border-dashed">
               <Icon name="event_busy" className="text-[80px] text-outline" />
               <p className="text-on-surface-variant mt-4 text-body-lg">Bạn chưa có lịch hẹn nào sắp tới</p>
@@ -385,141 +387,12 @@ export const PatientAppointments: React.FC = () => {
         </div>
       )}
 
-      {/* Reschedule Modal */}
-      {rescheduleId && (() => {
-        const apptToReschedule = UPCOMING_APPOINTMENTS.find(a => a.id === rescheduleId);
-        const isLateReschedule = apptToReschedule?.isNext24h;
-        
-        // Use a static list of time slots for demo
-        const timeSlots = [
-          '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM',
-          '10:15 AM', '11:00 AM', '02:00 PM', '02:30 PM',
-          '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM'
-        ];
 
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6 animate-in fade-in border border-outline-variant">
-              {isLateReschedule ? (
-                <>
-                  <div className="flex justify-between items-center border-b border-outline-variant pb-4">
-                    <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-                      <Icon name="block" className="text-error" />
-                      Không thể dời lịch
-                    </h3>
-                    <button onClick={() => setRescheduleId(null)} className="text-on-surface-variant hover:text-on-surface cursor-pointer rounded-full p-1 hover:bg-surface-container">
-                      <Icon name="close" />
-                    </button>
-                  </div>
-                  <div className="bg-error-container/30 border border-error/20 p-4 rounded-xl">
-                    <p className="text-error text-sm font-medium text-center">
-                      Lịch hẹn của bạn sẽ diễn ra trong vòng 24h tới. Để đảm bảo vận hành phòng khám, bạn không thể tự dời lịch lúc này.
-                    </p>
-                  </div>
-                  <p className="text-center text-on-surface-variant text-sm">
-                    Vui lòng gọi trực tiếp Hotline <strong className="text-primary">1900-xxxx</strong> để được hỗ trợ.
-                  </p>
-                  <button
-                    onClick={() => setRescheduleId(null)}
-                    className="w-full py-3 bg-surface-container text-on-surface rounded-xl font-bold hover:bg-surface-container-high transition-all cursor-pointer mt-2"
-                  >
-                    Đóng
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between items-center border-b border-outline-variant pb-4">
-                    <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-                      <Icon name="update" className="text-secondary" />
-                      Dời lịch hẹn
-                    </h3>
-                    <button onClick={() => setRescheduleId(null)} className="text-on-surface-variant hover:text-on-surface cursor-pointer rounded-full p-1 hover:bg-surface-container">
-                      <Icon name="close" />
-                    </button>
-                  </div>
-                  
-                  <p className="text-sm text-on-surface-variant">
-                    Chọn một ngày và giờ mới cho lịch hẹn <strong>{apptToReschedule?.service}</strong> với {apptToReschedule?.dentist}.
-                  </p>
-
-                  <div className="space-y-5">
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-on-surface-variant mb-2">Ngày khám mới *</label>
-                      <input 
-                        type="date" 
-                        className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-body-md focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all cursor-pointer" 
-                      />
-                    </div>
-                    
-                    <div className="animate-in fade-in slide-in-from-top-2">
-                      <label className="block text-xs font-bold uppercase text-on-surface-variant mb-3 flex items-center justify-between">
-                        <span>Khung giờ trống *</span>
-                        <span className="text-[10px] bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-                          Real-time
-                        </span>
-                      </label>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {timeSlots.map(slot => {
-                          // Mock some slots as booked to show the real-time feature
-                          const isBooked = slot === '09:00 AM' || slot === '02:00 PM'; 
-                          
-                          if (isBooked) {
-                              return (
-                                <div key={slot} className="py-2 px-1 text-[11px] font-bold rounded-lg border border-outline-variant bg-surface-container-high text-on-surface-variant/40 flex items-center justify-center gap-0.5 cursor-not-allowed" title="Đã có khách đặt">
-                                  <Icon name="event_busy" className="text-[12px]" />
-                                  <span className="line-through">{slot}</span>
-                                </div>
-                              )
-                          }
-
-                          return (
-                            <button
-                              key={slot}
-                              type="button"
-                              onClick={(e) => {
-                                // Simple active state toggle for demo
-                                const parent = e.currentTarget.parentElement;
-                                parent?.querySelectorAll('button').forEach(b => {
-                                  b.className = "py-2 px-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer bg-white text-on-surface border-outline-variant hover:border-secondary/50 hover:bg-secondary/5";
-                                });
-                                e.currentTarget.className = "py-2 px-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer bg-secondary text-on-secondary border-secondary shadow-md scale-105";
-                              }}
-                              className="py-2 px-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer bg-white text-on-surface border-outline-variant hover:border-secondary/50 hover:bg-secondary/5"
-                            >
-                              {slot}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      onClick={() => setRescheduleId(null)}
-                      className="flex-1 py-3 border border-outline-variant text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer"
-                    >
-                      Hủy bỏ
-                    </button>
-                    <button
-                      onClick={() => { alert('Yêu cầu dời lịch đã được gửi đến Phòng khám! Bạn sẽ nhận được thông báo xác nhận.'); setRescheduleId(null); }}
-                      className="flex-1 py-3 bg-secondary text-on-secondary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
-                    >
-                      Xác nhận Dời
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Cancel Modal */}
       {cancelId && (() => {
-        const apptToCancel = UPCOMING_APPOINTMENTS.find(a => a.id === cancelId);
-        const isLateCancel = apptToCancel?.isNext24h;
+        const apptToCancel = upcomingAppointments.find(a => a.id === cancelId);
+        const isLateCancel = apptToCancel?.isLateCancel;
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -532,7 +405,7 @@ export const PatientAppointments: React.FC = () => {
                   <h3 className="font-headline-sm text-headline-sm text-center text-on-surface">Không thể huỷ lịch</h3>
                   <div className="bg-error-container/30 border border-error/20 p-4 rounded-xl">
                     <p className="text-center text-error text-sm font-medium">
-                      Lịch hẹn của bạn sẽ diễn ra trong vòng 24h tới. Để đảm bảo vận hành phòng khám, bạn không thể tự huỷ lịch lúc này.
+                      Lịch hẹn của bạn sẽ diễn ra trong vòng 1 tiếng tới. Để đảm bảo vận hành phòng khám, bạn không thể tự huỷ lịch lúc này.
                     </p>
                   </div>
                   <p className="text-center text-on-surface-variant text-sm">

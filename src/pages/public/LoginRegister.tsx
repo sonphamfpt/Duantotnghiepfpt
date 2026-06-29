@@ -3,6 +3,7 @@ import { Icon } from '../../components/Icon';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../../context/AuthContext';
 import { BrandLogo } from '../../components/BrandLogo';
+import { useClinic } from '../../context/ClinicContext';
 
 const DEMO_ACCOUNTS = [
   { email: 'letan@goodsmile.vn',    password: 'letan123',    role: 'receptionist' as UserRole, label: 'Lễ Tân',    icon: 'folder_shared',       color: 'hover:border-orange-500 hover:bg-orange-50/50 text-orange-700 bg-orange-50/30 border-orange-100 hover:shadow-orange-100/50' },
@@ -14,6 +15,7 @@ const DEMO_ACCOUNTS = [
 
 export const LoginRegister: React.FC = () => {
   const { login, loginWithCredentials } = useAuth();
+  const { patients, appointments } = useClinic();
   const navigate = useNavigate();
 
   // Tab control
@@ -45,6 +47,17 @@ export const LoginRegister: React.FC = () => {
 
   // Quick direct bypass login
   const handleQuickLogin = (role: UserRole) => {
+    if (role === 'patient') {
+      const matchedPatient = patients.find(p => p.id === 'P-8821') || patients[0];
+      if (matchedPatient) {
+        const cancelCount = appointments.filter(a => a.patientId === matchedPatient.id && a.status === 'Cancelled').length;
+        const isLocked = (cancelCount >= 3 || matchedPatient.isLocked) && !matchedPatient.isUnlocked;
+        if (isLocked) {
+          alert('Tài khoản số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ quầy tiếp nhận.');
+          return;
+        }
+      }
+    }
     login(role);
     redirectAfterLogin(role);
   };
@@ -119,6 +132,31 @@ export const LoginRegister: React.FC = () => {
     await new Promise((r) => setTimeout(r, 600));
 
     if (isLoginTab) {
+      // Check if patient profile associated with this email/phone is locked
+      let matchedPatient = null;
+      if (email.trim().toLowerCase() === 'benhnhan@goodsmile.vn') {
+        matchedPatient = patients.find(p => p.id === 'P-8821') || patients[0];
+      } else {
+        const savedUsersRaw = localStorage.getItem('goodsmile_registered_users');
+        const registeredUsers = savedUsersRaw ? JSON.parse(savedUsersRaw) : [];
+        const matchedUser = registeredUsers.find(
+          (u: any) => u.email.trim().toLowerCase() === email.trim().toLowerCase()
+        );
+        if (matchedUser) {
+          matchedPatient = patients.find(p => p.phone === matchedUser.phone);
+        }
+      }
+
+      if (matchedPatient) {
+        const cancelCount = appointments.filter(a => a.patientId === matchedPatient!.id && a.status === 'Cancelled').length;
+        const isLocked = (cancelCount >= 3 || matchedPatient.isLocked) && !matchedPatient.isUnlocked;
+        if (isLocked) {
+          setIsLoading(false);
+          setErrorMsg('Tài khoản số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ quầy tiếp nhận.');
+          return;
+        }
+      }
+
       // 1. Check if the credential matches local storage registered patients
       const savedUsersRaw = localStorage.getItem('goodsmile_registered_users');
       const registeredUsers = savedUsersRaw ? JSON.parse(savedUsersRaw) : [];
