@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 
@@ -55,7 +56,15 @@ export const ReceptionistReminders: React.FC = () => {
 
   // ─── Lọc & Tìm kiếm (Filters) ───
   const [searchQuery, setSearchQuery] = useState('');
-  const [taskFilter, setTaskFilter] = useState<'all' | 'shift' | 'late' | 'noshow' | 'postcare'>('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const taskFilter = (searchParams.get('subTab') || 'all') as 'all' | 'shift' | 'late' | 'noshow' | 'postcare';
+
+  const setTaskFilter = (val: 'all' | 'shift' | 'late' | 'noshow' | 'postcare') => {
+    setSearchParams(prev => {
+      prev.set('subTab', val);
+      return prev;
+    });
+  };
 
   // Lọc dữ liệu dựa trên SearchQuery (Tên KH / SĐT)
   const query = searchQuery.toLowerCase();
@@ -127,19 +136,19 @@ export const ReceptionistReminders: React.FC = () => {
       </div>
 
       {/* ── SECTION: Thông báo đổi ca bác sĩ (nhất thiết hiển thị trước) ── */}
-      {shiftChangeNotifications.length > 0 && (
+      {filteredShiftNotifs.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-base text-on-surface flex items-center gap-2">
               <span className="relative">
                 <Icon name="notifications_active" className="text-amber-500 text-[22px]" />
-                {shiftChangeNotifications.some(n => n.affectedItems.some(i => !i.resolved)) && (
+                {filteredShiftNotifs.some(n => n.affectedItems.some(i => !i.resolved)) && (
                   <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
                 )}
               </span>
               Thông báo đổi ca bác sĩ
               <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                {shiftChangeNotifications.filter(n => n.affectedItems.some(i => !i.resolved)).length} chưa xử lý
+                {filteredShiftNotifs.filter(n => n.affectedItems.some(i => !i.resolved)).length} chưa xử lý
               </span>
             </h3>
             <button
@@ -151,7 +160,7 @@ export const ReceptionistReminders: React.FC = () => {
             </button>
           </div>
 
-          {shiftChangeNotifications
+          {filteredShiftNotifs
             .filter(n => hideDoneNotifs ? n.affectedItems.some(i => !i.resolved) : true)
             .map(notif => {
               const allResolved = notif.affectedItems.every(i => i.resolved);

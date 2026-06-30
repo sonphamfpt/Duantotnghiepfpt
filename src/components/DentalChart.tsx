@@ -2,14 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { ToothState } from '../types/clinic';
 import { Icon } from './Icon';
 
-// --- Đồ họa SVG Giải phẫu răng ---
-interface ToothSvgProps {
+export interface ToothSvgProps {
   number: number;
   condition: ToothState['condition'];
   isSelected: boolean;
+  width?: string;
+  height?: string;
+  textSize?: string;
 }
 
-const ToothSvg: React.FC<ToothSvgProps> = ({ number, condition, isSelected }) => {
+export const ToothSvg: React.FC<ToothSvgProps> = ({ 
+  number, 
+  condition, 
+  isSelected, 
+  width = "34", 
+  height = "50", 
+  textSize = "text-[11px]" 
+}) => {
   // Xác định hàm trên hay hàm dưới
   const isUpper = (number >= 11 && number <= 28) || (number >= 51 && number <= 65);
   
@@ -69,11 +78,11 @@ const ToothSvg: React.FC<ToothSvgProps> = ({ number, condition, isSelected }) =>
   return (
     <div className="relative group flex flex-col items-center">
       {/* Hiển thị số răng nếu là hàm trên thì nằm trên, hàm dưới thì nằm dưới */}
-      {isUpper && <span className={`text-[11px] font-bold mb-0.5 ${isSelected ? 'text-primary' : 'text-on-surface-variant'}`}>{number}</span>}
+      {isUpper && <span className={`${textSize} font-bold mb-0.5 ${isSelected ? 'text-primary' : 'text-on-surface-variant'}`}>{number}</span>}
       
       <svg 
-        width="34" 
-        height="50" 
+        width={width} 
+        height={height} 
         viewBox="0 0 40 60" 
         style={{ opacity }} 
         className={`transition-all duration-300 drop-shadow-sm ${isSelected ? 'scale-110' : 'group-hover:scale-105'}`}
@@ -132,7 +141,7 @@ const ToothSvg: React.FC<ToothSvgProps> = ({ number, condition, isSelected }) =>
         )}
       </svg>
 
-      {!isUpper && <span className={`text-[11px] font-bold mt-0.5 ${isSelected ? 'text-primary' : 'text-on-surface-variant'}`}>{number}</span>}
+      {!isUpper && <span className={`${textSize} font-bold mt-0.5 ${isSelected ? 'text-primary' : 'text-on-surface-variant'}`}>{number}</span>}
     </div>
   );
 };
@@ -262,9 +271,9 @@ export const DentalChart: React.FC<DentalChartProps> = ({
         {chartType === 'adult' ? (
           <>
             {/* Hàm trên */}
-            <div className="space-y-3 min-w-[760px]">
+            <div className="space-y-3 min-w-[850px]">
               <span className="text-xs font-bold uppercase tracking-wider text-primary block">Hàm Trên (Maxillary)</span>
-              <div className="flex items-end justify-between gap-2 bg-surface p-4 rounded-xl border border-outline-variant/30">
+              <div className="flex w-full min-w-[850px] items-end justify-between gap-2 bg-surface p-4 rounded-xl border border-outline-variant/30">
                 {/* Phân khu 1 - Phía bên phải của bệnh nhân */}
                 <div className="flex gap-1 flex-1 justify-end border-r border-outline-variant/50 pr-4">
                   <span className="text-[10px] uppercase font-bold text-outline-variant rotate-90 origin-center self-center mr-2">Q1</span>
@@ -279,9 +288,9 @@ export const DentalChart: React.FC<DentalChartProps> = ({
             </div>
 
             {/* Hàm dưới */}
-            <div className="space-y-3 min-w-[760px] pt-4">
+            <div className="space-y-3 min-w-[850px] pt-4">
               <span className="text-xs font-bold uppercase tracking-wider text-primary block">Hàm Dưới (Mandibular)</span>
-              <div className="flex items-start justify-between gap-2 bg-surface p-4 rounded-xl border border-outline-variant/30">
+              <div className="flex w-full min-w-[850px] items-start justify-between gap-2 bg-surface p-4 rounded-xl border border-outline-variant/30">
                 {/* Phân khu 4 - Phía bên phải của bệnh nhân */}
                 <div className="flex gap-1 flex-1 justify-end border-r border-outline-variant/50 pr-4">
                   <span className="text-[10px] uppercase font-bold text-outline-variant rotate-90 origin-center self-center mr-2">Q4</span>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useSearchParams } from 'react-router-dom';
 import { useClinic } from '../../../context/ClinicContext';
-import { DentalChart } from '../../../components/DentalChart';
+import { DentalChart, ToothSvg } from '../../../components/DentalChart';
 import { ToothState } from '../../../types/clinic';
 
 const TYPE_CONFIG = {
@@ -542,25 +542,33 @@ export const DentistRecords: React.FC = () => {
                       </h4>
 
                       {/* Mini Tooth map */}
-                      <div className="p-2 border border-slate-100 rounded-lg bg-slate-50/50 space-y-4">
+                      <div className="p-3 border border-slate-100 rounded-lg bg-slate-50/50 space-y-4">
                         {/* Upper */}
-                        <div className="flex justify-center gap-1 flex-wrap">
-                          {UPPER_TEETH.map(tooth => {
-                            const match = viewEMRRecord.teethMap?.find(t => t.toothNumber === tooth);
-                            const cond = match?.condition || 'healthy';
-                            const isTreated = cond !== 'healthy';
-                            return (
-                              <div
-                                key={tooth}
-                                className={`w-7 h-10 rounded border-2 flex flex-col items-center justify-center text-[8px] transition-all ${isTreated ? TOOTH_COLORS[cond] : 'bg-white border-slate-200 opacity-40'
-                                  }`}
-                                title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}
-                              >
-                                <Icon name="dentistry" className="text-[11px]" />
-                                <span className="font-bold">{tooth}</span>
-                              </div>
-                            );
-                          })}
+                        <div className="flex justify-center items-center gap-1 select-none">
+                          {/* Q1 */}
+                          <div className="flex gap-0.5 justify-end pr-2 border-r border-slate-300">
+                            {[18, 17, 16, 15, 14, 13, 12, 11].map(tooth => {
+                              const match = viewEMRRecord.teethMap?.find(t => t.toothNumber === tooth);
+                              const cond = match?.condition || 'healthy';
+                              return (
+                                <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
+                                  <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {/* Q2 */}
+                          <div className="flex gap-0.5 justify-start pl-2">
+                            {[21, 22, 23, 24, 25, 26, 27, 28].map(tooth => {
+                              const match = viewEMRRecord.teethMap?.find(t => t.toothNumber === tooth);
+                              const cond = match?.condition || 'healthy';
+                              return (
+                                <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
+                                  <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
 
                         <div className="border-t border-dashed border-slate-200 my-1 text-center relative">
@@ -568,23 +576,31 @@ export const DentistRecords: React.FC = () => {
                         </div>
 
                         {/* Lower */}
-                        <div className="flex justify-center gap-1 flex-wrap pt-1">
-                          {LOWER_TEETH.map(tooth => {
-                            const match = viewEMRRecord.teethMap?.find(t => t.toothNumber === tooth);
-                            const cond = match?.condition || 'healthy';
-                            const isTreated = cond !== 'healthy';
-                            return (
-                              <div
-                                key={tooth}
-                                className={`w-7 h-10 rounded border-2 flex flex-col items-center justify-center text-[8px] transition-all ${isTreated ? TOOTH_COLORS[cond] : 'bg-white border-slate-200 opacity-40'
-                                  }`}
-                                title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}
-                              >
-                                <span className="font-bold">{tooth}</span>
-                                <Icon name="dentistry" className="text-[11px]" />
-                              </div>
-                            );
-                          })}
+                        <div className="flex justify-center items-center gap-1 select-none pt-1">
+                          {/* Q4 */}
+                          <div className="flex gap-0.5 justify-end pr-2 border-r border-slate-300">
+                            {[48, 47, 46, 45, 44, 43, 42, 41].map(tooth => {
+                              const match = viewEMRRecord.teethMap?.find(t => t.toothNumber === tooth);
+                              const cond = match?.condition || 'healthy';
+                              return (
+                                <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
+                                  <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {/* Q3 */}
+                          <div className="flex gap-0.5 justify-start pl-2">
+                            {[31, 32, 33, 34, 35, 36, 37, 38].map(tooth => {
+                              const match = viewEMRRecord.teethMap?.find(t => t.toothNumber === tooth);
+                              const cond = match?.condition || 'healthy';
+                              return (
+                                <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
+                                  <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
 

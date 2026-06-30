@@ -553,60 +553,24 @@ export const CashierBilling: React.FC = () => {
                   {/* VietQR Dynamic Card Mockup in Blue styling */}
                   <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 text-white rounded-2xl p-5 shadow-lg border border-blue-500/30 relative overflow-hidden flex flex-col items-center">
                     <div className="w-full flex justify-between items-center mb-3">
-                      <div className="flex items-center gap-1.5">
-                        <Icon name="account_balance" className="text-sm text-blue-300" />
-                        <span className="text-xs font-black tracking-wider text-blue-100">MB BANK</span>
+                      <div className="flex items-center">
+                        <svg className="h-4.5 w-auto" viewBox="0 0 70 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M2 4 L7 14 L15 1 L11 1 L7 9 L4 4 Z" fill="#EF4444" />
+                          <text x="17" y="14" fill="#EF4444" fontSize="13" fontWeight="900" fontFamily="system-ui, sans-serif">iet</text>
+                          <text x="36" y="14" fill="#3B82F6" fontSize="13" fontWeight="900" fontFamily="system-ui, sans-serif">QR</text>
+                        </svg>
                       </div>
                       <div className="px-2 py-0.5 bg-white/10 rounded-md text-[8px] font-bold text-blue-200 border border-white/20">
                         NAPAS 247
                       </div>
                     </div>
                     
-                    <div className="bg-white p-3 rounded-xl shadow-inner mb-4 flex flex-col items-center justify-center">
-                      <svg className="w-36 h-36" viewBox="0 0 100 100">
-                        <rect width="100" height="100" fill="white" />
-                        <rect x="5" y="5" width="25" height="25" fill="#1e1b4b" />
-                        <rect x="9" y="9" width="17" height="17" fill="white" />
-                        <rect x="13" y="13" width="9" height="9" fill="#1e1b4b" />
-                        
-                        <rect x="70" y="5" width="25" height="25" fill="#1e1b4b" />
-                        <rect x="74" y="9" width="17" height="17" fill="white" />
-                        <rect x="78" y="13" width="9" height="9" fill="#1e1b4b" />
-                        
-                        <rect x="5" y="70" width="25" height="25" fill="#1e1b4b" />
-                        <rect x="9" y="74" width="17" height="17" fill="white" />
-                        <rect x="13" y="78" width="9" height="9" fill="#1e1b4b" />
-                        
-                        <rect x="35" y="5" width="5" height="15" fill="#1e1b4b" />
-                        <rect x="45" y="15" width="15" height="5" fill="#1e1b4b" />
-                        <rect x="35" y="25" width="10" height="5" fill="#1e1b4b" />
-                        <rect x="65" y="25" width="10" height="10" fill="#1e1b4b" />
-                        
-                        <rect x="5" y="35" width="15" height="5" fill="#1e1b4b" />
-                        <rect x="25" y="35" width="10" height="10" fill="#1e1b4b" />
-                        <rect x="40" y="35" width="15" height="5" fill="#1e1b4b" />
-                        <rect x="60" y="40" width="15" height="15" fill="#1e1b4b" />
-                        <rect x="80" y="35" width="15" height="5" fill="#1e1b4b" />
-                        
-                        <rect x="5" y="50" width="5" height="15" fill="#1e1b4b" />
-                        <rect x="15" y="55" width="25" height="5" fill="#1e1b4b" />
-                        <rect x="45" y="50" width="5" height="15" fill="#1e1b4b" />
-                        <rect x="55" y="60" width="15" height="5" fill="#1e1b4b" />
-                        <rect x="75" y="50" width="10" height="10" fill="#1e1b4b" />
-                        
-                        <rect x="35" y="70" width="15" height="5" fill="#1e1b4b" />
-                        <rect x="35" y="80" width="5" height="15" fill="#1e1b4b" />
-                        <rect x="45" y="85" width="20" height="5" fill="#1e1b4b" />
-                        <rect x="70" y="70" width="5" height="25" fill="#1e1b4b" />
-                        <rect x="80" y="80" width="15" height="5" fill="#1e1b4b" />
-                        <rect x="42" y="42" width="16" height="16" rx="3" fill="#1d4ed8" />
-                        <text x="50" y="52" fill="white" fontSize="8" fontWeight="bold" textAnchor="middle">QR</text>
-                      </svg>
-                      <div className="flex gap-1 items-center mt-1">
-                        <span className="text-[9px] font-black text-blue-900 tracking-wide uppercase">
-                          Viet<span className="text-red-600">QR</span>
-                        </span>
-                      </div>
+                    <div className="bg-white p-2 rounded-2xl shadow-md mb-4 flex items-center justify-center overflow-hidden">
+                      <img 
+                        src={`https://img.vietqr.io/image/techcombank-19074150102019-compact.png?amount=${payVal}&addInfo=GOODSMILE%20${activeInvoice.id}&accountName=NHA%20KHOA%20GOODSMILE%20PRO`}
+                        alt="VietQR Code" 
+                        className="w-36 h-36 object-contain" 
+                      />
                     </div>
                     
                     <div className="w-full text-left space-y-1.5 bg-white/5 rounded-xl p-3 border border-white/10 text-xs text-blue-100">
@@ -616,7 +580,7 @@ export const CashierBilling: React.FC = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className="opacity-70">Số tài khoản:</span>
-                        <span className="font-bold font-data-mono text-blue-200">1900 6789 8888</span>
+                        <span className="font-bold font-data-mono text-blue-200">1907 4150 1020 19</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="opacity-70">Số tiền chuyển:</span>
@@ -866,6 +830,17 @@ export const CashierBilling: React.FC = () => {
                 <span>Còn nợ chưa đóng:</span>
                 <span className="font-mono text-lg font-black">₫{(invoiceToPrint.remainingAmount !== undefined ? invoiceToPrint.remainingAmount : invoiceToPrint.netPrice).toLocaleString()}</span>
               </p>
+            </div>
+
+            {/* VietQR Quick Payment Code */}
+            <div className="flex flex-col items-center justify-center p-3 bg-slate-50 border border-slate-200/60 rounded-xl space-y-1.5 animate-in fade-in duration-200">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Quét VietQR để thanh toán</p>
+              <img 
+                src={`https://img.vietqr.io/image/techcombank-19074150102019-compact.png?amount=${invoiceToPrint.remainingAmount !== undefined ? invoiceToPrint.remainingAmount : invoiceToPrint.netPrice}&addInfo=Thanh%20toan%20hoa%20don%20${invoiceToPrint.id}&accountName=NHA%20KHOA%20GOODSMILE%20PRO`}
+                alt="VietQR Code" 
+                className="w-36 h-36 object-contain mix-blend-multiply" 
+              />
+              <p className="text-[9px] text-slate-400 font-bold">Ngân hàng Techcombank · STK: 1907 4150 1020 19</p>
             </div>
 
             <div className="text-center text-[10px] text-slate-400 pt-4 border-t border-dashed border-slate-200 space-y-0.5">

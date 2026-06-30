@@ -93,9 +93,19 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
   const navItems = getNavItems();
   const roleConfig = getRoleConfig();
 
-  const isNavActive = (item: NavItem) =>
-    location.pathname + location.search === item.path ||
-    (location.pathname === item.path && location.search === '');
+  const isNavActive = (item: NavItem) => {
+    if (item.path.includes('?')) {
+      const [itemPathname, itemSearch] = item.path.split('?');
+      if (location.pathname !== itemPathname) return false;
+      const itemParams = new URLSearchParams(itemSearch);
+      const currentParams = new URLSearchParams(location.search);
+      for (const [key, value] of itemParams.entries()) {
+        if (currentParams.get(key) !== value) return false;
+      }
+      return true;
+    }
+    return location.pathname === item.path && (location.search === '' || !location.search.includes('tab='));
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-on-surface">

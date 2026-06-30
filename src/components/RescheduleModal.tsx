@@ -87,7 +87,7 @@ export const RescheduleModal: React.FC<RescheduleModalProps> = ({
       a => a.patientPhone === phone.trim() && 
       a.time === timeStr &&
       a.status !== 'Cancelled' &&
-      a.id !== appointment.id // exclude current appointment
+      a.id !== appointment?.id // exclude current appointment
     );
     if (duplicate) {
       setError('Bệnh nhân đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.');
