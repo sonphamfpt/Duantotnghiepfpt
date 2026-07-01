@@ -1,17 +1,17 @@
 import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, DoctorShift, ShiftChangeNotification } from '../types/clinic';
 
 export const INITIAL_SERVICES: Service[] = [
-  { id: 'S-01', name: 'Lấy cao răng & Vệ sinh', price: 300000, durationMin: 30, isActive: true },
-  { id: 'S-02', name: 'Tẩy trắng răng thẩm mỹ', price: 2500000, durationMin: 60, isActive: true },
-  { id: 'S-03', name: 'Trám răng thẩm mỹ (x1)', price: 450000, durationMin: 45, isActive: true },
-  { id: 'S-04', name: 'Nhổ răng khôn thường', price: 1750000, durationMin: 60, isActive: true },
-  { id: 'S-05', name: 'Điều trị tủy răng', price: 1200000, durationMin: 90, isActive: true },
-  { id: 'S-06', name: 'Trồng răng Implant xương', price: 15000000, durationMin: 120, isActive: true },
-  { id: 'S-07', name: 'Niềng răng/Chỉnh nha', price: 30000000, durationMin: 90, isActive: true },
-  { id: 'S-08', name: 'Khám tổng quát & Tư vấn', price: 100000, durationMin: 20, isActive: true },
-  { id: 'S-09', name: 'Bọc răng sứ toàn sứ', price: 5000000, durationMin: 120, isActive: true },
-  { id: 'S-10', name: 'Gắn đá nha khoa', price: 500000, durationMin: 30, isActive: true },
-  { id: 'S-11', name: 'Tiểu phẫu cắt chóp', price: 3000000, durationMin: 90, isActive: true },
+  { id: 'S-01', name: 'Lấy cao răng & Vệ sinh', price: 300000, durationMin: 15, isActive: true },
+  { id: 'S-02', name: 'Tẩy trắng răng thẩm mỹ', price: 2500000, durationMin: 45, isActive: true },
+  { id: 'S-03', name: 'Trám răng thẩm mỹ (x1)', price: 450000, durationMin: 30, isActive: true },
+  { id: 'S-04', name: 'Nhổ răng khôn thường', price: 1750000, durationMin: 45, isActive: true },
+  { id: 'S-05', name: 'Điều trị tủy răng', price: 1200000, durationMin: 60, isActive: true },
+  { id: 'S-06', name: 'Trồng răng Implant xương', price: 15000000, durationMin: 60, isActive: true },
+  { id: 'S-07', name: 'Niềng răng/Chỉnh nha', price: 30000000, durationMin: 45, isActive: true },
+  { id: 'S-08', name: 'Khám tổng quát & Tư vấn', price: 100000, durationMin: 15, isActive: true },
+  { id: 'S-09', name: 'Bọc răng sứ toàn sứ', price: 5000000, durationMin: 60, isActive: true },
+  { id: 'S-10', name: 'Gắn đá nha khoa', price: 500000, durationMin: 15, isActive: true },
+  { id: 'S-11', name: 'Tiểu phẫu cắt chóp', price: 3000000, durationMin: 45, isActive: true },
   { id: 'S-12', name: 'Chụp X-quang răng', price: 150000, durationMin: 15, isActive: true }
 ];
 
@@ -132,12 +132,12 @@ export const INITIAL_INVOICES: Invoice[] = [
   { id: 'INV-9021', patientId: 'P-0012', patientName: 'Nguyễn Văn A', patientPhone: '0912 345 678', services: [{ serviceId: 'S-04', serviceName: 'Nhổ răng khôn thường (x2)', price: 3500000 }], totalPrice: 3500000, insuranceDiscount: 0, memberDiscount: 70000, netPrice: 3430000, status: 'Pending', createdAt: '2026-06-05T09:00:00Z', room: 'Phòng 105', dentistName: 'Bác sĩ Hoàng Nam', paidAmount: 0, remainingAmount: 3430000, payments: [] },
   { id: 'INV-8994', patientId: 'P-4490', patientName: 'Trần Thị B', patientPhone: '0987 654 321', services: [{ serviceId: 'S-03', serviceName: 'Trám răng thẩm mỹ (x1)', price: 850000 }], totalPrice: 850000, insuranceDiscount: 0, memberDiscount: 0, netPrice: 850000, status: 'Pending', createdAt: '2026-06-04T15:30:00Z', room: 'Phòng 102', dentistName: 'Bác sĩ Lê Minh', paidAmount: 0, remainingAmount: 850000, payments: [] },
   { id: 'INV-9023', patientId: 'P-3129', patientName: 'Lê Quang C', patientPhone: '0976 543 210', services: [{ serviceId: 'S-01', serviceName: 'Lấy cao răng & Vệ sinh', price: 300000 }], totalPrice: 300000, insuranceDiscount: 0, memberDiscount: 0, netPrice: 300000, status: 'Pending', createdAt: '2026-06-05T09:45:00Z', room: 'Phòng 108', dentistName: 'Bác sĩ Mai Lan', paidAmount: 0, remainingAmount: 300000, payments: [] },
-  { id: 'INV-9024', patientId: 'P-8821', patientName: 'Trần Nguyễn Minh', patientPhone: '0901 234 567', services: [{ serviceId: 'S-07', serviceName: 'Niềng răng/Chỉnh nha', price: 30000000 }], totalPrice: 30000000, insuranceDiscount: 0, memberDiscount: 600000, netPrice: 29400000, status: 'Partially Paid', createdAt: '2026-06-16T10:15:00Z', room: 'Phòng 110', dentistName: 'Bác sĩ Nguyễn Hương', paidAmount: 10000000, remainingAmount: 19400000, payments: [{ date: '2026-06-16T10:30:00Z', amount: 10000000, method: 'Transfer' }] },
+  { id: 'INV-9024', patientId: 'P-8821', patientName: 'Trần Nguyễn Minh', patientPhone: '0901 234 567', services: [{ serviceId: 'S-07', serviceName: 'Niềng răng/Chỉnh nha', price: 30000000 }], totalPrice: 30000000, insuranceDiscount: 0, memberDiscount: 600000, netPrice: 29400000, status: 'Partially Paid', createdAt: '2026-07-01T10:15:00Z', room: 'Phòng 110', dentistName: 'Bác sĩ Nguyễn Hương', paidAmount: 10000000, remainingAmount: 19400000, payments: [{ date: '2026-07-01T10:30:00Z', amount: 10000000, method: 'Transfer' }] },
   { id: 'INV-9025', patientId: 'P-5021', patientName: 'Đặng Minh Khoa', patientPhone: '0911 222 555', services: [{ serviceId: 'S-02', serviceName: 'Tẩy trắng răng thẩm mỹ', price: 2500000 }], totalPrice: 2500000, insuranceDiscount: 0, memberDiscount: 50000, netPrice: 2450000, status: 'Pending', createdAt: '2026-06-16T11:30:00Z', room: 'Phòng 108', dentistName: 'Bác sĩ Mai Lan', paidAmount: 0, remainingAmount: 2450000, payments: [] },
   { id: 'INV-9026', patientId: 'P-4490', patientName: 'Trần Thị B', patientPhone: '0987 654 321', services: [{ serviceId: 'S-01', serviceName: 'Lấy cao răng & Vệ sinh', price: 300000 }], totalPrice: 300000, insuranceDiscount: 0, memberDiscount: 0, netPrice: 300000, status: 'Pending', createdAt: '2026-06-16T12:00:00Z', room: 'Phòng 105', dentistName: 'Bác sĩ Hoàng Nam', paidAmount: 0, remainingAmount: 300000, payments: [] },
   { id: 'INV-9027', patientId: 'P-9902', patientName: 'Nguyễn Thị Lan', patientPhone: '0901 222 333', services: [{ serviceId: 'S-03', serviceName: 'Trám răng thẩm mỹ (x1)', price: 450000 }, { serviceId: 'S-12', serviceName: 'Chụp X-quang răng', price: 150000 }], totalPrice: 600000, insuranceDiscount: 0, memberDiscount: 0, netPrice: 600000, status: 'Pending', createdAt: '2026-06-16T13:45:00Z', room: 'Phòng 110', dentistName: 'Bác sĩ Nguyễn Hương', paidAmount: 0, remainingAmount: 600000, payments: [] },
   { id: 'INV-9028', patientId: 'P-8821', patientName: 'Trần Nguyễn Minh', patientPhone: '0901 234 567', services: [{ serviceId: 'S-05', serviceName: 'Điều trị tủy răng', price: 1200000 }], totalPrice: 1200000, insuranceDiscount: 0, memberDiscount: 60000, netPrice: 1140000, status: 'Pending', createdAt: '2026-06-16T14:10:00Z', room: 'Phòng 102', dentistName: 'Bác sĩ Lê Minh', paidAmount: 0, remainingAmount: 1140000, payments: [] },
-  { id: 'INV-8990', patientId: 'P-8821', patientName: 'Trần Nguyễn Minh', patientPhone: '0901 234 567', services: [{ serviceId: 'S-01', serviceName: 'Lấy cao răng & Vệ sinh', price: 300000 }], totalPrice: 300000, insuranceDiscount: 0, memberDiscount: 15000, netPrice: 285000, status: 'Paid', createdAt: '2026-05-15T09:00:00Z', room: 'Phòng 108', dentistName: 'Bác sĩ Mai Lan', paidAmount: 285000, remainingAmount: 0, payments: [{ date: '2026-05-15T09:30:00Z', amount: 285000, method: 'Cash' }] }
+  { id: 'INV-8990', patientId: 'P-8821', patientName: 'Trần Nguyễn Minh', patientPhone: '0901 234 567', services: [{ serviceId: 'S-01', serviceName: 'Lấy cao răng & Vệ sinh', price: 300000 }], totalPrice: 300000, insuranceDiscount: 0, memberDiscount: 15000, netPrice: 285000, status: 'Paid', createdAt: '2026-07-01T09:00:00Z', room: 'Phòng 108', dentistName: 'Bác sĩ Mai Lan', paidAmount: 285000, remainingAmount: 0, payments: [{ date: '2026-07-01T09:30:00Z', amount: 285000, method: 'Cash' }] }
 ];
 
 export const INITIAL_LOGS: ClinicLog[] = [

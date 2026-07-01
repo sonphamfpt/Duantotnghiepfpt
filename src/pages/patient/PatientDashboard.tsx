@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { BookingModal } from '../../components/BookingModal';
 import { Icon } from '../../components/Icon';
+import { AIChatbot } from '../../components/AIChatbot';
 
 // Tab page imports
 import { PatientBooking } from './tabs/PatientBooking';
@@ -69,40 +70,6 @@ const PatientHome: React.FC = () => {
     }
     return [];
   }, [latestRecordWithPrescription]);
-
-  // AI Chatbot State
-  const [messages, setMessages] = useState<Array<{ sender: 'bot' | 'user'; text: string }>>([
-    { sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI nha khoa. Tôi có thể giúp gì cho sức khỏe răng miệng của bạn hôm nay?' },
-    { sender: 'user', text: 'Tôi cảm thấy hơi ê buốt khi uống nước lạnh.' },
-    { sender: 'bot', text: 'Ê buốt khi dùng đồ lạnh có thể là dấu hiệu của nhạy cảm ngà răng hoặc sâu răng nhẹ. Bạn nên đặt lịch kiểm tra sớm nhé!' }
-  ]);
-  const [inputText, setInputText] = useState('');
-
-  const handleSendChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
-
-    const userText = inputText;
-    setMessages(prev => [...prev, { sender: 'user', text: userText }]);
-    setInputText('');
-
-    setTimeout(() => {
-      let reply = 'Cảm ơn thông tin của bạn. Để đảm bảo chẩn đoán chính xác, bạn nên đăng ký lịch hẹn khám để các bác sĩ kiểm tra trực tiếp nhé.';
-      const query = userText.toLowerCase();
-
-      if (query.includes('ê buốt') || query.includes('đau răng') || query.includes('buốt')) {
-        reply = 'Tình trạng ê buốt răng khi uống đồ lạnh có thể do mòn men răng, tụt nướu hoặc sâu răng. Bạn nên dùng kem đánh răng chống ê buốt chuyên dụng và tránh đồ quá lạnh/quá nóng.';
-      } else if (query.includes('niềng') || query.includes('chỉnh nha') || query.includes('mắc cài')) {
-        reply = 'Chào bạn, GoodSmile hỗ trợ niềng răng mắc cài kim loại, sứ và niềng răng trong suốt Invisalign trả góp 0%. Hãy đặt lịch hẹn để bác sĩ Hương chụp phim và tư vấn phác đồ miễn phí nhé!';
-      } else if (query.includes('implant') || query.includes('mất răng')) {
-        reply = 'Cấy ghép Implant là phương pháp phục hình răng đã mất tối ưu nhất hiện nay. GoodSmile sử dụng trụ nhập khẩu Châu Âu chính hãng được bảo hành trọn đời.';
-      } else if (query.includes('lấy cao') || query.includes('vệ sinh')) {
-        reply = 'Lấy cao răng là quy trình nhanh chóng (chỉ khoảng 30 phút), giúp ngăn ngừa viêm nướu, hôi miệng và rụng răng sớm. Chi phí niêm yết tại GoodSmile là ₫300,000.';
-      }
-
-      setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
-    }, 1000);
-  };
 
   // Removed handlePayInvoice and handleRecharge
 
@@ -231,52 +198,6 @@ const PatientHome: React.FC = () => {
 
         {/* Removed Membership Wallet Card */}
 
-        {/* AI Health Assistant Widget */}
-        <div className="bg-white rounded-xl border border-outline-variant flex flex-col h-[380px] shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-outline-variant flex items-center gap-3 bg-surface-container-low">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white">
-              <Icon name="smart_toy" className="text-sm" />
-            </div>
-            <div>
-              <p className="text-label-md font-bold text-on-surface">AI tư vấn sức khỏe</p>
-              <p className="text-[10px] text-secondary flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-secondary rounded-full inline-block animate-pulse"></span>
-                Trực tuyến
-              </p>
-            </div>
-          </div>
-
-          <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar bg-slate-50">
-            {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`p-3 rounded-lg max-w-[85%] text-body-md ${
-                  msg.sender === 'bot'
-                    ? 'bg-white text-on-surface border border-outline-variant/50 rounded-tl-none shadow-sm'
-                    : 'bg-primary-container text-on-primary-container rounded-tr-none ml-auto shadow-sm'
-                }`}
-              >
-                {msg.text}
-              </div>
-            ))}
-          </div>
-
-          <form onSubmit={handleSendChat} className="p-3 border-t border-outline-variant flex gap-2 bg-white">
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="Hỏi về ê buốt răng, chỉnh nha, bọc sứ..."
-              className="flex-1 bg-surface-container border-none rounded-lg text-body-md focus:ring-1 focus:ring-primary px-3 py-2 outline-none"
-            />
-            <button
-              type="submit"
-              className="w-10 h-10 bg-primary text-white rounded-lg flex items-center justify-center active:scale-95 transition-all cursor-pointer"
-            >
-              <Icon name="send" />
-            </button>
-          </form>
-        </div>
 
         {/* Reminders & Notifications */}
         <section className="bg-white rounded-xl border border-outline-variant p-4 space-y-3">
@@ -334,12 +255,21 @@ export const PatientDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
   const tab = searchParams.get('tab');
 
-  switch (tab) {
-    case 'booking':      return <PatientBooking />;
-    case 'appointments': return <PatientAppointments />;
-    case 'queue':        return <PatientQueue />;
-    case 'records':      return <PatientRecords />;
-    case 'billing':      return <PatientBilling />;
-    default:             return <PatientHome />;
-  }
+  const renderTab = () => {
+    switch (tab) {
+      case 'booking':      return <PatientBooking />;
+      case 'appointments': return <PatientAppointments />;
+      case 'queue':        return <PatientQueue />;
+      case 'records':      return <PatientRecords />;
+      case 'billing':      return <PatientBilling />;
+      default:             return <PatientHome />;
+    }
+  };
+
+  return (
+    <>
+      {renderTab()}
+      <AIChatbot />
+    </>
+  );
 };

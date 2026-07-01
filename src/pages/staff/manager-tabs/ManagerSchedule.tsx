@@ -19,22 +19,34 @@ const DENTIST_ACCENT: Record<string, string> = {
 
 const ALL_ROOMS = ['Phòng 102', 'Phòng 105', 'Phòng 108', 'Phòng 110'];
 
-const WEEKS = [
-  { id: 'w1', label: 'Tuần 1  (01/06 – 07/06)', start: 1,  end: 7  },
-  { id: 'w2', label: 'Tuần 2  (08/06 – 14/06)', start: 8,  end: 14 },
-  { id: 'w3', label: 'Tuần 3  (15/06 – 21/06)', start: 15, end: 21 },
-  { id: 'w4', label: 'Tuần 4  (22/06 – 28/06)', start: 22, end: 28 },
-  { id: 'w5', label: 'Tuần 5  (29/06 – 30/06)', start: 29, end: 30 },
-];
+const DAY_NAMES = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
-const TODAY = '2026-06-22';
+// Helper: lấy ngày đầu tuần (Thứ Hai) từ một ngày bất kỳ
+const getMonday = (d: Date): Date => {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  date.setDate(diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+// Helper: format date thành YYYY-MM-DD
+const fmt = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  const dd = d.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+};
+
+const TODAY = fmt(new Date());
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const ManagerSchedule: React.FC = () => {
   const { doctorShifts, dentists, appointments, addShift, deleteShift, swapShifts, transferShift, changeShiftRoom } = useClinic();
 
-  const [selectedWeekId, setSelectedWeekId] = useState('w4');
+  const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [filterDentistId, setFilterDentistId] = useState<string>('ALL');
 
   // Add shift modal
@@ -67,21 +79,27 @@ export const ManagerSchedule: React.FC = () => {
     pendingTransferDentistId?: string;
   } | null>(null);
 
-  const week = WEEKS.find(w => w.id === selectedWeekId) || WEEKS[3];
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
 
-  const weekDays = Array.from({ length: week.end - week.start + 1 }, (_, i) => {
-    const dayNum = week.start + i;
-    const dateStr = `2026-06-${dayNum.toString().padStart(2, '0')}`;
-    const dayOfWeek = ['Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy', 'Chủ Nhật'][(dayNum + 5) % 7];
-    return { dayNum, dateStr, dayOfWeek };
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return { dayNum: d.getDate(), dateStr: fmt(d), dayOfWeek: DAY_NAMES[d.getDay()], month: d.getMonth() + 1 };
   });
 
+  const weekStartStr = fmt(weekStart);
+  const weekEndStr = fmt(weekEnd);
+
   const filteredShifts = doctorShifts.filter(s => {
-    const inWeek = s.date >= `2026-06-${week.start.toString().padStart(2, '0')}` &&
-                   s.date <= `2026-06-${week.end.toString().padStart(2, '0')}`;
+    const inWeek = s.date >= weekStartStr && s.date <= weekEndStr;
     const byDentist = filterDentistId === 'ALL' || s.dentistId === filterDentistId;
     return inWeek && byDentist;
   });
+
+  const goToPrevWeek = () => setWeekStart(prev => { const d = new Date(prev); d.setDate(d.getDate() - 7); return d; });
+  const goToNextWeek = () => setWeekStart(prev => { const d = new Date(prev); d.setDate(d.getDate() + 7); return d; });
+  const goToToday = () => setWeekStart(getMonday(new Date()));
 
   const todayShifts = doctorShifts.filter(s => s.date === TODAY);
 
@@ -243,16 +261,37 @@ export const ManagerSchedule: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Week selector */}
-          <select
-            value={selectedWeekId}
-            onChange={e => setSelectedWeekId(e.target.value)}
-            className="bg-white border border-outline-variant rounded-xl px-4 py-2 text-sm font-bold text-on-surface outline-none focus:border-primary shadow-sm cursor-pointer"
+          {/* Week navigation */}
+          <div className="flex items-center bg-white border border-outline-variant rounded-xl shadow-sm overflow-hidden">
+            <button
+              onClick={goToPrevWeek}
+              className="px-3 py-2 hover:bg-slate-50 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors border-r border-outline-variant"
+              title="Tuần trước"
+            >
+              <Icon name="chevron_left" className="text-lg" />
+            </button>
+            <button
+              onClick={goToToday}
+              className="px-4 py-2 text-sm font-bold text-on-surface hover:bg-purple-50 hover:text-purple-700 cursor-pointer transition-colors"
+            >
+              {weekDays[0].dayNum.toString().padStart(2,'0')}/{weekDays[0].month.toString().padStart(2,'0')} – {weekDays[6].dayNum.toString().padStart(2,'0')}/{weekDays[6].month.toString().padStart(2,'0')}/{weekStart.getFullYear()}
+            </button>
+            <button
+              onClick={goToNextWeek}
+              className="px-3 py-2 hover:bg-slate-50 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors border-l border-outline-variant"
+              title="Tuần sau"
+            >
+              <Icon name="chevron_right" className="text-lg" />
+            </button>
+          </div>
+
+          {/* Today button */}
+          <button
+            onClick={goToToday}
+            className="px-4 py-2.5 bg-white border border-outline-variant hover:bg-purple-50 hover:text-purple-700 text-on-surface rounded-xl font-bold text-xs cursor-pointer transition-all shadow-sm"
           >
-            {WEEKS.map(w => (
-              <option key={w.id} value={w.id}>{w.label}</option>
-            ))}
-          </select>
+            Hôm nay
+          </button>
 
           {/* Add new shift button */}
           <button
@@ -384,7 +423,7 @@ export const ManagerSchedule: React.FC = () => {
                         className={`py-3 px-2 text-center border-l border-outline-variant/30 ${isToday ? 'bg-purple-50 text-purple-600' : isWeekend ? 'text-red-400' : ''}`}
                       >
                         <div>{day.dayOfWeek}</div>
-                        <div className="text-[10px] font-bold opacity-70 mt-0.5">{day.dayNum.toString().padStart(2,'0')}/06</div>
+                        <div className="text-[10px] font-bold opacity-70 mt-0.5">{day.dayNum.toString().padStart(2,'0')}/{day.month.toString().padStart(2,'0')}</div>
                         {isToday && <div className="text-[8px] font-black bg-purple-600 text-white px-1.5 py-0.5 rounded-full mt-0.5 inline-block">HÔM NAY</div>}
                       </th>
                     );
@@ -590,8 +629,6 @@ export const ManagerSchedule: React.FC = () => {
                   type="date"
                   value={addForm.date}
                   onChange={e => setAddForm(prev => ({ ...prev, date: e.target.value }))}
-                  min="2026-06-01"
-                  max="2026-06-30"
                   className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none cursor-pointer"
                 />
               </div>

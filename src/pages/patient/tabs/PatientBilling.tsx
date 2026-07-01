@@ -12,6 +12,17 @@ export const PatientBilling: React.FC = () => {
   const paidInvoices = patientInvoices.filter(i => i.status === 'Paid');
 
   const [printInvoice, setPrintInvoice] = useState<any>(null); // State quản lý việc mở modal in
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Sắp xếp hóa đơn mới nhất lên đầu và chỉ lấy 5 giao dịch gần nhất
+  const sortedPaidInvoices = [...paidInvoices].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  
+  const filteredPaidInvoices = sortedPaidInvoices.filter(inv => {
+    return inv.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
+           (inv.paymentMethod && inv.paymentMethod.toLowerCase().includes(searchQuery.toLowerCase()));
+  });
+
+  const displayInvoices = filteredPaidInvoices.slice(0, 5);
 
   return (
     <>
@@ -118,20 +129,35 @@ export const PatientBilling: React.FC = () => {
 
         {/* Khối Lịch sử (Đã thanh toán) - Chiếm 2 cột trên Desktop */}
         <div className="lg:col-span-2">
-          <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 mb-4">
-            <Icon name="task_alt" className="text-secondary" />
-            Lịch sử giao dịch
-          </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+              <Icon name="task_alt" className="text-secondary" />
+              Lịch sử giao dịch (5 gần nhất)
+            </h3>
+            
+            <div className="flex gap-2">
+              <div className="relative">
+                <Icon name="search" className="absolute left-3 top-2.5 text-on-surface-variant text-sm" />
+                <input
+                  type="text"
+                  placeholder="Tìm mã HD, PTTT..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full sm:w-48 pl-9 pr-4 py-2 bg-surface-container border border-outline-variant rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-secondary"
+                />
+              </div>
+            </div>
+          </div>
 
           <div className="bg-white rounded-3xl border border-outline-variant shadow-sm overflow-hidden">
-            {paidInvoices.length === 0 ? (
+            {displayInvoices.length === 0 ? (
               <div className="text-center py-16">
                 <Icon name="receipt_long" className="text-[64px] text-outline opacity-40" />
-                <p className="text-on-surface-variant mt-4 font-bold">Chưa có giao dịch nào</p>
+                <p className="text-on-surface-variant mt-4 font-bold">Không tìm thấy giao dịch nào</p>
               </div>
             ) : (
               <div className="divide-y divide-outline-variant">
-                {paidInvoices.map((inv) => (
+                {displayInvoices.map((inv) => (
                   <div key={inv.id} className="p-6 hover:bg-surface-container-low transition-colors">
                     
                     {/* Invoice Header */}

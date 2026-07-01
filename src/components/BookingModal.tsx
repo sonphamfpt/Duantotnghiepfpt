@@ -168,9 +168,64 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const timeSlots = [
     '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM',
-    '10:15 AM', '11:00 AM', '02:00 PM', '02:30 PM',
-    '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM'
+    '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
+    '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM',
+    '04:00 PM', '04:30 PM'
   ];
+
+  // Convert time slot string to minutes since midnight
+  const slotToMinutes = (slot: string): number => {
+    const [time, period] = slot.split(' ');
+    let [h, m] = time.split(':').map(Number);
+    if (period === 'PM' && h !== 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    return h * 60 + m;
+  };
+
+  // Get blocked time ranges for the selected dentist on selected date
+  const selectedService = services.find(s => s.id === selectedServiceId);
+  const selectedDuration = selectedService?.durationMin || 30;
+
+  const getBlockedSlots = (): Set<string> => {
+    if (!selectedDentistId || !date) return new Set();
+    const blocked = new Set<string>();
+
+    // Find all existing appointments for this dentist on this date
+    const dentistAppts = appointments.filter(a => {
+      if (a.status === 'Cancelled' || a.status === 'Completed') return false;
+      if (a.dentistId !== selectedDentistId) return false;
+      // Parse date from time string like "2026-07-02 @ 09:00 AM"
+      const parts = a.time.split(' @ ');
+      return parts[0] === date;
+    });
+
+    dentistAppts.forEach(appt => {
+      const parts = appt.time.split(' @ ');
+      const apptSlot = parts[1];
+      if (!apptSlot) return;
+
+      // Look up the duration of this appointment's service
+      const apptService = services.find(s => s.name === appt.serviceName);
+      const apptDuration = apptService?.durationMin || 30;
+
+      const apptStart = slotToMinutes(apptSlot);
+      const apptEnd = apptStart + apptDuration;
+
+      // Block all slots that would overlap with this appointment
+      timeSlots.forEach(slot => {
+        const slotStart = slotToMinutes(slot);
+        const slotEnd = slotStart + selectedDuration;
+        // Two intervals overlap if one starts before the other ends
+        if (slotStart < apptEnd && slotEnd > apptStart) {
+          blocked.add(slot);
+        }
+      });
+    });
+
+    return blocked;
+  };
+
+  const blockedSlots = getBlockedSlots();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -253,10 +308,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <option value="">-- Chọn dịch vụ --</option>
                     {services.filter(s => s.isActive).map(s => (
                       <option key={s.id} value={s.id}>
-                        {s.name} — {s.price.toLocaleString('vi-VN')}₫
+                        {s.name} — {s.price.toLocaleString('vi-VN')}₫ ({s.durationMin} phút)
                       </option>
                     ))}
                   </select>
+                  {selectedService && (
+                    <p className="text-xs text-secondary font-semibold mt-1.5 flex items-center gap-1 animate-in fade-in">
+                      <Icon name="schedule" className="text-[14px]" />
+                      Thời gian ước tính: ~{selectedService.durationMin} phút
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -288,25 +349,48 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <div className="w-full md:w-1/2 p-6 bg-surface-container-lowest overflow-y-auto custom-scrollbar space-y-6">
               
               <div>
-                <label className="block text-xs font-bold uppercase text-on-surface-variant mb-3">
-                  Chọn Khung giờ *
+                <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
+                  Chọn Khung giờ * {selectedService && <span className="normal-case text-secondary font-semibold">({selectedService.durationMin} phút/ca)</span>}
                 </label>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                  {timeSlots.map(slot => (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() => { setTimeSlot(slot); setAntiSpamError(''); }}
-                      className={`py-2 px-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
-                        timeSlot === slot
-                          ? 'bg-secondary text-on-secondary border-secondary shadow-md scale-105'
-                          : 'bg-white text-on-surface border-outline-variant hover:border-secondary/50 hover:bg-secondary/5'
-                      }`}
-                    >
-                      {slot}
-                    </button>
-                  ))}
-                </div>
+                {!selectedDentistId || !date ? (
+                  <p className="text-xs text-on-surface-variant italic py-4 text-center bg-slate-50 rounded-xl border border-dashed border-outline-variant">
+                    Vui lòng chọn bác sĩ và ngày khám trước
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      {timeSlots.map(slot => {
+                        const isBlocked = blockedSlots.has(slot);
+                        const isSelected = timeSlot === slot;
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            disabled={isBlocked}
+                            onClick={() => { if (!isBlocked) { setTimeSlot(slot); setAntiSpamError(''); } }}
+                            className={`py-2 px-1 text-xs font-bold rounded-lg border transition-all ${
+                              isBlocked
+                                ? 'bg-red-50 text-red-300 border-red-200 cursor-not-allowed line-through opacity-60'
+                                : isSelected
+                                  ? 'bg-secondary text-on-secondary border-secondary shadow-md scale-105 cursor-pointer'
+                                  : 'bg-white text-on-surface border-outline-variant hover:border-secondary/50 hover:bg-secondary/5 cursor-pointer'
+                            }`}
+                            title={isBlocked ? 'Khung giờ này đã có lịch hẹn' : slot}
+                          >
+                            {slot}
+                            {isBlocked && <Icon name="block" className="text-[10px] ml-0.5" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {blockedSlots.size > 0 && (
+                      <p className="text-[10px] text-red-500 mt-2 flex items-center gap-1">
+                        <Icon name="info" className="text-[12px]" />
+                        Các khung giờ gạch ngang đã có bệnh nhân khác đặt lịch với bác sĩ này.
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
 
               <div>

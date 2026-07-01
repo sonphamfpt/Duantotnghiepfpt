@@ -9,6 +9,8 @@ export const CashierHistory: React.FC = () => {
   // State
   const [searchQuery, setSearchQuery] = useState('');
   const [methodFilter, setMethodFilter] = useState<string>('ALL');
+  const [timeFilter, setTimeFilter] = useState<string>('TODAY');
+  const [customDate, setCustomDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [showPrintToast, setShowPrintToast] = useState(false);
 
@@ -22,8 +24,43 @@ export const CashierHistory: React.FC = () => {
 
     const matchesMethod = methodFilter === 'ALL' || inv.paymentMethod === methodFilter;
 
-    return isPaid && matchesSearch && matchesMethod;
+    let matchesTime = true;
+    const invoiceDate = new Date(inv.createdAt);
+    const now = new Date();
+    
+    if (timeFilter === 'TODAY') {
+      matchesTime = invoiceDate.toDateString() === now.toDateString();
+    } else if (timeFilter === 'WEEK') {
+      const weekAgo = new Date();
+      weekAgo.setDate(now.getDate() - 7);
+      matchesTime = invoiceDate >= weekAgo;
+    } else if (timeFilter === 'MONTH') {
+      matchesTime = invoiceDate.getMonth() === now.getMonth() && invoiceDate.getFullYear() === now.getFullYear();
+    } else if (timeFilter === 'YEAR') {
+      matchesTime = invoiceDate.getFullYear() === now.getFullYear();
+    } else if (timeFilter === 'CUSTOM') {
+      const selected = new Date(customDate);
+      matchesTime = invoiceDate.toDateString() === selected.toDateString();
+    }
+
+    return isPaid && matchesSearch && matchesMethod && matchesTime;
   });
+
+  // Statistics
+  const totalRevenue = paidInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+  const totalCount = paidInvoices.length;
+
+  const cashRevenue = paidInvoices
+    .filter(inv => inv.paymentMethod === 'Cash')
+    .reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+    
+  const cardRevenue = paidInvoices
+    .filter(inv => inv.paymentMethod === 'Card')
+    .reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+    
+  const transferRevenue = paidInvoices
+    .filter(inv => inv.paymentMethod === 'Transfer')
+    .reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
 
   const selectedInvoice = invoices.find((inv) => inv.id === selectedInvoiceId);
 
@@ -85,7 +122,7 @@ export const CashierHistory: React.FC = () => {
             />
           </div>
 
-          <div className="w-full md:w-48">
+          <div className="w-full md:w-40">
             <select
               value={methodFilter}
               onChange={(e) => setMethodFilter(e.target.value)}
@@ -96,6 +133,74 @@ export const CashierHistory: React.FC = () => {
               <option value="Card">Ví / Thẻ POS</option>
               <option value="Transfer">Chuyển khoản</option>
             </select>
+          </div>
+
+          <div className="w-full md:w-40 flex flex-col gap-2">
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value)}
+              className="w-full px-3 py-2 bg-surface-container border border-outline-variant rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-amber-600"
+            >
+              <option value="TODAY">Hôm nay</option>
+              <option value="WEEK">7 ngày qua</option>
+              <option value="MONTH">Tháng này</option>
+              <option value="ALL">Tất cả thời gian</option>
+              <option value="CUSTOM">Chọn ngày...</option>
+            </select>
+
+            {timeFilter === 'CUSTOM' && (
+              <input
+                type="date"
+                value={customDate}
+                max={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setCustomDate(e.target.value)}
+                className="w-full px-3 py-2 bg-surface-container border border-outline-variant rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-amber-600 animate-in fade-in slide-in-from-top-2"
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Statistics Summary - Dashboard Style */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-full bg-amber-200/50 flex items-center justify-center text-amber-700">
+                <Icon name="receipt_long" className="text-sm" />
+              </div>
+              <p className="text-[10px] text-amber-800 font-bold uppercase tracking-wider">Tổng Thu</p>
+            </div>
+            <p className="text-xl font-black text-amber-700">₫{totalRevenue.toLocaleString()}</p>
+            <p className="text-[10px] text-amber-600/80 mt-1 font-semibold">{totalCount} hóa đơn</p>
+          </div>
+
+          <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-full bg-emerald-200/50 flex items-center justify-center text-emerald-700">
+                <Icon name="payments" className="text-sm" />
+              </div>
+              <p className="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">Tiền Mặt</p>
+            </div>
+            <p className="text-xl font-black text-emerald-700">₫{cashRevenue.toLocaleString()}</p>
+          </div>
+
+          <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-full bg-blue-200/50 flex items-center justify-center text-blue-700">
+                <Icon name="credit_card" className="text-sm" />
+              </div>
+              <p className="text-[10px] text-blue-800 font-bold uppercase tracking-wider">Thẻ / POS</p>
+            </div>
+            <p className="text-xl font-black text-blue-700">₫{cardRevenue.toLocaleString()}</p>
+          </div>
+
+          <div className="p-4 bg-purple-50 border border-purple-100 rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-full bg-purple-200/50 flex items-center justify-center text-purple-700">
+                <Icon name="account_balance" className="text-sm" />
+              </div>
+              <p className="text-[10px] text-purple-800 font-bold uppercase tracking-wider">Chuyển Khoản</p>
+            </div>
+            <p className="text-xl font-black text-purple-700">₫{transferRevenue.toLocaleString()}</p>
           </div>
         </div>
       </div>
