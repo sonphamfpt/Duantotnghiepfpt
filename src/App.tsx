@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider, useAuth, UserRole } from './context/AuthContext';
 import { ClinicProvider } from './context/ClinicContext';
 import { MainLayout } from './layouts/MainLayout';
 import { DashboardLayout } from './layouts/DashboardLayout';
@@ -35,19 +35,23 @@ const PublicRoute: React.FC<{ component: React.ComponentType }> = ({ component: 
   </MainLayout>
 );
 
-const DashboardRoute: React.FC<{ component: React.ComponentType }> = ({ component: Component }) => (
-  <DashboardLayout>
-    <Component />
-  </DashboardLayout>
-);
-
-// Protected route — redirect to /login if not authenticated
-const ProtectedRoute: React.FC<{ component: React.ComponentType }> = ({ component: Component }) => {
-  const { isAuthenticated } = useAuth();
+// Protected route — kiểm tra đăng nhập VÀ đúng vai trò (role guard)
+const RoleGuardRoute: React.FC<{ component: React.ComponentType; allowedRoles: UserRole[] }> = ({
+  component: Component,
+  allowedRoles,
+}) => {
+  const { isAuthenticated, role } = useAuth();
   const location = useLocation();
 
+  // Chưa đăng nhập → về trang Login, ghi nhớ URL gốc
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Đăng nhập nhưng sai vai trò → về trang dashboard của vai trò hiện tại
+  if (!allowedRoles.includes(role)) {
+    const dest = role === 'patient' ? '/patient' : `/dashboard/${role}`;
+    return <Navigate to={dest} replace />;
   }
 
   return (
@@ -91,13 +95,28 @@ export default function App() {
             <Route path="/queue-board" element={<QueueTracking />} />
 
             {/* Protected: Patient Portal */}
-            <Route path="/patient" element={<ProtectedRoute component={PatientDashboard} />} />
+            <Route
+              path="/patient"
+              element={<RoleGuardRoute component={PatientDashboard} allowedRoles={['patient']} />}
+            />
 
-            {/* Protected: Staff Workspaces */}
-            <Route path="/dashboard/receptionist" element={<ProtectedRoute component={ReceptionistDashboard} />} />
-            <Route path="/dashboard/dentist"       element={<ProtectedRoute component={DentistDashboard} />} />
-            <Route path="/dashboard/cashier"       element={<ProtectedRoute component={CashierDashboard} />} />
-            <Route path="/dashboard/manager"       element={<ProtectedRoute component={ManagerDashboard} />} />
+            {/* Protected: Staff Workspaces — kiểm tra đúng vai trò */}
+            <Route
+              path="/dashboard/receptionist"
+              element={<RoleGuardRoute component={ReceptionistDashboard} allowedRoles={['receptionist', 'manager']} />}
+            />
+            <Route
+              path="/dashboard/dentist"
+              element={<RoleGuardRoute component={DentistDashboard} allowedRoles={['dentist', 'manager']} />}
+            />
+            <Route
+              path="/dashboard/cashier"
+              element={<RoleGuardRoute component={CashierDashboard} allowedRoles={['cashier', 'manager']} />}
+            />
+            <Route
+              path="/dashboard/manager"
+              element={<RoleGuardRoute component={ManagerDashboard} allowedRoles={['manager']} />}
+            />
 
             {/* Catch-all */}
             <Route path="*" element={<Navigate to="/" replace />} />

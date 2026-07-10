@@ -128,5 +128,87 @@ export const DOCTOR_PROFILES: Record<string, DoctorProfileDetail> = {
       '2019 - 2022: Chuyên gia chỉnh nha cấp cao tại Trung tâm Chỉnh nha Chuyên sâu GoodDental',
       '2022 - Nay: Cố vấn Chỉnh Nha & Chỉnh hình Răng Mặt tại Hệ thống Nha khoa GoodSmile'
     ]
+  },
+  'D-05': {
+    specialty: 'Chuyên gia Chỉnh nha mặt trong & Invisalign',
+    degree: 'Thạc Sĩ - Bác Sĩ',
+    education: [
+      'Thạc sĩ chuyên khoa Chỉnh nha, Đại học Y Hà Nội',
+      'Chứng nhận Chỉnh nha khay trong suốt Invisalign Platinum Provider',
+      'Khóa học cơ sinh học lâm sàng nâng cao tại Singapore'
+    ],
+    experience: 11,
+    cases: '3,800+',
+    clinicalStrengths: [
+      'Chỉnh nha mắc cài tự khóa, niềng răng Invisalign',
+      'Điều trị các ca lệch khớp cắn mức độ trung bình đến khó',
+      'Định hình thẩm mỹ đường cười toàn diện'
+    ],
+    certifications: [
+      'Thành viên Hiệp hội Chỉnh nha Việt Nam (VAO)',
+      'Hội viên Hội Răng Hàm Mặt Việt Nam (VOSA)'
+    ],
+    universityLogo: 'school',
+    bio: 'Bác sĩ Phạm Thành là chuyên gia nhiều kinh nghiệm về chỉnh hình răng mặt, đặc biệt là các công nghệ chỉnh nha không mắc cài hiện đại, đem lại kết quả tối ưu và độ thẩm mỹ cao.',
+    motto: 'Kiến tạo nụ cười hoàn mỹ tự nhiên bằng công nghệ nha khoa tiên tiến nhất.',
+    workHistory: [
+      '2015 - 2019: Bác sĩ điều trị Chỉnh nha tại Nha khoa Việt Pháp',
+      '2019 - 2023: Chuyên gia chỉnh nha cấp cao tại Nha khoa Quốc tế',
+      '2023 - Nay: Bác sĩ Chỉnh nha chuyên sâu tại Hệ thống Nha khoa GoodSmile'
+    ]
+  },
+  'D-06': {
+    specialty: 'Chuyên gia Nha khoa Trẻ em & Điều trị tổng quát',
+    degree: 'Bác Sĩ Đa Khoa',
+    education: [
+      'Tốt nghiệp Bác sĩ Răng Hàm Mặt, Đại học Y Dược Hải Phòng',
+      'Khóa đào tạo Nha khoa trẻ em chuyên sâu, Đại học Yonsei (Hàn Quốc)',
+      'Chứng chỉ Hàn răng thẩm mỹ tối thiểu xâm lấn tại Thái Lan'
+    ],
+    experience: 7,
+    cases: '4,500+',
+    clinicalStrengths: [
+      'Điều trị tủy răng sữa và hàn răng không đau cho trẻ em',
+      'Nhổ răng sữa, tiền chỉnh nha trẻ em tháo lắp',
+      'Khám và tư vấn bảo tồn răng miệng tổng quát'
+    ],
+    certifications: [
+      'Thành viên Chi hội Nha khoa trẻ em Việt Nam',
+      'Chứng chỉ điều trị tâm lý trẻ em nha khoa chuyên sâu'
+    ],
+    universityLogo: 'local_library',
+    bio: 'Bác sĩ Đỗ Thùy Linh có kinh nghiệm tâm lý nhi khoa xuất sắc, giúp các bé luôn cảm thấy nhẹ nhàng, thoải mái và vui vẻ khi thực hiện các thủ thuật điều trị răng miệng.',
+    motto: 'Nuôi dưỡng thói quen chăm sóc răng miệng và nụ cười rạng rỡ của trẻ ngay từ những năm tháng đầu đời.',
+    workHistory: [
+      '2019 - 2022: Bác sĩ Nha khoa trẻ em tại Bệnh viện Phụ sản Nhi Đà Nẵng',
+      '2022 - Nay: Bác sĩ Nha khoa Trẻ em & Điều trị tổng quát tại Hệ thống Nha khoa GoodSmile'
+    ]
+  },
+  'D-07': {
+    specialty: 'Nội nha điều trị tủy răng chuyên sâu',
+    degree: 'Bác sĩ Chuyên Khoa I',
+    education: [
+      'Bác sĩ chuyên khoa I Răng Hàm Mặt, Đại học Y Dược Thái Bình',
+      'Chứng chỉ điều trị nội nha vi phẫu bằng sóng siêu âm',
+      'Khóa học Phục hình răng sau điều trị nội nha tại Hàn Quốc'
+    ],
+    experience: 9,
+    cases: '3,200+',
+    clinicalStrengths: [
+      'Nội nha chữa tủy răng nhiều chân phức tạp',
+      'Điều trị viêm quanh cuống răng cấp tính',
+      'Phục hình răng sứ bảo tồn răng thật sau chữa tủy'
+    ],
+    certifications: [
+      'Hội viên Hội Nội nha Việt Nam',
+      'Chứng nhận thực hành nội nha lâm sàng nâng cao'
+    ],
+    universityLogo: 'account_balance',
+    bio: 'Bác sĩ Vũ Hải luôn tập trung tối đa sự tỉ mỉ trong các ca chữa tủy răng, ứng dụng trang thiết bị hiện đại giúp bệnh nhân loại bỏ đau buốt hoàn toàn một cách an toàn và nhanh chóng.',
+    motto: 'Giữ lại từng chiếc răng thật cho bệnh nhân là niềm vui lớn nhất của tôi.',
+    workHistory: [
+      '2017 - 2021: Bác sĩ điều trị Nội nha tại Bệnh viện Đa khoa Tỉnh Thái Bình',
+      '2021 - Nay: Chuyên gia Nội nha điều trị tủy răng tại Hệ thống Nha khoa GoodSmile'
+    ]
   }
 };

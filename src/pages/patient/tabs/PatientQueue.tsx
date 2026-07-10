@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { useAuth } from '../../../context/AuthContext';
 
 // Helper to mask name for privacy: "Nguyễn Văn A" -> "Nguyễn V*** A***"
 const maskName = (name: string) => {
@@ -14,7 +15,8 @@ const maskName = (name: string) => {
 
 export const PatientQueue: React.FC = () => {
   const { queue, dentists } = useClinic();
-  const patientId = 'P-8821';
+  const { user } = useAuth();
+  const patientId = user?.id || 'P-8821';
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Live clock

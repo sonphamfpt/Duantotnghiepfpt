@@ -12,7 +12,15 @@ const PromoBanner: React.FC<{ onClose: () => void; onBookNow: () => void }> = ({
   const [copied, setCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
-  const targetDate = new Date('2026-06-30T23:59:59').getTime();
+  const targetDate = React.useMemo(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).getTime();
+  }, []);
+
+  const promoLabel = React.useMemo(() => {
+    const now = new Date();
+    return `Ưu đãi tháng ${now.getMonth() + 1} / ${now.getFullYear()}`;
+  }, []);
 
   useEffect(() => {
     const updateTimer = () => {
@@ -31,7 +39,7 @@ const PromoBanner: React.FC<{ onClose: () => void; onBookNow: () => void }> = ({
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [targetDate]);
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -153,7 +161,7 @@ const PromoBanner: React.FC<{ onClose: () => void; onBookNow: () => void }> = ({
             <div>
               <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-700 text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full">
                 <Icon name="star" className="text-[12px] text-amber-600 animate-pulse-soft" />
-                Ưu đãi tháng 6 / 2026
+                {promoLabel}
               </span>
             </div>
 

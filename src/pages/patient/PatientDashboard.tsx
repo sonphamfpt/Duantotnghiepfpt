@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
+import { useAuth } from '../../context/AuthContext';
 import { BookingModal } from '../../components/BookingModal';
 import { Icon } from '../../components/Icon';
 import { AIChatbot } from '../../components/AIChatbot';
@@ -15,16 +16,17 @@ import { PatientBilling } from './tabs/PatientBilling';
 // ─── Home Tab (Dashboard Overview) ────────────────────────────────────────────
 const PatientHome: React.FC = () => {
   const { patients, medicalRecords, invoices } = useClinic();
+  const { user } = useAuth();
 
-  const patientId = 'P-8821';
+  const patientId = user?.id || 'P-8821';
   const patient = patients.find(p => p.id === patientId) || {
     id: patientId,
-    name: 'Trần Nguyễn Minh',
-    phone: '0901 234 567',
+    name: user?.name || 'Trần Nguyễn Minh',
+    phone: user?.phone || '0901 234 567',
     age: 28,
     gender: 'Nam',
     criticalAllergy: 'Không',
-    condition: 'Nhạy cảm ngà'
+    condition: 'Bình thường'
   };
 
   const records = medicalRecords.filter(r => r.patientId === patientId);

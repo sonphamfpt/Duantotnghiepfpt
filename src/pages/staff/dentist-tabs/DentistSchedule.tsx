@@ -12,7 +12,10 @@ const DENTIST_COLORS: Record<string, string> = {
   'D-01': 'border-l-4 border-l-blue-500',
   'D-02': 'border-l-4 border-l-emerald-500',
   'D-03': 'border-l-4 border-l-purple-500',
-  'D-04': 'border-l-4 border-l-pink-500'
+  'D-04': 'border-l-4 border-l-pink-500',
+  'D-05': 'border-l-4 border-l-amber-500',
+  'D-06': 'border-l-4 border-l-teal-500',
+  'D-07': 'border-l-4 border-l-indigo-500'
 };
 
 const ALL_ROOMS = ['Phòng 102', 'Phòng 105', 'Phòng 108', 'Phòng 110', 'Phòng Phẫu Thuật', 'X-Quang'];

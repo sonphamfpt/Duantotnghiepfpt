@@ -16,6 +16,13 @@ export interface Dentist {
   degree?: string;
   education?: string[];
   experience?: number;
+  experienceText?: string;
+  bio?: string;
+  motto?: string;
+  cases?: string;
+  clinicalStrengths?: string[];
+  certifications?: string[];
+  workHistory?: string[];
 }
 
 export interface Patient {

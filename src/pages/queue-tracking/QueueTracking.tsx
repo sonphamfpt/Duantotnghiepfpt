@@ -1,12 +1,53 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '../../components/Icon';
 import { useNavigate } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { BrandLogo } from '../../components/BrandLogo';
+import { socket } from '../../services/socketClient';
 
 export const QueueTracking: React.FC = () => {
-  const { queue } = useClinic();
+  const { queue, refreshAllData } = useClinic();
   const navigate = useNavigate();
+
+  // State thông báo khi có bệnh nhân mới check-in (flash animation)
+  const [newCheckinAlert, setNewCheckinAlert] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    // Kết nối WebSocket nếu chưa kết nối
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    const handleConnect = () => setIsConnected(true);
+    const handleDisconnect = () => setIsConnected(false);
+
+    // Khi có bệnh nhân mới check-in → hiện alert blink
+    const handleCheckin = (payload: any) => {
+      setNewCheckinAlert(payload?.data?.patientName || 'Bệnh nhân mới');
+      setTimeout(() => setNewCheckinAlert(null), 4000);
+    };
+
+    // Khi trạng thái thay đổi → refresh ngay
+    const handleStatusChange = () => {
+      // Queue data được cập nhật tự động từ ClinicContext
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('queue:checkin', handleCheckin);
+    socket.on('queue:status_changed', handleStatusChange);
+
+    // Đặt trạng thái kết nối ban đầu
+    setIsConnected(socket.connected);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('queue:checkin', handleCheckin);
+      socket.off('queue:status_changed', handleStatusChange);
+    };
+  }, []);
 
   // Categories
   const activeQueue = queue.filter(q => q.status !== 'Completed');
@@ -20,6 +61,17 @@ export const QueueTracking: React.FC = () => {
   return (
     <div className="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between p-6 animate-in fade-in duration-200 select-none">
       
+      {/* New Check-in Flash Alert */}
+      {newCheckinAlert && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-white px-8 py-4 rounded-2xl shadow-2xl shadow-emerald-500/40 flex items-center gap-3 animate-bounce">
+          <Icon name="person_add" className="text-2xl" />
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest opacity-80">Bệnh nhân mới check-in</p>
+            <p className="text-lg font-black">{newCheckinAlert}</p>
+          </div>
+        </div>
+      )}
+
       {/* Screen Header */}
       <header className="flex justify-between items-center border-b border-slate-800 pb-4 shrink-0">
         <div className="flex items-center gap-4">
@@ -30,17 +82,19 @@ export const QueueTracking: React.FC = () => {
           </div>
         </div>
 
-        {/* Live Clock / Date */}
+        {/* Live Status + Connect indicator */}
         <div className="flex items-center gap-6">
           <div className="bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700 text-xs font-bold flex items-center gap-2">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-ping"></span>
-            <span className="text-green-400">Hệ thống: Trực tuyến</span>
+            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-ping' : 'bg-amber-400 animate-pulse'}`}></span>
+            <span className={isConnected ? 'text-green-400' : 'text-amber-400'}>
+              {isConnected ? 'Real-time: Đang kết nối' : 'Đang kết nối lại...'}
+            </span>
           </div>
           <button
             onClick={() => navigate('/')}
             className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs font-bold transition-all cursor-pointer text-slate-300"
           >
-            Quay lại công cổng
+            Quay lại cổng
           </button>
         </div>
       </header>
@@ -158,7 +212,7 @@ export const QueueTracking: React.FC = () => {
 
       {/* Screen Footer */}
       <footer className="border-t border-slate-800 pt-4 flex justify-between items-center text-xs text-slate-500 shrink-0">
-        <p>Hệ thống tự động đồng bộ hóa thông tin lâm sàng GoodSmile. Cập nhật lúc: {new Date().toLocaleDateString('vi-VN')}</p>
+        <p>Hệ thống real-time GoodSmile — Cập nhật tức thì qua WebSocket</p>
         <p>Hotline khẩn cấp phòng khám: <strong>1900 6789</strong></p>
       </footer>
     </div>

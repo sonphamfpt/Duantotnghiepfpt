@@ -20,7 +20,7 @@ const CONDITION_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export const DentistRecords: React.FC = () => {
-  const { medicalRecords, patients } = useClinic();
+  const { medicalRecords, patients, fetchPatientRecords } = useClinic();
   const [searchParams, setSearchParams] = useSearchParams();
   const urlPatientId = searchParams.get('patientId');
 
@@ -36,6 +36,12 @@ export const DentistRecords: React.FC = () => {
   useEffect(() => {
     setSelectedPatientId(urlPatientId);
   }, [urlPatientId]);
+
+  useEffect(() => {
+    if (selectedPatientId) {
+      fetchPatientRecords(selectedPatientId);
+    }
+  }, [selectedPatientId]);
 
   const selectPatient = (id: string) => {
     setSelectedPatientId(id);

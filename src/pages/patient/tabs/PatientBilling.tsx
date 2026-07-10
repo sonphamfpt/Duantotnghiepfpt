@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { useAuth } from '../../../context/AuthContext';
 
 export const PatientBilling: React.FC = () => {
   const { invoices } = useClinic();
-  const patientId = 'P-8821';
-  const patientName = 'Trần Nguyễn Minh';
+  const { user } = useAuth();
+  const patientId = user?.id || 'P-8821';
+  const patientName = user?.name || 'Trần Nguyễn Minh';
   
   const patientInvoices = invoices.filter(i => i.patientId === patientId);
   const pendingInvoices = patientInvoices.filter(i => i.status === 'Pending' || i.status === 'Partially Paid');

@@ -1,21 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../../context/AuthContext';
 import { BrandLogo } from '../../components/BrandLogo';
-import { useClinic } from '../../context/ClinicContext';
 
 const DEMO_ACCOUNTS = [
-  { email: 'letan@goodsmile.vn',    password: 'letan123',    role: 'receptionist' as UserRole, label: 'Lễ Tân',    icon: 'folder_shared',       color: 'hover:border-orange-500 hover:bg-orange-50/50 text-orange-700 bg-orange-50/30 border-orange-100 hover:shadow-orange-100/50' },
-  { email: 'bacsi@goodsmile.vn',    password: 'bacsi123',    role: 'dentist'      as UserRole, label: 'Bác Sĩ',    icon: 'dentistry',           color: 'hover:border-blue-500 hover:bg-blue-50/50 text-blue-700 bg-blue-50/30 border-blue-100 hover:shadow-blue-100/50' },
-  { email: 'thungan@goodsmile.vn',  password: 'thungan123',  role: 'cashier'      as UserRole, label: 'Thu Ngân',  icon: 'payments',            color: 'hover:border-amber-500 hover:bg-amber-50/50 text-amber-700 bg-amber-50/30 border-amber-100 hover:shadow-amber-100/50' },
-  { email: 'admin@goodsmile.vn',    password: 'admin123',    role: 'manager'      as UserRole, label: 'Quản Lý',  icon: 'admin_panel_settings', color: 'hover:border-purple-500 hover:bg-purple-50/50 text-purple-700 bg-purple-50/30 border-purple-100 hover:shadow-purple-100/50' },
-  { email: 'benhnhan@goodsmile.vn', password: 'benhnhan123', role: 'patient'      as UserRole, label: 'Bệnh Nhân', icon: 'person',              color: 'hover:border-green-500 hover:bg-green-50/50 text-green-700 bg-green-50/30 border-green-100 hover:shadow-green-100/50' },
+  { email: 'receptionist@goodsmile.vn', password: '12345678', role: 'receptionist' as UserRole, label: 'Lễ Tân',    icon: 'folder_shared',       color: 'hover:border-orange-500 hover:bg-orange-50/50 text-orange-700 bg-orange-50/30 border-orange-100 hover:shadow-orange-100/50' },
+  { email: 'nguyenhuong@goodsmile.vn',  password: '12345678', role: 'dentist'      as UserRole, label: 'Bác Sĩ',    icon: 'dentistry',           color: 'hover:border-blue-500 hover:bg-blue-50/50 text-blue-700 bg-blue-50/30 border-blue-100 hover:shadow-blue-100/50' },
+  { email: 'cashier@goodsmile.vn',      password: '12345678', role: 'cashier'      as UserRole, label: 'Thu Ngân',  icon: 'payments',            color: 'hover:border-amber-500 hover:bg-amber-50/50 text-amber-700 bg-amber-50/30 border-amber-100 hover:shadow-amber-100/50' },
+  { email: 'manager@goodsmile.vn',      password: '12345678', role: 'manager'      as UserRole, label: 'Quản Lý',  icon: 'admin_panel_settings', color: 'hover:border-purple-500 hover:bg-purple-50/50 text-purple-700 bg-purple-50/30 border-purple-100 hover:shadow-purple-100/50' },
+  { email: 'benhnhan@goodsmile.vn',     password: '12345678', role: 'patient'      as UserRole, label: 'Bệnh Nhân', icon: 'person',              color: 'hover:border-green-500 hover:bg-green-50/50 text-green-700 bg-green-50/30 border-green-100 hover:shadow-green-100/50' },
 ];
 
 export const LoginRegister: React.FC = () => {
-  const { login, loginWithCredentials } = useAuth();
-  const { patients, appointments } = useClinic();
+  const { loginWithCredentials, registerPatient } = useAuth();
   const navigate = useNavigate();
 
   // Tab control
@@ -43,23 +41,6 @@ export const LoginRegister: React.FC = () => {
   const redirectAfterLogin = (role: UserRole) => {
     if (role === 'patient') navigate('/patient');
     else navigate(`/dashboard/${role}`);
-  };
-
-  // Quick direct bypass login
-  const handleQuickLogin = (role: UserRole) => {
-    if (role === 'patient') {
-      const matchedPatient = patients.find(p => p.id === 'P-8821') || patients[0];
-      if (matchedPatient) {
-        const cancelCount = appointments.filter(a => a.patientId === matchedPatient.id && a.status === 'Cancelled').length;
-        const isLocked = (cancelCount >= 3 || matchedPatient.isLocked) && !matchedPatient.isUnlocked;
-        if (isLocked) {
-          alert('Tài khoản số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ quầy tiếp nhận.');
-          return;
-        }
-      }
-    }
-    login(role);
-    redirectAfterLogin(role);
   };
 
   // Auto-fill form from Demo Account Grid
@@ -128,58 +109,11 @@ export const LoginRegister: React.FC = () => {
 
     setIsLoading(true);
 
-    // Network speed simulation delay (600ms)
-    await new Promise((r) => setTimeout(r, 600));
+    // Trễ giả lập tốc độ mạng (300ms)
+    await new Promise((r) => setTimeout(r, 300));
 
     if (isLoginTab) {
-      // Check if patient profile associated with this email/phone is locked
-      let matchedPatient = null;
-      if (email.trim().toLowerCase() === 'benhnhan@goodsmile.vn') {
-        matchedPatient = patients.find(p => p.id === 'P-8821') || patients[0];
-      } else {
-        const savedUsersRaw = localStorage.getItem('goodsmile_registered_users');
-        const registeredUsers = savedUsersRaw ? JSON.parse(savedUsersRaw) : [];
-        const matchedUser = registeredUsers.find(
-          (u: any) => u.email.trim().toLowerCase() === email.trim().toLowerCase()
-        );
-        if (matchedUser) {
-          matchedPatient = patients.find(p => p.phone === matchedUser.phone);
-        }
-      }
-
-      if (matchedPatient) {
-        const cancelCount = appointments.filter(a => a.patientId === matchedPatient!.id && a.status === 'Cancelled').length;
-        const isLocked = (cancelCount >= 3 || matchedPatient.isLocked) && !matchedPatient.isUnlocked;
-        if (isLocked) {
-          setIsLoading(false);
-          setErrorMsg('Tài khoản số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ quầy tiếp nhận.');
-          return;
-        }
-      }
-
-      // 1. Check if the credential matches local storage registered patients
-      const savedUsersRaw = localStorage.getItem('goodsmile_registered_users');
-      const registeredUsers = savedUsersRaw ? JSON.parse(savedUsersRaw) : [];
-      
-      const matchedUser = registeredUsers.find(
-        (u: any) => u.email.trim().toLowerCase() === email.trim().toLowerCase()
-      );
-
-      if (matchedUser) {
-        if (matchedUser.password === password) {
-          setIsLoading(false);
-          login('patient');
-          redirectAfterLogin('patient');
-          return;
-        } else {
-          setIsLoading(false);
-          setErrorMsg('Mật khẩu không đúng. Vui lòng thử lại.');
-          return;
-        }
-      }
-
-      // 2. Fall back to context static credentials (receptionist, dentist, cashier, manager, patient)
-      const result = loginWithCredentials(email, password);
+      const result = await loginWithCredentials(email, password);
       setIsLoading(false);
 
       if (result.success && result.role) {
@@ -188,47 +122,35 @@ export const LoginRegister: React.FC = () => {
         setErrorMsg(result.error || 'Đăng nhập thất bại.');
       }
     } else {
-      // Register logic: Save new user to localStorage
-      const savedUsersRaw = localStorage.getItem('goodsmile_registered_users');
-      const registeredUsers = savedUsersRaw ? JSON.parse(savedUsersRaw) : [];
-
-      const emailExists = registeredUsers.some(
-        (u: any) => u.email.trim().toLowerCase() === regEmail.trim().toLowerCase()
-      ) || ['letan@goodsmile.vn', 'bacsi@goodsmile.vn', 'thungan@goodsmile.vn', 'admin@goodsmile.vn', 'benhnhan@goodsmile.vn'].includes(regEmail.trim().toLowerCase());
-
-      if (emailExists) {
-        setIsLoading(false);
-        setErrorMsg('Email này đã được sử dụng trên hệ thống.');
-        return;
-      }
-
-      const newUser = {
-        name: regName.trim(),
+      // Đăng ký bệnh nhân thông qua REST API của Backend
+      const result = await registerPatient({
+        fullName: regName.trim(),
         phone: regPhone.trim(),
         email: regEmail.trim().toLowerCase(),
         password: regPassword,
-        role: 'patient'
-      };
-
-      registeredUsers.push(newUser);
-      localStorage.setItem('goodsmile_registered_users', JSON.stringify(registeredUsers));
+      });
 
       setIsLoading(false);
-      setSuccessMsg('Đăng ký tài khoản thành công! Bạn đang được chuyển về trang Đăng Nhập...');
-      
-      // Auto-transition to login tab and prefill details
-      setTimeout(() => {
-        setIsLoginTab(true);
-        setEmail(newUser.email);
-        setPassword(newUser.password);
-        setSuccessMsg('');
-        // Clean register form
-        setRegName('');
-        setRegPhone('');
-        setRegEmail('');
-        setRegPassword('');
-        setRegConfirmPassword('');
-      }, 2000);
+
+      if (result.success) {
+        setSuccessMsg('Đăng ký tài khoản thành công! Bạn đang được chuyển về trang Đăng Nhập...');
+        
+        // Chuyển tab và tự động điền form sau 1.5 giây
+        setTimeout(() => {
+          setIsLoginTab(true);
+          setEmail(regEmail.trim().toLowerCase());
+          setPassword(regPassword);
+          setSuccessMsg('');
+          // Reset form đăng ký
+          setRegName('');
+          setRegPhone('');
+          setRegEmail('');
+          setRegPassword('');
+          setRegConfirmPassword('');
+        }, 1500);
+      } else {
+        setErrorMsg(result.error || 'Đăng ký tài khoản thất bại.');
+      }
     }
   };
 
@@ -663,35 +585,10 @@ export const LoginRegister: React.FC = () => {
               * Click chọn thẻ nhân sự ở trên để điền tự động dữ liệu thử nghiệm.
             </p>
 
-            {/* Direct Speed Bypass Login Links */}
-            <div className="flex justify-center flex-wrap items-center gap-x-3 gap-y-1.5 text-[10.5px] text-slate-400 font-black border-t border-slate-100 pt-3">
-              <span className="text-slate-400 font-bold">Đăng nhập nhanh:</span>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('manager')}
-                className="text-purple-600 hover:text-purple-800 transition-colors flex items-center gap-0.5 cursor-pointer"
-              >
-                <Icon name="flash_on" className="text-[13px]" />
-                Quản lý
-              </button>
-              <span className="text-slate-200">|</span>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('dentist')}
-                className="text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-0.5 cursor-pointer"
-              >
-                <Icon name="flash_on" className="text-[13px]" />
-                Bác sĩ
-              </button>
-              <span className="text-slate-200">|</span>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('receptionist')}
-                className="text-orange-600 hover:text-orange-800 transition-colors flex items-center gap-0.5 cursor-pointer"
-              >
-                <Icon name="flash_on" className="text-[13px]" />
-                Lễ tân
-              </button>
+            {/* Hint text về mật khẩu chung demo */}
+            <div className="flex items-center justify-center gap-1.5 text-[9.5px] text-slate-400 border-t border-slate-100 pt-3">
+              <Icon name="info" className="text-[12px] text-slate-300" />
+              <span>Mật khẩu tất cả tài khoản demo: <strong className="text-slate-500">12345678</strong></span>
             </div>
           </div>
 

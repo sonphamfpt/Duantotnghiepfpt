@@ -1,33 +1,94 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { useAuth } from '../../../context/AuthContext';
 
 type Step = 1 | 2 | 3 | 4;
 
-const AVAILABLE_TIMES = [
-  '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM',
-  '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
-  '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM',
-  '04:00 PM', '04:30 PM',
-];
+const API_URL = 'http://localhost:5000/api';
 
-const BOOKED_TIMES = ['09:00 AM', '10:30 AM', '02:00 PM'];
+const mapFrontendToBackendId = (id: string): string => {
+  const numPart = id.split('-')[1];
+  return numPart ? parseInt(numPart, 10).toString() : id;
+};
+
+const formatSlotTime = (isoString: string): string => {
+  const dateObj = new Date(isoString);
+  const hours = dateObj.getHours().toString().padStart(2, '0');
+  const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+const isMorningSlot = (isoString: string): boolean => {
+  const dateObj = new Date(isoString);
+  return dateObj.getHours() < 12;
+};
+
+const formatLocalDateStr = (dateStr: string): string => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
+};
 
 export const PatientBooking: React.FC = () => {
   const { services, dentists, addAppointment } = useClinic();
+  const { user } = useAuth();
 
   const [step, setStep] = useState<Step>(1);
   const [selectedService, setSelectedService] = useState('');
   const [bookedApptId, setBookedApptId] = useState('');
   const [selectedDentist, setSelectedDentist] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState('');
+  const [selectedTime, setSelectedTime] = useState(''); // Lưu chuỗi ISO đầy đủ từ Backend
   const [note, setNote] = useState('');
   const [isBooked, setIsBooked] = useState(false);
 
-  const patientName = 'Trần Nguyễn Minh';
-  const patientPhone = '0901 234 567';
-  const patientId = 'P-8821';
+  // States gọi API
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotsError, setSlotsError] = useState('');
+  const [submittingAppt, setSubmittingAppt] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  const patientName = user?.name || 'Trần Nguyễn Minh';
+  const patientPhone = user?.phone || '0901234567';
+  const patientId = user?.id || '2'; // database ID mặc định của bệnh nhân demo
+
+  // Tự động load danh sách slot khám trống từ API
+  useEffect(() => {
+    const fetchSlots = async () => {
+      if (!selectedDentist || !selectedService || !selectedDate) {
+        setAvailableSlots([]);
+        return;
+      }
+
+      setLoadingSlots(true);
+      setSlotsError('');
+      
+      const dentistDbId = mapFrontendToBackendId(selectedDentist);
+      const serviceDbId = mapFrontendToBackendId(selectedService);
+
+      try {
+        const response = await fetch(
+          `${API_URL}/appointments/dentists/${dentistDbId}/available-slots?date=${selectedDate}&serviceId=${serviceDbId}`
+        );
+        const resData = await response.json();
+        
+        if (response.ok && resData.data) {
+          setAvailableSlots(resData.data);
+        } else {
+          setSlotsError(resData.message || 'Không thể tải danh sách giờ trống.');
+        }
+      } catch (err) {
+        console.error('Lỗi khi lấy slot khám:', err);
+        setSlotsError('Lỗi kết nối máy chủ API.');
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    fetchSlots();
+  }, [selectedDentist, selectedService, selectedDate]);
 
   // Build next 14 days for date picker
   const today = new Date();
@@ -46,20 +107,64 @@ export const PatientBooking: React.FC = () => {
   const serviceSel = services.find(s => s.id === selectedService);
   const dentistSel = dentists.find(d => d.id === selectedDentist);
 
-  const handleConfirm = () => {
-    if (!serviceSel || !dentistSel || !selectedDate || !selectedTime) return;
-    const newAppt = addAppointment({
-      patientId,
-      patientName,
-      patientPhone,
-      serviceName: serviceSel.name,
-      dentistId: dentistSel.id,
-      dentistName: dentistSel.name,
-      time: selectedTime,
-    });
-    setBookedApptId(newAppt.id);
-    setIsBooked(true);
-    setStep(4);
+  const handleConfirm = async () => {
+    if (!serviceSel || !dentistSel || !selectedDate || !selectedTime) {
+      setSubmitError('Vui lòng hoàn thành đầy đủ các bước chọn dịch vụ, bác sĩ, ngày và khung giờ hẹn khám.');
+      return;
+    }
+
+    setSubmittingAppt(true);
+    setSubmitError('');
+
+    const dentistDbId = mapFrontendToBackendId(selectedDentist);
+    const serviceDbId = mapFrontendToBackendId(selectedService);
+
+    try {
+      const response = await fetch(`${API_URL}/appointments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('goodsmile_token') || ''}`,
+        },
+        body: JSON.stringify({
+          patientId: patientId,
+          dentistId: dentistDbId,
+          serviceId: serviceDbId,
+          startTime: selectedTime, // Gửi chuỗi ISO
+          bookingChannel: 'Online',
+          patientNotes: note || undefined,
+        }),
+      });
+
+      const resData = await response.json();
+
+      if (!response.ok) {
+        setSubmitError(resData.message || 'Đặt lịch khám thất bại.');
+        return;
+      }
+
+      const bookedAppt = resData.data;
+
+      // Cập nhật state local in-memory của ClinicContext để hiển thị lập tức trên Dashboard
+      addAppointment({
+        patientId: patientId.startsWith('P-') ? patientId : 'P-' + patientId,
+        patientName,
+        patientPhone,
+        serviceName: serviceSel.name,
+        dentistId: dentistSel.id,
+        dentistName: dentistSel.name,
+        time: `${selectedDate} @ ${formatSlotTime(selectedTime)}`,
+      });
+
+      setBookedApptId(bookedAppt.appointmentId.toString());
+      setIsBooked(true);
+      setStep(4);
+    } catch (err) {
+      console.error('Lỗi khi đặt lịch khám:', err);
+      setSubmitError('Lỗi kết nối máy chủ API.');
+    } finally {
+      setSubmittingAppt(false);
+    }
   };
 
   const handleReset = () => {
@@ -71,6 +176,7 @@ export const PatientBooking: React.FC = () => {
     setNote('');
     setIsBooked(false);
     setBookedApptId('');
+    setSubmitError('');
   };
 
   const steps = [
@@ -246,64 +352,83 @@ export const PatientBooking: React.FC = () => {
           {selectedDate && (
             <div>
               <p className="text-label-md font-bold text-on-surface-variant uppercase tracking-wider mb-3">Chọn giờ</p>
-              <div className="space-y-4">
-                <div>
-                  <p className="text-xs font-bold text-on-surface-variant mb-2 flex items-center gap-1">
-                    <Icon name="light_mode" className="text-[16px]" /> Buổi sáng
-                  </p>
-                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-                    {AVAILABLE_TIMES.filter(t => t.includes('AM')).map((time) => {
-                      const isBooked = BOOKED_TIMES.includes(time);
-                      return (
-                        <button
-                          key={time}
-                          disabled={isBooked}
-                          onClick={() => setSelectedTime(time)}
-                          className={`py-2 px-2 rounded-lg border text-center text-xs font-bold transition-all cursor-pointer ${
-                            isBooked
-                              ? 'bg-surface-container text-outline border-outline-variant line-through cursor-not-allowed opacity-50'
-                              : selectedTime === time
-                              ? 'border-primary bg-primary text-on-primary shadow-md'
-                              : 'border-outline-variant bg-white hover:border-primary/50 text-on-surface'
-                          }`}
-                        >
-                          {time}
-                        </button>
-                      );
-                    })}
-                  </div>
+              
+              {loadingSlots && (
+                <div className="flex items-center gap-2 text-primary py-4">
+                  <Icon name="progress_activity" className="animate-spin text-xl" />
+                  <span className="text-sm font-semibold">Đang tải danh sách khung giờ trống...</span>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-on-surface-variant mb-2 flex items-center gap-1">
-                    <Icon name="wb_twilight" className="text-[16px]" /> Buổi chiều
-                  </p>
-                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-                    {AVAILABLE_TIMES.filter(t => t.includes('PM')).map((time) => {
-                      const isBooked = BOOKED_TIMES.includes(time);
-                      return (
-                        <button
-                          key={time}
-                          disabled={isBooked}
-                          onClick={() => setSelectedTime(time)}
-                          className={`py-2 px-2 rounded-lg border text-center text-xs font-bold transition-all cursor-pointer ${
-                            isBooked
-                              ? 'bg-surface-container text-outline border-outline-variant line-through cursor-not-allowed opacity-50'
-                              : selectedTime === time
-                              ? 'border-primary bg-primary text-on-primary shadow-md'
-                              : 'border-outline-variant bg-white hover:border-primary/50 text-on-surface'
-                          }`}
-                        >
-                          {time}
-                        </button>
-                      );
-                    })}
-                  </div>
+              )}
+
+              {slotsError && (
+                <div className="text-error text-sm py-2">
+                  ⚠️ {slotsError}
                 </div>
-              </div>
-              <p className="text-xs text-on-surface-variant mt-3">
-                <span className="inline-block w-3 h-3 bg-surface-container rounded border border-outline-variant mr-1 align-middle"></span>
-                Đã đặt (không khả dụng)
-              </p>
+              )}
+
+              {!loadingSlots && !slotsError && availableSlots.length === 0 && (
+                <div className="bg-surface-container-low border border-outline-variant rounded-xl p-4 text-center text-on-surface-variant text-sm">
+                  Không có khung giờ khám nào khả dụng hoặc bác sĩ không có ca trực vào ngày này. Vui lòng chọn ngày khác.
+                </div>
+              )}
+
+              {!loadingSlots && !slotsError && availableSlots.length > 0 && (
+                <div className="space-y-4">
+                  {/* Morning Slots */}
+                  {availableSlots.some(isMorningSlot) && (
+                    <div>
+                      <p className="text-xs font-bold text-on-surface-variant mb-2 flex items-center gap-1">
+                        <Icon name="light_mode" className="text-[16px]" /> Buổi sáng
+                      </p>
+                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                        {availableSlots.filter(isMorningSlot).map((slot) => {
+                          const displayTime = formatSlotTime(slot);
+                          return (
+                            <button
+                              key={slot}
+                              onClick={() => setSelectedTime(slot)}
+                              className={`py-2 px-2 rounded-lg border text-center text-xs font-bold transition-all cursor-pointer ${
+                                selectedTime === slot
+                                  ? 'border-primary bg-primary text-on-primary shadow-md'
+                                  : 'border-outline-variant bg-white hover:border-primary/50 text-on-surface'
+                              }`}
+                            >
+                              {displayTime}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Afternoon Slots */}
+                  {availableSlots.some(slot => !isMorningSlot(slot)) && (
+                    <div>
+                      <p className="text-xs font-bold text-on-surface-variant mb-2 flex items-center gap-1">
+                        <Icon name="wb_twilight" className="text-[16px]" /> Buổi chiều
+                      </p>
+                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                        {availableSlots.filter(slot => !isMorningSlot(slot)).map((slot) => {
+                          const displayTime = formatSlotTime(slot);
+                          return (
+                            <button
+                              key={slot}
+                              onClick={() => setSelectedTime(slot)}
+                              className={`py-2 px-2 rounded-lg border text-center text-xs font-bold transition-all cursor-pointer ${
+                                selectedTime === slot
+                                  ? 'border-primary bg-primary text-on-primary shadow-md'
+                                  : 'border-outline-variant bg-white hover:border-primary/50 text-on-surface'
+                              }`}
+                            >
+                              {displayTime}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -390,17 +515,32 @@ export const PatientBooking: React.FC = () => {
             </p>
           </div>
 
+          {submitError && (
+            <div className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-4 flex gap-3 text-sm">
+              <Icon name="error" className="shrink-0 text-red-600" />
+              <div>
+                <p className="font-bold">Lỗi đặt lịch</p>
+                <p>{submitError}</p>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between pt-2">
             <button onClick={() => setStep(3)} className="px-6 py-3 border border-outline text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer flex items-center gap-2">
               <Icon name="arrow_back" />
               Sửa thông tin
             </button>
             <button
+              disabled={submittingAppt}
               onClick={handleConfirm}
-              className="px-8 py-3 bg-secondary text-on-secondary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer shadow-md"
+              className="px-8 py-3 bg-secondary text-on-secondary rounded-xl font-bold disabled:opacity-40 hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer shadow-md"
             >
-              <Icon name="check_circle" />
-              Xác nhận đặt lịch
+              {submittingAppt ? (
+                <Icon name="progress_activity" className="animate-spin text-[18px]" />
+              ) : (
+                <Icon name="check_circle" />
+              )}
+              {submittingAppt ? 'Đang gửi...' : 'Xác nhận đặt lịch'}
             </button>
           </div>
         </div>
@@ -415,7 +555,7 @@ export const PatientBooking: React.FC = () => {
           <div>
             <h3 className="font-headline-sm text-headline-sm text-on-surface">Đặt lịch thành công!</h3>
             <p className="text-sm text-on-surface-variant mt-1 max-w-sm mx-auto">
-              Lịch hẹn của bạn với <strong>{dentistSel?.name}</strong> lúc <strong>{selectedTime}</strong> ({selectedDate}) đã được xác nhận.
+              Lịch hẹn của bạn với <strong>{dentistSel?.name}</strong> lúc <strong>{selectedTime ? formatSlotTime(selectedTime) : ''}</strong> ({formatLocalDateStr(selectedDate)}) đã được xác nhận.
             </p>
           </div>
           
@@ -431,7 +571,7 @@ export const PatientBooking: React.FC = () => {
             <div className="space-y-1.5 text-sm text-on-surface">
               <p className="flex items-center gap-2"><Icon name="dentistry" className="text-[16px] text-primary" /> {serviceSel?.name}</p>
               <p className="flex items-center gap-2"><Icon name="stethoscope" className="text-[16px] text-primary" /> {dentistSel?.name} — {dentistSel?.room}</p>
-              <p className="flex items-center gap-2"><Icon name="event" className="text-[16px] text-primary" /> {selectedDate} lúc {selectedTime}</p>
+              <p className="flex items-center gap-2"><Icon name="event" className="text-[16px] text-primary" /> {formatLocalDateStr(selectedDate)} lúc {selectedTime ? formatSlotTime(selectedTime) : ''}</p>
             </div>
           </div>
           <div className="pt-2">

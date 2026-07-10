@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { useAuth } from '../../../context/AuthContext';
 
 const STATUS_CONFIG = {
   Confirmed: { label: 'Đã xác nhận', color: 'bg-secondary-container text-on-secondary-container border-secondary/20', icon: 'event_available' },
@@ -23,6 +24,7 @@ const INITIAL_UPCOMING_APPOINTMENTS = [
     price: 0,
     notes: 'Mang theo khay niềng cũ và vệ sinh răng trước khi đến',
     isLateCancel: true, // Chỉ còn dưới 1 tiếng
+    rating: 0,
   },
   {
     id: 'MY-02',
@@ -37,6 +39,7 @@ const INITIAL_UPCOMING_APPOINTMENTS = [
     price: 300000,
     notes: '',
     isLateCancel: false,
+    rating: 0,
   },
 ];
 
@@ -50,6 +53,11 @@ const PAST_APPOINTMENTS = [
     status: 'Completed' as const,
     price: 0,
     rating: 5,
+    room: 'Phòng khám',
+    avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=150&h=150&q=80',
+    duration: 30,
+    notes: '',
+    isLateCancel: false,
   },
   {
     id: 'PAST-02',
@@ -60,6 +68,11 @@ const PAST_APPOINTMENTS = [
     status: 'Completed' as const,
     price: 100000,
     rating: 4,
+    room: 'Phòng khám',
+    avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=150&h=150&q=80',
+    duration: 30,
+    notes: '',
+    isLateCancel: false,
   },
   {
     id: 'PAST-03',
@@ -70,6 +83,11 @@ const PAST_APPOINTMENTS = [
     status: 'Completed' as const,
     price: 1750000,
     rating: 5,
+    room: 'Phòng khám',
+    avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=150&h=150&q=80',
+    duration: 45,
+    notes: '',
+    isLateCancel: false,
   },
   {
     id: 'PAST-04',
@@ -80,11 +98,65 @@ const PAST_APPOINTMENTS = [
     status: 'Cancelled' as const,
     price: 0,
     rating: 0,
+    room: 'Phòng khám',
+    avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=150&h=150&q=80',
+    duration: 30,
+    notes: '',
+    isLateCancel: false,
   },
 ];
 
+// Helper to parse backend time format
+const parseAppointmentTime = (timeStr: string) => {
+  let datePart = '';
+  let timePart = '';
+  
+  if (timeStr.includes('@')) {
+    const parts = timeStr.split('@');
+    datePart = parts[0].trim();
+    timePart = parts[1].trim();
+  } else {
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    datePart = `${dd}/${mm}/${yyyy}`;
+    timePart = timeStr.trim();
+  }
+  
+  const [d, m, y] = datePart.split('/').map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+  const dayName = days[dateObj.getDay()];
+  const formattedDate = `${dayName}, ${datePart}`;
+  
+  const [hh, mm] = timePart.split(':').map(Number);
+  const period = hh >= 12 ? 'PM' : 'AM';
+  const displayHour = hh % 12 === 0 ? 12 : hh % 12;
+  const formattedTime = `${String(displayHour).padStart(2, '0')}:${String(mm).padStart(2, '0')} ${period}`;
+  
+  let isLateCancel = false;
+  if (timePart) {
+    const apptDateObj = new Date(y, m - 1, d, hh, mm);
+    const timeDiffMs = apptDateObj.getTime() - Date.now();
+    isLateCancel = timeDiffMs > 0 && timeDiffMs < 60 * 60 * 1000;
+  }
+
+  return {
+    dateLabel: formattedDate,
+    timeLabel: formattedTime,
+    isLateCancel,
+    dayNum: String(d).padStart(2, '0'),
+    monthNum: String(m).padStart(2, '0'),
+    dayName
+  };
+};
+
 export const PatientAppointments: React.FC = () => {
-  const [upcomingAppointments, setUpcomingAppointments] = useState(INITIAL_UPCOMING_APPOINTMENTS);
+  const { appointments, cancelAppointment } = useClinic();
+  const { user } = useAuth();
+  const patientId = user?.id || 'P-8821';
+
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [qrCodeApptId, setQrCodeApptId] = useState<string | null>(null);
@@ -97,14 +169,60 @@ export const PatientAppointments: React.FC = () => {
   const [modalComment, setModalComment] = useState<string>('');
   const [historyFilter, setHistoryFilter] = useState<'All' | 'Completed' | 'Cancelled'>('All');
 
+  // Filter appointments for the current logged-in patient
+  const myAppointments = React.useMemo(() => {
+    return appointments.filter(a => {
+      const aPatientId = a.patientId.replace('P-', '');
+      const currentPatientId = patientId.replace('P-', '');
+      return aPatientId === currentPatientId;
+    });
+  }, [appointments, patientId]);
+
+  // Parse time and add extra UI fields
+  const mappedAppointments = React.useMemo(() => {
+    const dbAppts = myAppointments.map(a => {
+      const parsed = parseAppointmentTime(a.time);
+      return {
+        id: a.id,
+        service: a.serviceName,
+        dentist: a.dentistName,
+        room: 'Phòng khám',
+        avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=150&h=150&q=80',
+        date: parsed.dateLabel,
+        time: parsed.timeLabel,
+        status: a.status,
+        duration: 30,
+        price: a.serviceName.includes('Niềng răng') ? 0 : 300000,
+        notes: '',
+        isLateCancel: parsed.isLateCancel,
+        rating: 5
+      };
+    });
+
+    // Nếu không có lịch sử khám nào trong DB, trả về các lịch sử mẫu để giao diện sinh động
+    if (dbAppts.length === 0) {
+      return [
+        ...INITIAL_UPCOMING_APPOINTMENTS,
+        ...PAST_APPOINTMENTS
+      ];
+    }
+    return dbAppts;
+  }, [myAppointments]);
+
+  const upcomingAppointments = mappedAppointments.filter(
+    a => a.status === 'Confirmed' || a.status === 'In-Progress'
+  );
+
+  const pastAppointments = mappedAppointments.filter(
+    a => a.status === 'Completed' || a.status === 'Cancelled'
+  );
+
   const tabs = [
     { key: 'upcoming' as const, label: 'Sắp tới', count: upcomingAppointments.length },
-    { key: 'past' as const, label: 'Lịch sử', count: PAST_APPOINTMENTS.length },
+    { key: 'past' as const, label: 'Lịch sử', count: pastAppointments.length },
   ];
 
-
-
-  const filteredPastAppointments = PAST_APPOINTMENTS.filter(a => {
+  const filteredPastAppointments = pastAppointments.filter(a => {
     if (historyFilter === 'All') return true;
     return a.status === historyFilter;
   });
@@ -441,7 +559,11 @@ export const PatientAppointments: React.FC = () => {
 
                   <div className="flex flex-col gap-3 pt-2">
                     <button
-                      onClick={() => { alert('Lịch hẹn đã được huỷ thành công!'); setCancelId(null); }}
+                      onClick={() => {
+                        cancelAppointment(cancelId);
+                        alert('Yêu cầu huỷ lịch hẹn khám của bạn đã được gửi thành công!');
+                        setCancelId(null);
+                      }}
                       className="w-full py-3 bg-error text-on-error rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md"
                     >
                       Vâng, Huỷ lịch

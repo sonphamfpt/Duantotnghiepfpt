@@ -80,6 +80,7 @@ export const INITIAL_APPOINTMENTS: Appointment[] = [
   { id: 'A-02', patientId: 'P-4490', patientName: 'Trần Thị B', patientPhone: '0987 654 321', serviceName: 'Tẩy trắng răng thẩm mỹ', dentistId: 'D-02', dentistName: 'Bác sĩ Hoàng Nam', time: '09:30 AM', status: 'In-Progress' },
   { id: 'A-03', patientId: 'P-3129', patientName: 'Lê Quang C', patientPhone: '0976 543 210', serviceName: 'Nhổ răng khôn thường', dentistId: 'D-01', dentistName: 'Bác sĩ Lê Minh', time: '10:15 AM', status: 'Confirmed' },
   { id: 'A-04', patientId: 'P-7721', patientName: 'Phạm Thu D', patientPhone: '0909 999 888', serviceName: 'Khám tổng quát & Tư vấn', dentistId: 'D-03', dentistName: 'Bác sĩ Mai Lan', time: '11:00 AM', status: 'Confirmed' },
+  { id: 'A-05', patientId: 'P-8821', patientName: 'Trần Nguyễn Minh', patientPhone: '0901 234 567', serviceName: 'Khám tổng quát & Tư vấn', dentistId: 'D-04', dentistName: 'Bác sĩ Nguyễn Hương', time: '11:00 AM', status: 'Confirmed' },
 
   // ── Lịch hẹn ngày mai 29/06 — Bác sĩ Nguyễn Hương (TEST FLOW ĐỔI CA) ──
   {

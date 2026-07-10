@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
 import { ToothState } from '../../../types/clinic';
@@ -123,9 +123,13 @@ function parseEMRNotes(notes: string | undefined, recordId: string): ParsedNotes
 }
 
 export const PatientRecords: React.FC = () => {
-  const { patients, medicalRecords } = useClinic();
+  const { patients, medicalRecords, fetchPatientRecords } = useClinic();
   const { user } = useAuth();
   const patientId = user?.id || 'P-8821';
+
+  useEffect(() => {
+    fetchPatientRecords(patientId);
+  }, [patientId]);
 
   const currentPatient = patients.find(p => p.id === patientId) || {
     id: patientId,

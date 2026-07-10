@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { Icon } from '../../components/Icon';
-import { DOCTOR_PROFILES } from '../../services/doctorProfiles';
 import { BookingModal } from '../../components/BookingModal';
 
 // Map to professional display titles & bios for the card view
@@ -37,8 +36,7 @@ export const DoctorDetail: React.FC = () => {
 
   // Find the base dentist record in state
   const dentist = dentists.find(d => d.id === id);
-  // Find the rich profile details
-  const profile = id ? DOCTOR_PROFILES[id] : null;
+  const profile = dentist;
 
   // Get other doctors (excluding the current one)
   const otherDoctors = dentists.filter(d => d.id !== id);
@@ -161,7 +159,7 @@ export const DoctorDetail: React.FC = () => {
                     Thế mạnh điều trị chuyên sâu
                   </h3>
                   <div className="flex flex-wrap gap-2">
-                    {profile.clinicalStrengths.map((strength, i) => (
+                    {profile.clinicalStrengths?.map((strength, i) => (
                       <span key={i} className="text-sm bg-[#f1f5f9] text-[#334155] px-4 py-2 border border-[#e2e8f0] font-medium">
                         {strength}
                       </span>
@@ -180,7 +178,7 @@ export const DoctorDetail: React.FC = () => {
                     Quá trình đào tạo & Bằng cấp
                   </h2>
                   <ul className="space-y-4">
-                    {profile.education.map((edu, i) => (
+                    {profile.education?.map((edu, i) => (
                       <li key={i} className="flex gap-3 items-start">
                         <div className="bg-[#eff6ff] text-[#1d4ed8] p-1.5 rounded shrink-0">
                           <Icon name="school" className="text-[18px]" />
@@ -200,7 +198,7 @@ export const DoctorDetail: React.FC = () => {
                     Lịch sử công tác
                   </h2>
                   <div className="relative border-l border-slate-200 ml-4 pl-6 space-y-6 py-2">
-                    {profile.workHistory.map((work, i) => {
+                    {profile.workHistory?.map((work, i) => {
                       const [time, desc] = work.split(': ');
                       return (
                         <div key={i} className="relative">
@@ -221,7 +219,7 @@ export const DoctorDetail: React.FC = () => {
                     Chứng chỉ & Hiệp hội thành viên
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {profile.certifications.map((cert, i) => (
+                    {profile.certifications?.map((cert, i) => (
                       <div key={i} className="flex gap-2 items-center bg-[#f8fafc] border border-[#e2e8f0] p-3">
                         <Icon name="verified" className="text-[#15803d]" />
                         <span className="text-sm font-bold text-[#334155]">{cert}</span>
@@ -261,11 +259,10 @@ export const DoctorDetail: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {otherDoctors.map(doc => {
-              const otherProfile = DOCTOR_PROFILES[doc.id];
               const displayInfo = CARD_DISPLAY_DATA[doc.id] || {
-                displayTitle: 'Bác sĩ nha khoa',
+                displayTitle: doc.degree || 'Bác sĩ nha khoa',
                 displayName: doc.name,
-                shortBio: doc.role
+                shortBio: doc.specialty || doc.role
               };
 
               return (
@@ -292,7 +289,7 @@ export const DoctorDetail: React.FC = () => {
                       {displayInfo.displayName}
                     </h3>
                     <p className="text-xs text-[#64748b] font-semibold mt-1 truncate w-full">
-                      {otherProfile?.specialty || doc.role}
+                      {doc.specialty || doc.role}
                     </p>
                     <p className="text-[11px] text-[#94a3b8] font-medium mt-2 line-clamp-2 w-full text-center leading-relaxed">
                       {displayInfo.shortBio}

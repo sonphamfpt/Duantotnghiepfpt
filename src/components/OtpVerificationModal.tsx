@@ -4,7 +4,7 @@ import { Icon } from './Icon';
 interface OtpVerificationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onVerified: () => void;
+  onVerified: (otpToken: string) => void;
   phoneNumber: string;
 }
 
@@ -20,7 +20,6 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
   const LOCKOUT_SECONDS = 120;
 
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
-  const [generatedOtp, setGeneratedOtp] = useState('');
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [attempts, setAttempts] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
@@ -31,20 +30,17 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Generate random 6-digit OTP
-  const generateOtp = useCallback(() => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(code);
+  // Reset fields on open
+  const resetOtpState = useCallback(() => {
     setCountdown(COUNTDOWN_SECONDS);
     setError('');
     setOtp(Array(OTP_LENGTH).fill(''));
-    return code;
   }, []);
 
   // Init OTP on open
   useEffect(() => {
     if (isOpen) {
-      generateOtp();
+      resetOtpState();
       setAttempts(0);
       setIsLocked(false);
       setLockoutCountdown(0);
@@ -53,7 +49,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
       // Focus first input after a tick
       setTimeout(() => inputRefs.current[0]?.focus(), 100);
     }
-  }, [isOpen, generateOtp]);
+  }, [isOpen, resetOtpState]);
 
   // Countdown for resend
   useEffect(() => {
@@ -71,14 +67,14 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
           setIsLocked(false);
           setAttempts(0);
           setError('');
-          generateOtp();
+          resetOtpState();
           return 0;
         }
         return p - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isLocked, lockoutCountdown, generateOtp]);
+  }, [isLocked, lockoutCountdown, resetOtpState]);
 
   if (!isOpen) return null;
 
@@ -147,38 +143,73 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
     }
   };
 
-  const verifyOtp = (code: string) => {
-    if (code === generatedOtp) {
-      setIsVerified(true);
-      setError('');
-      // Short delay for success animation then callback
-      setTimeout(() => {
-        onVerified();
-      }, 800);
-    } else {
-      const newAttempts = attempts + 1;
-      setAttempts(newAttempts);
-      setShake(true);
-      setTimeout(() => setShake(false), 600);
+  const verifyOtp = async (code: string) => {
+    setError('');
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/verify-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone: phoneNumber.trim(), code: code.trim() }),
+      });
+      const resData = await response.json();
 
-      if (newAttempts >= MAX_ATTEMPTS) {
-        setIsLocked(true);
-        setLockoutCountdown(LOCKOUT_SECONDS);
-        setError(`Đã nhập sai ${MAX_ATTEMPTS} lần. Vui lòng đợi ${LOCKOUT_SECONDS} giây để thử lại.`);
-      } else {
-        setError(`Mã OTP không đúng. Còn ${MAX_ATTEMPTS - newAttempts} lượt thử.`);
+      if (!response.ok) {
+        const newAttempts = attempts + 1;
+        setAttempts(newAttempts);
+        setShake(true);
+        setTimeout(() => setShake(false), 600);
+
+        if (newAttempts >= MAX_ATTEMPTS) {
+          setIsLocked(true);
+          setLockoutCountdown(LOCKOUT_SECONDS);
+          setError(`Đã nhập sai ${MAX_ATTEMPTS} lần. Vui lòng đợi ${LOCKOUT_SECONDS} giây để thử lại.`);
+        } else {
+          setError(resData.message || `Mã OTP không đúng. Còn ${MAX_ATTEMPTS - newAttempts} lượt thử.`);
+        }
+
+        // Clear inputs
+        setOtp(Array(OTP_LENGTH).fill(''));
+        setTimeout(() => inputRefs.current[0]?.focus(), 100);
+        return;
       }
 
-      // Clear inputs
-      setOtp(Array(OTP_LENGTH).fill(''));
-      setTimeout(() => inputRefs.current[0]?.focus(), 100);
+      // Success
+      setIsVerified(true);
+      setError('');
+      setTimeout(() => {
+        onVerified(resData.data.otpToken);
+      }, 800);
+    } catch (err) {
+      console.error('Lỗi khi xác thực OTP:', err);
+      setError('Lỗi kết nối máy chủ khi xác thực OTP.');
     }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (countdown > 0 || isLocked) return;
-    generateOtp();
-    setTimeout(() => inputRefs.current[0]?.focus(), 100);
+    setError('');
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/send-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone: phoneNumber.trim() }),
+      });
+      const resData = await response.json();
+      if (!response.ok) {
+        setError(resData.message || 'Không thể gửi mã OTP mới.');
+        return;
+      }
+      setCountdown(COUNTDOWN_SECONDS);
+      setOtp(Array(OTP_LENGTH).fill(''));
+      setTimeout(() => inputRefs.current[0]?.focus(), 100);
+    } catch (err) {
+      console.error('Lỗi khi gửi lại OTP:', err);
+      setError('Lỗi kết nối máy chủ khi gửi lại OTP.');
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -186,6 +217,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -214,12 +246,8 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
                 <Icon name="sms" className="text-amber-700 text-[18px]" />
                 <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">Tin nhắn mô phỏng (Demo)</span>
               </div>
-              <p className="text-sm text-amber-900 leading-relaxed">
-                GoodSmile: Mã xác thực đặt lịch của bạn là{' '}
-                <span className="font-black text-lg text-amber-950 bg-amber-200/60 px-2 py-0.5 rounded-lg tracking-[0.3em] inline-block mt-0.5">
-                  {generatedOtp}
-                </span>
-                {' '}. Có hiệu lực 60 giây.
+              <p className="text-xs text-amber-900 leading-relaxed font-semibold">
+                Vì đây là phiên bản thử nghiệm, hệ thống đã in mã OTP ra dòng lệnh <strong className="text-amber-950">(Console Log)</strong> của máy chủ Backend. Bạn hãy xem trong Terminal chạy backend để lấy mã nhập nhé!
               </p>
             </div>
           </div>

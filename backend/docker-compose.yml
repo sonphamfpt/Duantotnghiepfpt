@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  goodsmile-db:
+    image: postgres:16-alpine
+    container_name: goodsmile-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: goodsmile_clinic
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  goodsmile-cache:
+    image: redis:7-alpine
+    container_name: goodsmile-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  goodsmile-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goodsmile-app
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+      DATABASE_URL: postgresql://postgres:postgres@goodsmile-db:5432/goodsmile_clinic?schema=public
+      REDIS_URL: redis://goodsmile-cache:6379
+      JWT_SECRET: supersecretjwtkey123!
+    depends_on:
+      - goodsmile-db
+      - goodsmile-cache
+
+volumes:
+  postgres_data:
+  redis_data:

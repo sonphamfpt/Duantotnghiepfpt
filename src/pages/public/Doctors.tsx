@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
-import { DOCTOR_PROFILES } from '../../services/doctorProfiles';
 import { Icon } from '../../components/Icon';
 import { BookingModal } from '../../components/BookingModal';
 
@@ -38,11 +37,10 @@ export const Doctors: React.FC = () => {
 
   // Merge context data
   const enrichedDentists = dentists.map(d => {
-    const staticProfile = DOCTOR_PROFILES[d.id];
     const displayData = CARD_DISPLAY_DATA[d.id] || {
-      displayTitle: 'Bác sĩ nha khoa',
+      displayTitle: d.degree || 'Bác sĩ nha khoa',
       displayName: d.name,
-      shortBio: d.role
+      shortBio: d.specialty || d.role
     };
 
     return {
@@ -50,18 +48,18 @@ export const Doctors: React.FC = () => {
       displayTitle: displayData.displayTitle,
       displayName: displayData.displayName,
       shortBio: displayData.shortBio,
-      profile: staticProfile || {
-        specialty: d.role,
-        degree: 'Bác sĩ',
-        education: [],
-        experience: 5,
-        cases: '1,000+',
-        clinicalStrengths: [],
-        certifications: [],
+      profile: {
+        specialty: d.specialty || 'Bác sĩ Răng Hàm Mặt',
+        degree: d.degree || 'Bác sĩ',
+        education: d.education || [],
+        experience: d.experience || 5,
+        cases: d.cases || '500+ ca',
+        clinicalStrengths: d.clinicalStrengths || [],
+        certifications: d.certifications || [],
         universityLogo: 'school',
-        bio: '',
-        motto: '',
-        workHistory: []
+        bio: d.bio || '',
+        motto: d.motto || '',
+        workHistory: d.workHistory || []
       }
     };
   });

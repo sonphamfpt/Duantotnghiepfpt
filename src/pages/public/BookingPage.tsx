@@ -41,9 +41,48 @@ export const BookingPage: React.FC = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdAppointment, setCreatedAppointment] = useState<any>(null);
 
-  // OTP state
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotsError, setSlotsError] = useState('');
+  const [selectedTimeIso, setSelectedTimeIso] = useState('');
+
+  const formatSlotToTimeString = (isoString: string): string => {
+    if (!isoString) return '';
+    const dateObj = new Date(isoString);
+    const hours = dateObj.getHours().toString().padStart(2, '0');
+    const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [antiSpamError, setAntiSpamError] = useState('');
+  const [sendingOtp, setSendingOtp] = useState(false);
+
+  // ─── Validation errors per-field ───────────────────────────────────────────
+  const [nameError, setNameError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [serviceError, setServiceError] = useState('');
+  const [dentistError, setDentistError] = useState('');
+  const [timeError, setTimeError] = useState('');
+
+  const PHONE_VN_REGEX = /^(0[3|5|7|8|9])[0-9]{8}$/;
+
+  const validatePhone = (phone: string): string => {
+    const clean = phone.replace(/\s|-/g, '');
+    if (!clean) return 'Vui lòng nhập số điện thoại.';
+    if (!/^[0-9]+$/.test(clean)) return 'Số điện thoại chỉ được chứa các chữ số (0-9).';
+    if (clean.length !== 10) return 'Số điện thoại phải đủ 10 chữ số.';
+    if (!PHONE_VN_REGEX.test(clean)) return 'Số điện thoại không hợp lệ. Phải bắt đầu bằng 03x, 05x, 07x, 08x, hoặc 09x.';
+    return '';
+  };
+
+  const validateName = (name: string): string => {
+    const trimmed = name.trim();
+    if (!trimmed) return 'Vui lòng nhập họ và tên.';
+    if (trimmed.length < 3) return 'Họ và tên phải có ít nhất 3 ký tự.';
+    if (/[0-9!@#$%^&*()_+\-=\[\]{};\':"|,.<>\/?\\]/.test(trimmed)) return 'Họ và tên không được chứa ký tự đặc biệt hoặc chữ số.';
+    return '';
+  };
 
   // Anti-spam: Rate limit
   const checkRateLimit = (phone: string): boolean => {
@@ -73,65 +112,222 @@ export const BookingPage: React.FC = () => {
     return true;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const fetchAvailableSlots = async () => {
+      if (!selectedDentistId || !selectedServiceId || !date) {
+        setAvailableSlots([]);
+        setSelectedTimeIso('');
+        return;
+      }
+
+      setLoadingSlots(true);
+      setSlotsError('');
+
+      const dentistDbId = mapFrontendToBackendId(selectedDentistId);
+      const serviceDbId = mapFrontendToBackendId(selectedServiceId);
+
+      try {
+        const response = await fetch(
+          `http://localhost:5000/api/appointments/dentists/${dentistDbId}/available-slots?date=${date}&serviceId=${serviceDbId}`
+        );
+        const resData = await response.json();
+
+        if (response.ok && resData.data) {
+          setAvailableSlots(resData.data);
+          if (resData.data.length > 0) {
+            setSelectedTimeIso(resData.data[0]);
+          } else {
+            setSelectedTimeIso('');
+          }
+        } else {
+          setSlotsError(resData.message || 'Không thể tải danh sách giờ trống.');
+          setAvailableSlots([]);
+          setSelectedTimeIso('');
+        }
+      } catch (err) {
+        console.error('Lỗi khi lấy slot khám:', err);
+        setSlotsError('Lỗi kết nối máy chủ API.');
+        setAvailableSlots([]);
+        setSelectedTimeIso('');
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    fetchAvailableSlots();
+  }, [selectedDentistId, selectedServiceId, date]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAntiSpamError('');
 
-    if (!patientName || !patientPhone || !selectedServiceId || !selectedDentistId) {
-      alert('Vui lòng điền đầy đủ các trường thông tin bắt buộc (*)!');
-      return;
-    }
+    const isGuest = !(role === 'patient' && user?.id);
+
+    // ─── Per-field validation ───────────────────────────────────────────────
+    const nErr = isGuest ? validateName(patientName) : '';
+    const pErr = isGuest ? validatePhone(patientPhone) : '';
+    const sErr = !selectedServiceId ? 'Vui lòng chọn dịch vụ điều trị.' : '';
+    const dErr = !selectedDentistId ? 'Vui lòng chọn bác sĩ thăm khám.' : '';
+    const tErr = !selectedTimeIso ? 'Vui lòng chọn khung giờ hẹn khám.' : '';
+
+    setNameError(nErr);
+    setPhoneError(pErr);
+    setServiceError(sErr);
+    setDentistError(dErr);
+    setTimeError(tErr);
+
+    if (nErr || pErr || sErr || dErr || tErr) return;
 
     // Check if phone number is locked
-    const matchedPatient = patients.find(p => p.phone === patientPhone.trim());
-    if (matchedPatient) {
-      const cancelCount = appointments.filter(a => a.patientId === matchedPatient.id && a.status === 'Cancelled').length;
-      const isLocked = (cancelCount >= 3 || matchedPatient.isLocked) && !matchedPatient.isUnlocked;
-      if (isLocked) {
-        setAntiSpamError('Số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ phòng khám để biết thêm chi tiết.');
-        return;
+    const checkPhone = isGuest ? patientPhone : (user?.phone || '');
+    if (checkPhone) {
+      const matchedPatient = patients.find(p => p.phone === checkPhone.trim().replace(/\s|-/g, ''));
+      if (matchedPatient) {
+        const cancelCount = appointments.filter(a => a.patientId === matchedPatient.id && a.status === 'Cancelled').length;
+        const isLocked = (cancelCount >= 3 || matchedPatient.isLocked) && !matchedPatient.isUnlocked;
+        if (isLocked) {
+          setAntiSpamError('Số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ phòng khám để biết thêm chi tiết.');
+          return;
+        }
       }
     }
 
     // Anti-spam checks
-    if (!checkRateLimit(patientPhone)) return;
-    if (!checkDuplicate(patientPhone, date, timeSlot)) return;
+    if (!checkRateLimit(checkPhone)) return;
+    const formattedTime = formatSlotToTimeString(selectedTimeIso);
+    if (!checkDuplicate(checkPhone, date, formattedTime)) return;
 
-    // Show OTP modal
-    setShowOtpModal(true);
+    // Gọi API gửi OTP thực tế cho tất cả đặt lịch trực tuyến
+    setSendingOtp(true);
+    try {
+      const res = await fetch('http://localhost:5000/api/auth/send-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone: checkPhone.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAntiSpamError(data.message || 'Không thể gửi mã OTP xác thực.');
+        return;
+      }
+      setShowOtpModal(true);
+    } catch (err) {
+      setAntiSpamError('Không thể kết nối đến máy chủ API để gửi OTP.');
+    } finally {
+      setSendingOtp(false);
+    }
   };
 
-  const createAppointment = () => {
+  const [submitting, setSubmitting] = useState(false);
+  const [apiError, setApiError] = useState('');
+
+  const mapFrontendToBackendId = (id: string): string => {
+    const numPart = id.split('-')[1];
+    return numPart ? parseInt(numPart, 10).toString() : id;
+  };
+
+  const constructUtcIsoString = (dateStr: string, timeSlotStr: string): string => {
+    const [time, ampm] = timeSlotStr.split(' ');
+    let [hours, minutes] = time.split(':').map(Number);
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+    
+    // Construct Date object in local timezone
+    const dateObj = new Date(`${dateStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
+    return dateObj.toISOString();
+  };
+
+  const formatLocalDateStr = (dateStr: string): string => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
+  };
+
+  const createAppointment = async (otpToken?: string) => {
     const service = services.find(s => s.id === selectedServiceId);
     const dentist = dentists.find(d => d.id === selectedDentistId);
     if (!service || !dentist) return;
 
-    const newAppt = addAppointment({
-      patientId: `P-${Math.floor(1000 + Math.random() * 9000)}`,
-      patientName,
-      patientPhone,
-      serviceName: service.name,
-      dentistId: dentist.id,
-      dentistName: dentist.name,
-      time: `${date} @ ${timeSlot}`
-    });
+    setSubmitting(true);
+    setApiError('');
 
-    addLog('SYSTEM', 'SUCCESS', `OTP xác thực thành công cho SĐT ${patientPhone}. Lịch hẹn ${newAppt.id} đã được tạo.`);
+    const dentistDbId = mapFrontendToBackendId(selectedDentistId);
+    const serviceDbId = mapFrontendToBackendId(selectedServiceId);
+    const startTimeIso = selectedTimeIso;
 
-    setCreatedAppointment(newAppt);
-    setIsSuccess(true);
+    try {
+      const payload: any = {
+        dentistId: dentistDbId,
+        serviceId: serviceDbId,
+        startTime: startTimeIso,
+        bookingChannel: 'Online',
+        patientNotes: notes || undefined,
+      };
+
+      if (role === 'patient' && user?.id) {
+        payload.patientId = mapFrontendToBackendId(user.id);
+      } else {
+        payload.patientName = patientName.trim();
+        payload.patientPhone = patientPhone.trim();
+      }
+
+      // Gắn x-otp-token header nếu là khách vãng lai
+      const headers: any = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('goodsmile_token') || ''}`,
+      };
+      if (otpToken) {
+        headers['x-otp-token'] = otpToken;
+      }
+
+      const response = await fetch('http://localhost:5000/api/appointments', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      const resData = await response.json();
+
+      if (!response.ok) {
+        setApiError(resData.message || 'Đặt lịch hẹn thất bại.');
+        alert(resData.message || 'Đặt lịch hẹn thất bại.');
+        return;
+      }
+
+      const bookedApp = resData.data;
+
+      const localApp = addAppointment({
+        patientId: role === 'patient' && user?.id ? user.id : `P-${Math.floor(1000 + Math.random() * 9000)}`,
+        patientName: role === 'patient' && user?.id ? user.name : patientName,
+        patientPhone: role === 'patient' && user?.id ? (user.phone || '') : patientPhone,
+        serviceName: service.name,
+        dentistId: dentist.id,
+        dentistName: dentist.name,
+        time: `${formatLocalDateStr(date)} @ ${selectedTimeIso ? formatSlotToTimeString(selectedTimeIso) : ''}`,
+      });
+
+      localApp.id = bookedApp.appointmentId.toString();
+
+      addLog('SYSTEM', 'SUCCESS', `Khách vãng lai đặt lịch thành công qua OTP cho SĐT ${patientPhone}. Lịch hẹn ${bookedApp.appointmentId} đã được tạo.`);
+
+      setCreatedAppointment(localApp);
+      setIsSuccess(true);
+    } catch (err) {
+      console.error('Lỗi khi lưu lịch hẹn:', err);
+      setApiError('Lỗi kết nối máy chủ API.');
+      alert('Không thể kết nối đến máy chủ API.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleOtpVerified = () => {
+  const handleOtpVerified = (otpToken: string) => {
     setShowOtpModal(false);
-    createAppointment();
+    createAppointment(otpToken);
   };
 
-  const timeSlots = [
-    '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM',
-    '10:15 AM', '11:00 AM', '02:00 PM', '02:30 PM',
-    '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM'
-  ];
 
   return (
     <div className="bg-[#f8fafc] min-h-screen font-body-md pb-20">
@@ -191,6 +387,15 @@ export const BookingPage: React.FC = () => {
                 <span className="text-[#64748b] font-medium">Thời gian hẹn:</span>
                 <span className="text-[#005eb8] font-bold">{createdAppointment.time}</span>
               </div>
+            </div>
+
+            {/* QR Code Check-in Box */}
+            <div className="mb-6 p-4 border-2 border-dashed border-[#005eb8]/40 bg-blue-50/30 rounded-xl inline-block">
+              <p className="text-xs font-bold text-[#005eb8] mb-2 uppercase">Mã QR Check-in của bạn</p>
+              <div className="bg-white p-2 rounded-lg shadow-sm w-fit mx-auto border border-slate-200">
+                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${createdAppointment.id}`} alt="QR Code" className="w-32 h-32" />
+              </div>
+              <p className="text-[10px] text-slate-500 mt-2 font-medium">Lưu lại mã QR này hoặc chụp màn hình đưa cho lễ tân khi đến khám</p>
             </div>
 
             <p className="text-xs text-slate-500 mb-8 leading-relaxed">
@@ -293,10 +498,14 @@ export const BookingPage: React.FC = () => {
                         type="text"
                         required
                         value={patientName}
-                        onChange={(e) => setPatientName(e.target.value)}
+                        onChange={(e) => { setPatientName(e.target.value); setNameError(''); }}
+                        onBlur={(e) => setNameError(validateName(e.target.value))}
                         placeholder="Ví dụ: Nguyễn Văn A"
-                        className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all"
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
+                          nameError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                        }`}
                       />
+                      {nameError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{nameError}</p>}
                     </div>
 
                     {/* Patient Phone */}
@@ -308,10 +517,15 @@ export const BookingPage: React.FC = () => {
                         type="tel"
                         required
                         value={patientPhone}
-                        onChange={(e) => { setPatientPhone(e.target.value); setAntiSpamError(''); }}
-                        placeholder="Ví dụ: 0912 345 678"
-                        className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all"
+                        onChange={(e) => { setPatientPhone(e.target.value); setPhoneError(''); setAntiSpamError(''); }}
+                        onBlur={(e) => setPhoneError(validatePhone(e.target.value))}
+                        placeholder="Ví dụ: 0912345678"
+                        maxLength={11}
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
+                          phoneError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                        }`}
                       />
+                      {phoneError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{phoneError}</p>}
                     </div>
                   </div>
 
@@ -324,16 +538,19 @@ export const BookingPage: React.FC = () => {
                       <select
                         required
                         value={selectedServiceId}
-                        onChange={(e) => setSelectedServiceId(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all"
+                        onChange={(e) => { setSelectedServiceId(e.target.value); setServiceError(''); }}
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
+                          serviceError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                        }`}
                       >
                         <option value="">-- Chọn dịch vụ --</option>
                         {services.filter(s => s.isActive).map(s => (
                           <option key={s.id} value={s.id}>
-                            {s.name} (₫{s.price.toLocaleString()})
+                            {s.name} — {s.durationMin} phút (₫{s.price.toLocaleString()})
                           </option>
                         ))}
                       </select>
+                      {serviceError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{serviceError}</p>}
                     </div>
 
                     {/* Select Dentist */}
@@ -344,8 +561,10 @@ export const BookingPage: React.FC = () => {
                       <select
                         required
                         value={selectedDentistId}
-                        onChange={(e) => setSelectedDentistId(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all"
+                        onChange={(e) => { setSelectedDentistId(e.target.value); setDentistError(''); }}
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
+                          dentistError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                        }`}
                       >
                         <option value="">-- Chọn bác sĩ phụ trách --</option>
                         {dentists.map(d => (
@@ -354,6 +573,7 @@ export const BookingPage: React.FC = () => {
                           </option>
                         ))}
                       </select>
+                      {dentistError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{dentistError}</p>}
                     </div>
                   </div>
 
@@ -381,14 +601,27 @@ export const BookingPage: React.FC = () => {
                       </label>
                       <select
                         required
-                        value={timeSlot}
-                        onChange={(e) => { setTimeSlot(e.target.value); setAntiSpamError(''); }}
-                        className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all"
+                        value={selectedTimeIso}
+                        onChange={(e) => { setSelectedTimeIso(e.target.value); setAntiSpamError(''); setTimeError(''); }}
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
+                          timeError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                        }`}
+                        disabled={loadingSlots || availableSlots.length === 0}
                       >
-                        {timeSlots.map(slot => (
-                          <option key={slot} value={slot}>{slot}</option>
-                        ))}
+                        {loadingSlots ? (
+                          <option value="">Đang tải các giờ trống...</option>
+                        ) : availableSlots.length === 0 ? (
+                          <option value="">-- Không có ca trực hoặc hết giờ trống --</option>
+                        ) : (
+                          availableSlots.map(slotIso => (
+                            <option key={slotIso} value={slotIso}>
+                              {formatSlotToTimeString(slotIso)}
+                            </option>
+                          ))
+                        )}
                       </select>
+                      {timeError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{timeError}</p>}
+                      {slotsError && !timeError && <p className="text-orange-500 text-xs mt-1 flex items-center gap-1"><span>ℹ</span>{slotsError}</p>}
                     </div>
                   </div>
 
@@ -449,7 +682,7 @@ export const BookingPage: React.FC = () => {
         isOpen={showOtpModal}
         onClose={() => setShowOtpModal(false)}
         onVerified={handleOtpVerified}
-        phoneNumber={patientPhone}
+        phoneNumber={patientPhone || user?.phone || ''}
       />
     </div>
   );
