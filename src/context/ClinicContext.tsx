@@ -50,7 +50,7 @@ interface ClinicContextType {
   addService: (service: Omit<Service, 'id' | 'isActive'>) => void;
   updateServicePrice: (serviceId: string, newPrice: number) => void;
   toggleServiceActive: (serviceId: string) => void;
-  addPatient: (patient: Omit<Patient, 'id' | 'points' | 'tier' | 'balance'>) => Patient;
+  addPatient: (patient: Omit<Patient, 'id' | 'points' | 'tier' | 'balance' | 'age'> & { dateOfBirth?: string }) => Promise<Patient>;
   rechargeWallet: (patientId: string, amount: number) => void;
   updatePatientDetails: (patientId: string, details: Partial<Pick<Patient, 'criticalAllergy' | 'condition' | 'name' | 'phone' | 'age' | 'gender'>>) => void;
   unlockPatient: (patientId: string) => void;
@@ -130,6 +130,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     socket.on('invoice:paid', handleClinicEvent);
     socket.on('shift:swap_requested', handleClinicEvent);
     socket.on('appointment:created', handleClinicEvent);
+    socket.on('appointment:cancelled', handleClinicEvent);
 
     // Polling fallback mỗi 30 giây (phòng ngừa khi WebSocket mất kết nối)
     const interval = setInterval(refreshAllData, 30000);
@@ -142,6 +143,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       socket.off('invoice:paid', handleClinicEvent);
       socket.off('shift:swap_requested', handleClinicEvent);
       socket.off('appointment:created', handleClinicEvent);
+      socket.off('appointment:cancelled', handleClinicEvent);
       socket.disconnect();
       clearInterval(interval);
     };
@@ -173,30 +175,15 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setLogs((prevLogs) => [newLog, ...prevLogs].slice(0, 100)); // cap at 100 logs
   };
 
-  const addPatient = (newPatientData: Omit<Patient, 'id' | 'points' | 'tier' | 'balance'>) => {
-    const tempId = `P-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newPatient: Patient = {
-      ...newPatientData,
-      id: tempId,
-      balance: 0,
-      tier: 'Standard',
-      points: 0
-    };
-    setPatients((prev) => [...prev, newPatient]);
+  const addPatient = async (newPatientData: Omit<Patient, 'id' | 'points' | 'tier' | 'balance' | 'age'> & { dateOfBirth?: string }) => {
+    const response = await clinicApi.createPatient(newPatientData);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || 'Không thể tạo hồ sơ bệnh nhân.');
+    }
 
-    (async () => {
-      try {
-        const response = await authApi.register(newPatientData.name, newPatientData.phone, 'password123');
-        if (response.success) {
-          addLog('RECEPTION', 'SUCCESS', `Bệnh nhân mới đăng ký thành công.`);
-          await refreshAllData();
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    })();
-
-    return newPatient;
+    addLog('RECEPTION', 'SUCCESS', 'Tạo hồ sơ bệnh nhân mới thành công.');
+    await refreshAllData();
+    return response.data;
   };
 
   const rechargeWallet = async (patientId: string, amount: number) => {

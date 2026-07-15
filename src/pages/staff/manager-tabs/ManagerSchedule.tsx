@@ -5,9 +5,9 @@ import { useClinic } from '../../../context/ClinicContext';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const SHIFT_CONFIG = {
-  Morning:   { label: 'Ca sáng',  time: '08:00 – 12:00', color: 'bg-sky-50 border-sky-200 text-sky-800',       dot: 'bg-sky-400',     dotRing: 'ring-sky-200' },
-  Afternoon: { label: 'Ca chiều', time: '14:00 – 17:00', color: 'bg-emerald-50 border-emerald-200 text-emerald-800', dot: 'bg-emerald-400', dotRing: 'ring-emerald-200' },
-  Full:      { label: 'Cả ngày',  time: '08:00 – 17:00', color: 'bg-amber-50 border-amber-200 text-amber-800',  dot: 'bg-amber-400',   dotRing: 'ring-amber-200' },
+  Morning:   { label: 'Ca sáng',  time: '08:00 – 14:00', color: 'bg-sky-50 border-sky-200 text-sky-800',       dot: 'bg-sky-400',     dotRing: 'ring-sky-200' },
+  Afternoon: { label: 'Ca chiều', time: '14:00 – 20:00', color: 'bg-emerald-50 border-emerald-200 text-emerald-800', dot: 'bg-emerald-400', dotRing: 'ring-emerald-200' },
+  Full:      { label: 'Cả ngày',  time: '08:00 – 20:00', color: 'bg-amber-50 border-amber-200 text-amber-800',  dot: 'bg-amber-400',   dotRing: 'ring-amber-200' },
 };
 
 const DENTIST_ACCENT: Record<string, string> = {

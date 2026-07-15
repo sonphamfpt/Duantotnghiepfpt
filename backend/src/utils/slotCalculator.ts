@@ -9,6 +9,16 @@ export interface OccupiedBlock {
 }
 
 const pad = (num: number): string => num.toString().padStart(2, '0');
+const VIETNAM_TIMEZONE_OFFSET = '+07:00';
+
+const buildVietnamDateTime = (dateStr: string, hours: number, minutes: number): Date => {
+  return new Date(`${dateStr}T${pad(hours)}:${pad(minutes)}:00.000${VIETNAM_TIMEZONE_OFFSET}`);
+};
+
+const getVietnamDateStr = (date: Date): string => {
+  const vietnamDate = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+  return vietnamDate.toISOString().split('T')[0];
+};
 
 /**
  * Tính toán các khoảng slot trống khả dụng cho cuộc hẹn
@@ -30,14 +40,14 @@ export function calculateAvailableSlots(
   dateStr: string,
   stepMinutes: number = 15
 ): string[] {
-  // 1. Chuyển đổi giờ bắt đầu/kết thúc ca trực sang ngày đích ở dạng UTC
+  // 1. Chuyển đổi giờ bắt đầu/kết thúc ca trực theo giờ Việt Nam sang UTC ISO
   const shiftStartHrs = shift.startTime.getUTCHours();
   const shiftStartMins = shift.startTime.getUTCMinutes();
   const shiftEndHrs = shift.endTime.getUTCHours();
   const shiftEndMins = shift.endTime.getUTCMinutes();
 
-  const shiftStart = new Date(`${dateStr}T${pad(shiftStartHrs)}:${pad(shiftStartMins)}:00.000Z`);
-  const shiftEnd = new Date(`${dateStr}T${pad(shiftEndHrs)}:${pad(shiftEndMins)}:00.000Z`);
+  const shiftStart = buildVietnamDateTime(dateStr, shiftStartHrs, shiftStartMins);
+  const shiftEnd = buildVietnamDateTime(dateStr, shiftEndHrs, shiftEndMins);
 
   const shiftStartMs = shiftStart.getTime();
   const shiftEndMs = shiftEnd.getTime();
@@ -52,8 +62,8 @@ export function calculateAvailableSlots(
     const lunchEndHrs = lunchBreak.endTime.getUTCHours();
     const lunchEndMins = lunchBreak.endTime.getUTCMinutes();
 
-    const lunchStart = new Date(`${dateStr}T${pad(lunchStartHrs)}:${pad(lunchStartMins)}:00.000Z`);
-    const lunchEnd = new Date(`${dateStr}T${pad(lunchEndHrs)}:${pad(lunchEndMins)}:00.000Z`);
+    const lunchStart = buildVietnamDateTime(dateStr, lunchStartHrs, lunchStartMins);
+    const lunchEnd = buildVietnamDateTime(dateStr, lunchEndHrs, lunchEndMins);
 
     occupied.push({
       start: lunchStart.getTime(),
@@ -91,6 +101,8 @@ export function calculateAvailableSlots(
   const slots: string[] = [];
   const stepMs = stepMinutes * 60 * 1000;
   const serviceNeededMs = (serviceDurationMinutes + bufferMinutes) * 60 * 1000;
+  const nowMs = Date.now();
+  const isToday = dateStr === getVietnamDateStr(new Date());
 
   let currentSlotStart = shiftStartMs;
 
@@ -109,7 +121,7 @@ export function calculateAvailableSlots(
     }
 
     // Nếu không chồng chéo, đây là một mốc giờ khả dụng hợp lệ
-    if (!isOverlap) {
+    if (!isOverlap && (!isToday || currentSlotStart > nowMs)) {
       slots.push(new Date(currentSlotStart).toISOString());
     }
 

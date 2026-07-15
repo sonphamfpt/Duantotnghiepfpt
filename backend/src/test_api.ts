@@ -1,4 +1,5 @@
 import { log } from 'console';
+import { redis } from './config/redis';
 
 const BASE_URL = 'http://localhost:5000/api';
 
@@ -30,6 +31,36 @@ async function runTests() {
   const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
 
   log(`ℹ️  Ngày hôm nay: ${todayStr} | Ngày mai: ${tomorrowStr}`);
+
+  // Helper to obtain OTP token automatically from local Redis
+  async function getOtpToken(phone: string): Promise<string> {
+    const sendRes = await fetch(`${BASE_URL}/auth/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    });
+    if (!sendRes.ok) {
+      const sendData = await sendRes.json();
+      throw new Error(`Send OTP failed: ${JSON.stringify(sendData)}`);
+    }
+
+    const code = await redis.get(`otp:${phone}`);
+    if (!code) {
+      throw new Error(`OTP not found in Redis for phone ${phone}`);
+    }
+
+    const verifyRes = await fetch(`${BASE_URL}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, code }),
+    });
+    const verifyData: any = await verifyRes.json();
+    if (!verifyRes.ok || !verifyData.data?.otpToken) {
+      throw new Error(`Verify OTP failed: ${JSON.stringify(verifyData)}`);
+    }
+
+    return verifyData.data.otpToken;
+  }
 
   // 1. TEST SUITE: AUTHENTICATION
   log('\n🔑 1. KIỂM THỬ XÁC THỰC (AUTH)...');
@@ -79,6 +110,7 @@ async function runTests() {
   let registeredToken = '';
   let registeredPatientId = '';
   try {
+    const otpToken = await getOtpToken(testPhone);
     const res = await fetch(`${BASE_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -86,6 +118,7 @@ async function runTests() {
         fullName: 'Bệnh Nhân Test QC Tự Động',
         phone: testPhone,
         password: 'password123',
+        otpToken,
       }),
     });
     const data: any = await res.json();
@@ -129,10 +162,16 @@ async function runTests() {
   // TC-04: Đặt lịch khám vãng lai (Guest Booking)
   const guestPhone = `09${Math.floor(10000000 + Math.random() * 90000000)}`;
   try {
+    const otpToken = await getOtpToken(guestPhone);
     const res = await fetch(`${BASE_URL}/appointments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-otp-token': otpToken
+      },
       body: JSON.stringify({
+        fullName: 'Khách vãng lai QC',
+        phone: guestPhone,
         patientName: 'Khách vãng lai QC',
         patientPhone: guestPhone,
         dentistId: 'D-01',
@@ -152,14 +191,19 @@ async function runTests() {
     reportResult('TC-04: Đặt lịch khám vãng lai thành công', false, err.message);
   }
 
-  // TC-07: Đặt lịch trùng (Chống chồng lịch - Overlap Protection)
+  // TC-07: Chặn đặt trùng lịch thành công (Overlap Protection)
   try {
+    const overlapPhone = `09${Math.floor(10000000 + Math.random() * 90000000)}`;
+    const otpToken = await getOtpToken(overlapPhone);
     const res = await fetch(`${BASE_URL}/appointments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-otp-token': otpToken
+      },
       body: JSON.stringify({
         patientName: 'Khách vãng lai QC trùng',
-        patientPhone: `09${Math.floor(10000000 + Math.random() * 90000000)}`,
+        patientPhone: overlapPhone,
         dentistId: 'D-01',
         serviceId: 'S-02',
         startTime: sampleSlot,
@@ -167,7 +211,7 @@ async function runTests() {
       }),
     });
     const data: any = await res.json();
-    if (res.status === 409 && data.error && data.error.code === 'APPOINTMENT_OVERLAP') {
+    if (res.status === 409 && data.error && (data.error.code === 'APPOINTMENT_OVERLAP' || data.error.code === 'SLOT_NOT_AVAILABLE')) {
       reportResult('TC-07: Chặn đặt trùng lịch thành công (Overlap Rejection)', true);
     } else {
       reportResult('TC-07: Chặn đặt trùng lịch thành công', false, `Status: ${res.status}, Code: ${data.error ? data.error.code : 'undefined'}, Msg: ${data.error ? data.error.message : 'undefined'}`);
@@ -189,11 +233,13 @@ async function runTests() {
 
   if (anotherSlot && registeredToken && registeredPatientId) {
     try {
+      const otpToken = await getOtpToken(testPhone);
       const res = await fetch(`${BASE_URL}/appointments`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${registeredToken}`
+          'Authorization': `Bearer ${registeredToken}`,
+          'x-otp-token': otpToken
         },
         body: JSON.stringify({
           patientId: registeredPatientId.toString(),
@@ -348,8 +394,18 @@ async function runTests() {
   log('\n🔑 6. KIỂM THỬ LIÊN KẾT BỆNH ÁN CŨ KHI TẠO TÀI KHOẢN (PATIENT LINKAGE)...');
   const linkagePhone = `09${Math.floor(10000000 + Math.random() * 90000000)}`;
   try {
+    // Truy vấn slot trống thực tế của D-02 để đảm bảo ca trực khả dụng
+    let linkageSlot = '';
+    const slotsRes = await fetch(`${BASE_URL}/appointments/dentists/D-02/available-slots?date=${tomorrowStr}&serviceId=S-01`);
+    const slotsData: any = await slotsRes.json();
+    if (slotsRes.ok && Array.isArray(slotsData.data) && slotsData.data.length > 0) {
+      linkageSlot = slotsData.data[0];
+    }
+    if (!linkageSlot) {
+      throw new Error('Không tìm thấy slot trống khả dụng cho D-02 ngày mai.');
+    }
+
     // Bước A: Tạo lịch hẹn và tự động tạo bệnh nhân vãng lai mới (dùng bác sĩ D-02 tránh trùng slot)
-    const linkageSlot = sampleSlot.replace(/T\d{2}:\d{2}/, 'T15:00');
     const bookingRes = await fetch(`${BASE_URL}/appointments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -385,7 +441,8 @@ async function runTests() {
         reportResult('TC-14: Bệnh nhân tạo tài khoản mới thấy được bệnh án khám vãng lai cũ thành công', false, `Medical record creation failed: ${JSON.stringify(mrData)}`);
       } else {
 
-      // Bước C: Đăng ký tài khoản mới bằng số điện thoại đó
+      // Bước C: Đăng ký tài khoản mới bằng số điện thoại đó (yêu cầu OTP)
+      const regOtpToken = await getOtpToken(linkagePhone);
       const regRes = await fetch(`${BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -393,6 +450,7 @@ async function runTests() {
           fullName: 'Bệnh Nhân Vãng Lai Cũ',
           phone: linkagePhone,
           password: 'Password123',
+          otpToken: regOtpToken,
         }),
       });
       const regData: any = await regRes.json();
@@ -425,6 +483,7 @@ async function runTests() {
   log('\n========================================================');
   log(`📊 TỔNG KẾT: THÀNH CÔNG: ${successCount} | THẤT BẠI: ${failCount}`);
   log('========================================================');
+  await redis.quit();
 }
 
 runTests();

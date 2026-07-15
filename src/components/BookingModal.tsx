@@ -3,6 +3,7 @@ import { useClinic } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
 import { Icon } from './Icon';
 import { OtpVerificationModal } from './OtpVerificationModal';
+import { appointmentApi, BookingChannel } from '../services/api';
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -19,7 +20,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   defaultPatientPhone = '',
   defaultDentistName = ''
 }) => {
-  const { services, dentists, patients, appointments, addAppointment, addLog } = useClinic();
+  const { services, dentists, patients, appointments, addLog, refreshAllData } = useClinic();
   const { role, user } = useAuth();
   
   const [patientName, setPatientName] = useState(defaultPatientName);
@@ -40,6 +41,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   tomorrow.setDate(tomorrow.getDate() + 1);
   const [date, setDate] = useState(tomorrow.toISOString().split('T')[0]);
   const [timeSlot, setTimeSlot] = useState('');
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotsError, setSlotsError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [staffBookingChannel, setStaffBookingChannel] = useState<Extract<BookingChannel, 'Phone' | 'WalkIn'>>('WalkIn');
+  const [slotRefreshTick, setSlotRefreshTick] = useState(0);
+
+  const formatDateInputValue = (value: Date): string => {
+    const year = value.getFullYear();
+    const month = (value.getMonth() + 1).toString().padStart(2, '0');
+    const day = value.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   // OTP state
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -63,6 +77,61 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       }
     }
   }, [role, user, patients, defaultPatientName]);
+
+  useEffect(() => {
+    if (!defaultDentistName || selectedDentistId) return;
+    const dentist = dentists.find(d => d.name === defaultDentistName);
+    if (dentist) {
+      setSelectedDentistId(dentist.id);
+    }
+  }, [defaultDentistName, dentists, selectedDentistId]);
+
+  const formatSlotToTimeString = (isoString: string): string => {
+    if (!isoString) return '';
+    const dateObj = new Date(isoString);
+    const hours = dateObj.getHours().toString().padStart(2, '0');
+    const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  useEffect(() => {
+    const fetchAvailableSlots = async () => {
+      if (!selectedDentistId || !selectedServiceId || !date) {
+        setAvailableSlots([]);
+        setTimeSlot('');
+        return;
+      }
+
+      setLoadingSlots(true);
+      setSlotsError('');
+
+      try {
+        const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
+        const slots = response.data || [];
+        setAvailableSlots(slots);
+        setTimeSlot((prev) => slots.includes(prev) ? prev : '');
+      } catch (err: any) {
+        console.error('Lỗi khi tải khung giờ trống:', err);
+        setSlotsError(err.message || 'Không thể tải danh sách giờ trống.');
+        setAvailableSlots([]);
+        setTimeSlot('');
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    void fetchAvailableSlots();
+  }, [date, selectedDentistId, selectedServiceId, slotRefreshTick]);
+
+  useEffect(() => {
+    if (!selectedDentistId || !selectedServiceId || date !== formatDateInputValue(new Date())) return;
+
+    const timer = window.setInterval(() => {
+      setSlotRefreshTick((prev) => prev + 1);
+    }, 60000);
+
+    return () => window.clearInterval(timer);
+  }, [date, selectedDentistId, selectedServiceId]);
 
   if (!isOpen) return null;
 
@@ -97,7 +166,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return true;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAntiSpamError('');
 
@@ -121,111 +190,82 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (!checkRateLimit(patientPhone)) return;
     if (!checkDuplicate(patientPhone, date, timeSlot)) return;
 
+    setSubmitting(true);
+    try {
+      const latestSlots = await appointmentApi.ensureSlotAvailable(selectedDentistId, date, selectedServiceId, timeSlot);
+      setAvailableSlots(latestSlots);
+      setTimeSlot((prev) => latestSlots.includes(prev) ? prev : '');
+    } catch (err: any) {
+      setAntiSpamError(err.message || 'Khung giờ đã chọn không còn khả dụng. Vui lòng chọn lại.');
+      setSlotRefreshTick((prev) => prev + 1);
+      setSubmitting(false);
+      return;
+    }
+
     if (isStaffBooking) {
       // Lễ tân/quản lý: tạo ngay, không cần OTP
-      createAppointment();
+      await createAppointment();
     } else {
       // Bệnh nhân: cần OTP
+      setSubmitting(false);
       setShowOtpModal(true);
     }
   };
 
-  const createAppointment = () => {
+  const createAppointment = async (otpToken?: string) => {
     const service = services.find(s => s.id === selectedServiceId);
     const dentist = dentists.find(d => d.id === selectedDentistId);
     if (!service || !dentist) return;
 
-    addAppointment({
-      patientId: existingPatient ? existingPatient.id : `P-${Math.floor(1000 + Math.random() * 9000)}`,
-      patientName,
-      patientPhone,
-      serviceName: service.name,
-      dentistId: dentist.id,
-      dentistName: dentist.name,
-      time: `${date} @ ${timeSlot}`
-    });
-
-    if (!isStaffBooking) {
-      addLog('SYSTEM', 'SUCCESS', `OTP xác thực thành công cho SĐT ${patientPhone}. Lịch hẹn đã được tạo.`);
-    }
-
-    alert('Đăng ký lịch hẹn thành công!');
-    
-    // Reset form
-    setPatientName('');
-    setPatientPhone('');
-    setSelectedServiceId('');
-    setSelectedDentistId('');
-    setTimeSlot('');
+    setSubmitting(true);
     setAntiSpamError('');
-    onClose();
+
+    try {
+      await appointmentApi.createAppointment({
+        patientId: existingPatient?.id,
+        patientName: existingPatient ? undefined : patientName.trim(),
+        patientPhone: existingPatient ? undefined : patientPhone.trim(),
+        dentistId: dentist.id,
+        serviceId: service.id,
+        startTime: timeSlot,
+        bookingChannel: isStaffBooking ? staffBookingChannel : 'Online',
+        otpToken,
+      });
+
+      addLog(
+        isStaffBooking ? 'RECEPTION' : 'SYSTEM',
+        'SUCCESS',
+        isStaffBooking
+          ? `Lễ tân tạo lịch hẹn qua kênh ${staffBookingChannel === 'Phone' ? 'điện thoại' : 'trực tiếp'} cho SĐT ${patientPhone}.`
+          : `OTP xác thực thành công cho SĐT ${patientPhone}. Lịch hẹn đã được tạo.`
+      );
+
+      await refreshAllData();
+      alert('Đăng ký lịch hẹn thành công!');
+      
+      // Reset form
+      setPatientName('');
+      setPatientPhone('');
+      setSelectedServiceId('');
+      setSelectedDentistId('');
+      setTimeSlot('');
+      setAntiSpamError('');
+      onClose();
+    } catch (err: any) {
+      console.error('Lỗi khi tạo lịch hẹn:', err);
+      setAntiSpamError(err.message || 'Không thể tạo lịch hẹn. Vui lòng thử lại.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleOtpVerified = () => {
+  const handleOtpVerified = (otpToken: string) => {
     setShowOtpModal(false);
-    createAppointment();
-  };
-
-  const timeSlots = [
-    '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM',
-    '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
-    '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM',
-    '04:00 PM', '04:30 PM'
-  ];
-
-  // Convert time slot string to minutes since midnight
-  const slotToMinutes = (slot: string): number => {
-    const [time, period] = slot.split(' ');
-    let [h, m] = time.split(':').map(Number);
-    if (period === 'PM' && h !== 12) h += 12;
-    if (period === 'AM' && h === 12) h = 0;
-    return h * 60 + m;
+    void createAppointment(otpToken);
   };
 
   // Get blocked time ranges for the selected dentist on selected date
   const selectedService = services.find(s => s.id === selectedServiceId);
-  const selectedDuration = selectedService?.durationMin || 30;
-
-  const getBlockedSlots = (): Set<string> => {
-    if (!selectedDentistId || !date) return new Set();
-    const blocked = new Set<string>();
-
-    // Find all existing appointments for this dentist on this date
-    const dentistAppts = appointments.filter(a => {
-      if (a.status === 'Cancelled' || a.status === 'Completed') return false;
-      if (a.dentistId !== selectedDentistId) return false;
-      // Parse date from time string like "2026-07-02 @ 09:00 AM"
-      const parts = a.time.split(' @ ');
-      return parts[0] === date;
-    });
-
-    dentistAppts.forEach(appt => {
-      const parts = appt.time.split(' @ ');
-      const apptSlot = parts[1];
-      if (!apptSlot) return;
-
-      // Look up the duration of this appointment's service
-      const apptService = services.find(s => s.name === appt.serviceName);
-      const apptDuration = apptService?.durationMin || 30;
-
-      const apptStart = slotToMinutes(apptSlot);
-      const apptEnd = apptStart + apptDuration;
-
-      // Block all slots that would overlap with this appointment
-      timeSlots.forEach(slot => {
-        const slotStart = slotToMinutes(slot);
-        const slotEnd = slotStart + selectedDuration;
-        // Two intervals overlap if one starts before the other ends
-        if (slotStart < apptEnd && slotEnd > apptStart) {
-          blocked.add(slot);
-        }
-      });
-    });
-
-    return blocked;
-  };
-
-  const blockedSlots = getBlockedSlots();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -252,6 +292,34 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <h4 className="font-bold text-on-surface flex items-center gap-2 border-b border-outline-variant pb-2">
                   <Icon name="person" className="text-primary" /> Thông tin bệnh nhân
                 </h4>
+
+                {isStaffBooking && (
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
+                      Hình thức tiếp nhận *
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { value: 'WalkIn' as const, label: 'Trực tiếp', icon: 'person' },
+                        { value: 'Phone' as const, label: 'Điện thoại', icon: 'call' },
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setStaffBookingChannel(option.value)}
+                          className={`px-3 py-2.5 rounded-xl border text-sm font-bold flex items-center justify-center gap-2 transition-all ${
+                            staffBookingChannel === option.value
+                              ? 'bg-primary text-on-primary border-primary shadow-sm'
+                              : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
+                          }`}
+                        >
+                          <Icon name={option.icon} className="text-[18px]" />
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
                 <div>
                   <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
@@ -356,39 +424,45 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <p className="text-xs text-on-surface-variant italic py-4 text-center bg-slate-50 rounded-xl border border-dashed border-outline-variant">
                     Vui lòng chọn bác sĩ và ngày khám trước
                   </p>
+                ) : loadingSlots ? (
+                  <div className="flex items-center justify-center gap-2 text-primary py-4 text-sm font-semibold">
+                    <Icon name="progress_activity" className="animate-spin text-xl" />
+                    Đang tải khung giờ trống...
+                  </div>
+                ) : slotsError ? (
+                  <div className="text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm font-medium">
+                    {slotsError}
+                  </div>
+                ) : availableSlots.length === 0 ? (
+                  <p className="text-xs text-on-surface-variant italic py-4 text-center bg-slate-50 rounded-xl border border-dashed border-outline-variant">
+                    Không có khung giờ khả dụng. Vui lòng chọn bác sĩ, dịch vụ hoặc ngày khác.
+                  </p>
                 ) : (
                   <>
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {timeSlots.map(slot => {
-                        const isBlocked = blockedSlots.has(slot);
+                      {availableSlots.map(slot => {
                         const isSelected = timeSlot === slot;
                         return (
                           <button
                             key={slot}
                             type="button"
-                            disabled={isBlocked}
-                            onClick={() => { if (!isBlocked) { setTimeSlot(slot); setAntiSpamError(''); } }}
+                            onClick={() => { setTimeSlot(slot); setAntiSpamError(''); }}
                             className={`py-2 px-1 text-xs font-bold rounded-lg border transition-all ${
-                              isBlocked
-                                ? 'bg-red-50 text-red-300 border-red-200 cursor-not-allowed line-through opacity-60'
-                                : isSelected
+                              isSelected
                                   ? 'bg-secondary text-on-secondary border-secondary shadow-md scale-105 cursor-pointer'
                                   : 'bg-white text-on-surface border-outline-variant hover:border-secondary/50 hover:bg-secondary/5 cursor-pointer'
                             }`}
-                            title={isBlocked ? 'Khung giờ này đã có lịch hẹn' : slot}
+                            title={formatSlotToTimeString(slot)}
                           >
-                            {slot}
-                            {isBlocked && <Icon name="block" className="text-[10px] ml-0.5" />}
+                            {formatSlotToTimeString(slot)}
                           </button>
                         );
                       })}
                     </div>
-                    {blockedSlots.size > 0 && (
-                      <p className="text-[10px] text-red-500 mt-2 flex items-center gap-1">
+                    <p className="text-[10px] text-on-surface-variant mt-2 flex items-center gap-1">
                         <Icon name="info" className="text-[12px]" />
-                        Các khung giờ gạch ngang đã có bệnh nhân khác đặt lịch với bác sĩ này.
+                        Danh sách giờ được tính từ ca trực, dịch vụ và lịch đã có trong backend.
                       </p>
-                    )}
                   </>
                 )}
               </div>
@@ -458,10 +532,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={submitting}
               className="px-8 py-2.5 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
             >
-              <Icon name="event_available" />
-              {isStaffBooking ? 'Đăng Ký Hẹn' : 'Xác Nhận & Gửi OTP'}
+              {submitting ? <Icon name="progress_activity" className="animate-spin" /> : <Icon name="event_available" />}
+              {submitting ? 'Đang xử lý...' : isStaffBooking ? 'Đăng Ký Hẹn' : 'Xác Nhận & Gửi OTP'}
             </button>
           </div>
         </form>
@@ -473,6 +548,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         onClose={() => setShowOtpModal(false)}
         onVerified={handleOtpVerified}
         phoneNumber={patientPhone}
+        dentistId={selectedDentistId}
+        startTime={timeSlot}
+        serviceId={selectedServiceId}
       />
     </div>
   );

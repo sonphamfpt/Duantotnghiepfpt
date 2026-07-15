@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
+import { OtpVerificationModal } from '../../../components/OtpVerificationModal';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
+import { appointmentApi } from '../../../services/api';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -31,7 +33,7 @@ const formatLocalDateStr = (dateStr: string): string => {
 };
 
 export const PatientBooking: React.FC = () => {
-  const { services, dentists, addAppointment } = useClinic();
+  const { services, dentists, addLog, refreshAllData } = useClinic();
   const { user } = useAuth();
 
   const [step, setStep] = useState<Step>(1);
@@ -49,6 +51,15 @@ export const PatientBooking: React.FC = () => {
   const [slotsError, setSlotsError] = useState('');
   const [submittingAppt, setSubmittingAppt] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [slotRefreshTick, setSlotRefreshTick] = useState(0);
+
+  const formatDateInputValue = (value: Date): string => {
+    const year = value.getFullYear();
+    const month = (value.getMonth() + 1).toString().padStart(2, '0');
+    const day = value.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   const patientName = user?.name || 'Trần Nguyễn Minh';
   const patientPhone = user?.phone || '0901234567';
@@ -59,6 +70,7 @@ export const PatientBooking: React.FC = () => {
     const fetchSlots = async () => {
       if (!selectedDentist || !selectedService || !selectedDate) {
         setAvailableSlots([]);
+        setSelectedTime('');
         return;
       }
 
@@ -75,20 +87,36 @@ export const PatientBooking: React.FC = () => {
         const resData = await response.json();
         
         if (response.ok && resData.data) {
-          setAvailableSlots(resData.data);
+          const slots = resData.data as string[];
+          setAvailableSlots(slots);
+          setSelectedTime((prev) => slots.includes(prev) ? prev : '');
         } else {
-          setSlotsError(resData.message || 'Không thể tải danh sách giờ trống.');
+          setSlotsError(resData.message || resData.error?.message || 'Không thể tải danh sách giờ trống.');
+          setAvailableSlots([]);
+          setSelectedTime('');
         }
       } catch (err) {
         console.error('Lỗi khi lấy slot khám:', err);
         setSlotsError('Lỗi kết nối máy chủ API.');
+        setAvailableSlots([]);
+        setSelectedTime('');
       } finally {
         setLoadingSlots(false);
       }
     };
 
     fetchSlots();
-  }, [selectedDentist, selectedService, selectedDate]);
+  }, [selectedDentist, selectedService, selectedDate, slotRefreshTick]);
+
+  useEffect(() => {
+    if (!selectedDentist || !selectedService || selectedDate !== formatDateInputValue(new Date())) return;
+
+    const timer = window.setInterval(() => {
+      setSlotRefreshTick((prev) => prev + 1);
+    }, 60000);
+
+    return () => window.clearInterval(timer);
+  }, [selectedDate, selectedDentist, selectedService]);
 
   // Build next 14 days for date picker
   const today = new Date();
@@ -107,7 +135,7 @@ export const PatientBooking: React.FC = () => {
   const serviceSel = services.find(s => s.id === selectedService);
   const dentistSel = dentists.find(d => d.id === selectedDentist);
 
-  const handleConfirm = async () => {
+  const createAppointment = async (otpToken: string) => {
     if (!serviceSel || !dentistSel || !selectedDate || !selectedTime) {
       setSubmitError('Vui lòng hoàn thành đầy đủ các bước chọn dịch vụ, bác sĩ, ngày và khung giờ hẹn khám.');
       return;
@@ -116,55 +144,57 @@ export const PatientBooking: React.FC = () => {
     setSubmittingAppt(true);
     setSubmitError('');
 
-    const dentistDbId = mapFrontendToBackendId(selectedDentist);
-    const serviceDbId = mapFrontendToBackendId(selectedService);
-
     try {
-      const response = await fetch(`${API_URL}/appointments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('goodsmile_token') || ''}`,
-        },
-        body: JSON.stringify({
-          patientId: patientId,
-          dentistId: dentistDbId,
-          serviceId: serviceDbId,
-          startTime: selectedTime, // Gửi chuỗi ISO
-          bookingChannel: 'Online',
-          patientNotes: note || undefined,
-        }),
+      const response = await appointmentApi.createAppointment({
+        patientId,
+        dentistId: selectedDentist,
+        serviceId: selectedService,
+        startTime: selectedTime,
+        bookingChannel: 'Online',
+        patientNotes: note || undefined,
+        otpToken,
       });
 
-      const resData = await response.json();
-
-      if (!response.ok) {
-        setSubmitError(resData.message || 'Đặt lịch khám thất bại.');
-        return;
-      }
-
-      const bookedAppt = resData.data;
-
-      // Cập nhật state local in-memory của ClinicContext để hiển thị lập tức trên Dashboard
-      addAppointment({
-        patientId: patientId.startsWith('P-') ? patientId : 'P-' + patientId,
-        patientName,
-        patientPhone,
-        serviceName: serviceSel.name,
-        dentistId: dentistSel.id,
-        dentistName: dentistSel.name,
-        time: `${selectedDate} @ ${formatSlotTime(selectedTime)}`,
-      });
+      const bookedAppt = response.data;
 
       setBookedApptId(bookedAppt.appointmentId.toString());
+      addLog('SYSTEM', 'SUCCESS', `Bệnh nhân ${patientName} đặt lịch trực tuyến thành công.`);
+      await refreshAllData();
       setIsBooked(true);
       setStep(4);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Lỗi khi đặt lịch khám:', err);
-      setSubmitError('Lỗi kết nối máy chủ API.');
+      setSubmitError(err.message || 'Lỗi kết nối máy chủ API.');
     } finally {
       setSubmittingAppt(false);
     }
+  };
+
+  const handleConfirm = async () => {
+    if (!serviceSel || !dentistSel || !selectedDate || !selectedTime) {
+      setSubmitError('Vui lòng hoàn thành đầy đủ các bước chọn dịch vụ, bác sĩ, ngày và khung giờ hẹn khám.');
+      return;
+    }
+
+    setSubmitError('');
+    setSubmittingAppt(true);
+
+    try {
+      const latestSlots = await appointmentApi.ensureSlotAvailable(selectedDentist, selectedDate, selectedService, selectedTime);
+      setAvailableSlots(latestSlots);
+      setSelectedTime((prev) => latestSlots.includes(prev) ? prev : '');
+      setShowOtpModal(true);
+    } catch (err: any) {
+      setSubmitError(err.message || 'Khung giờ đã chọn không còn khả dụng. Vui lòng chọn lại.');
+      setSlotRefreshTick((prev) => prev + 1);
+    } finally {
+      setSubmittingAppt(false);
+    }
+  };
+
+  const handleOtpVerified = (otpToken: string) => {
+    setShowOtpModal(false);
+    void createAppointment(otpToken);
   };
 
   const handleReset = () => {
@@ -585,6 +615,16 @@ export const PatientBooking: React.FC = () => {
           </div>
         </div>
       )}
+
+      <OtpVerificationModal
+        isOpen={showOtpModal}
+        onClose={() => setShowOtpModal(false)}
+        onVerified={handleOtpVerified}
+          phoneNumber={patientPhone}
+          dentistId={selectedDentist}
+          startTime={selectedTime}
+          serviceId={selectedService}
+      />
     </div>
   );
 };

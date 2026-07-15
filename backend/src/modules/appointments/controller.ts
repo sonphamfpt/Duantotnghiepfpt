@@ -3,6 +3,7 @@ import { appointmentsService } from './service';
 import { serializeBigInt } from '../../utils/serialize';
 import { AppError } from '../../middlewares/errorHandler';
 import { prisma } from '../../config/prisma';
+import { normalizeOtpPhone } from '../auth/otp';
 
 const parseId = (id: any): bigint => {
   if (typeof id === 'string') {
@@ -66,10 +67,13 @@ export class AppointmentsController {
           const decoded = jwt.verify(otpToken, env.JWT_SECRET) as { phone: string; verified: boolean };
           
           // Kiểm tra xem số điện thoại trong token có khớp với số điện thoại đặt lịch hay không
-          if (decoded.phone.trim() !== phoneToCheck.trim()) {
+          if (normalizeOtpPhone(decoded.phone) !== normalizeOtpPhone(phoneToCheck)) {
             throw new AppError(400, 'Số điện thoại xác thực OTP không khớp với thông tin đặt lịch.', 'INVALID_OTP_TOKEN');
           }
         } catch (err) {
+          if (err instanceof AppError) {
+            throw err;
+          }
           throw new AppError(400, 'Mã xác thực OTP không hợp lệ hoặc đã hết hạn. Vui lòng lấy mã mới.', 'INVALID_OTP_TOKEN');
         }
       }
@@ -103,7 +107,15 @@ export class AppointmentsController {
       const { cancelReason } = req.body;
       
       const cancelledApp = await appointmentsService.cancelAppointment(id, cancelReason);
-      
+
+      // Phát sự kiện qua Socket.io để tải lại slot & danh sách lịch hẹn ở các phía
+      try {
+        const { socketManager } = require('../../config/socket');
+        socketManager.emit('appointment:cancelled', serializeBigInt(cancelledApp));
+      } catch (err) {
+        console.error('Lỗi phát sự kiện socket khi hủy lịch hẹn:', err);
+      }
+
       return res.status(200).json({
         message: 'Hủy lịch hẹn thành công!',
         data: serializeBigInt(cancelledApp),

@@ -4,6 +4,7 @@ import { AppError } from '../../middlewares/errorHandler';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { RoleCode } from '@prisma/client';
+import { normalizeOtpPhone } from './otp';
 
 export class AuthService {
   /**
@@ -14,14 +15,27 @@ export class AuthService {
     phone: string;
     email?: string;
     password: string;
+    otpToken: string;
     dateOfBirth?: string;
     gender?: string;
+    address?: string;
   }) {
-    const { fullName, phone, email, password, dateOfBirth, gender } = data;
+    const { fullName, phone, email, password, otpToken, dateOfBirth, gender, address } = data;
+    const normalizedPhone = normalizeOtpPhone(phone);
+
+    try {
+      const decoded = jwt.verify(otpToken, env.JWT_SECRET) as { phone: string; verified: boolean };
+      if (!decoded.verified || normalizeOtpPhone(decoded.phone) !== normalizedPhone) {
+        throw new AppError(400, 'Số điện thoại xác thực OTP không khớp với thông tin đăng ký.', 'INVALID_OTP_TOKEN');
+      }
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw new AppError(400, 'Mã xác thực OTP không hợp lệ hoặc đã hết hạn. Vui lòng lấy mã mới.', 'INVALID_OTP_TOKEN');
+    }
 
     // 1. Kiểm tra xem Số điện thoại đã được đăng ký chưa
     const existingUserByPhone = await prisma.user.findFirst({
-      where: { phone },
+      where: { phone: normalizedPhone },
     });
     if (existingUserByPhone) {
       throw new AppError(409, 'Số điện thoại này đã được sử dụng.', 'PHONE_ALREADY_EXISTS');
@@ -61,7 +75,7 @@ export class AuthService {
         data: {
           roleId: role.roleId,
           fullName,
-          phone,
+          phone: normalizedPhone,
           email: email || null,
           passwordHash,
           status: 'Active',
@@ -70,11 +84,15 @@ export class AuthService {
 
       // Tìm bệnh nhân cũ theo Số điện thoại
       const existingPatient = await tx.patient.findUnique({
-        where: { phone },
+        where: { phone: normalizedPhone },
       });
 
       let targetPatient;
       if (existingPatient) {
+        if (existingPatient.userId) {
+          throw new AppError(409, 'Hồ sơ bệnh nhân này đã được liên kết với một tài khoản khác.', 'PATIENT_ALREADY_LINKED');
+        }
+
         // Cập nhật liên kết userId cho bệnh nhân cũ
         targetPatient = await tx.patient.update({
           where: { patientId: existingPatient.patientId },
@@ -83,6 +101,7 @@ export class AuthService {
             fullName: existingPatient.fullName || fullName,
             dateOfBirth: existingPatient.dateOfBirth || (dateOfBirth ? new Date(dateOfBirth) : null),
             gender: existingPatient.gender || gender || null,
+            address: existingPatient.address || address || null,
           },
         });
       } else {
@@ -91,9 +110,10 @@ export class AuthService {
           data: {
             userId: newUser.userId,
             fullName,
-            phone,
+            phone: normalizedPhone,
             dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
             gender: gender || null,
+            address: address || null,
             tierId: defaultTier.tierId,
             loyaltyPoints: 0,
           },

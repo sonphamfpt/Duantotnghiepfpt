@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/Icon';
 import { OtpVerificationModal } from '../../components/OtpVerificationModal';
+import { appointmentApi } from '../../services/api';
+import { socket } from '../../services/socketClient';
 
 export const BookingPage: React.FC = () => {
-  const { services, dentists, appointments, addAppointment, addLog, patients } = useClinic();
+  const { services, dentists, appointments, addLog, patients, refreshAllData } = useClinic();
   const { role, user } = useAuth();
 
   const [patientName, setPatientName] = useState('');
@@ -45,6 +47,14 @@ export const BookingPage: React.FC = () => {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotsError, setSlotsError] = useState('');
   const [selectedTimeIso, setSelectedTimeIso] = useState('');
+  const [slotRefreshTick, setSlotRefreshTick] = useState(0);
+
+  const formatDateInputValue = (value: Date): string => {
+    const year = value.getFullYear();
+    const month = (value.getMonth() + 1).toString().padStart(2, '0');
+    const day = value.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   const formatSlotToTimeString = (isoString: string): string => {
     if (!isoString) return '';
@@ -112,50 +122,75 @@ export const BookingPage: React.FC = () => {
     return true;
   };
 
+  // Hàm fetch slot — dùng useCallback để không tạo lại mỗi render
+  const fetchAvailableSlots = useCallback(async () => {
+    if (!selectedDentistId || !selectedServiceId || !date) {
+      setAvailableSlots([]);
+      setSelectedTimeIso('');
+      return;
+    }
+
+    setLoadingSlots(true);
+    setSlotsError('');
+
+    const dentistDbId = mapFrontendToBackendId(selectedDentistId);
+    const serviceDbId = mapFrontendToBackendId(selectedServiceId);
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/appointments/dentists/${dentistDbId}/available-slots?date=${date}&serviceId=${serviceDbId}`
+      );
+      const resData = await response.json();
+
+      if (response.ok && resData.data) {
+        const slots = resData.data as string[];
+        setAvailableSlots(slots);
+        setSelectedTimeIso((prev) => slots.includes(prev) ? prev : (slots[0] || ''));
+      } else {
+        setSlotsError(resData.message || resData.error?.message || 'Không thể tải danh sách giờ trống.');
+        setAvailableSlots([]);
+        setSelectedTimeIso('');
+      }
+    } catch (err) {
+      console.error('Lỗi khi lấy slot khám:', err);
+      setSlotsError('Lỗi kết nối máy chủ API.');
+      setAvailableSlots([]);
+      setSelectedTimeIso('');
+    } finally {
+      setLoadingSlots(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDentistId, selectedServiceId, date]);
+
+  // Fetch slot khi các điều kiện thay đổi hoặc khi slotRefreshTick tăng
   useEffect(() => {
-    const fetchAvailableSlots = async () => {
-      if (!selectedDentistId || !selectedServiceId || !date) {
-        setAvailableSlots([]);
-        setSelectedTimeIso('');
-        return;
-      }
+    fetchAvailableSlots();
+  }, [fetchAvailableSlots, slotRefreshTick]);
 
-      setLoadingSlots(true);
-      setSlotsError('');
+  useEffect(() => {
+    if (!selectedDentistId || !selectedServiceId) return;
 
-      const dentistDbId = mapFrontendToBackendId(selectedDentistId);
-      const serviceDbId = mapFrontendToBackendId(selectedServiceId);
-
-      try {
-        const response = await fetch(
-          `http://localhost:5000/api/appointments/dentists/${dentistDbId}/available-slots?date=${date}&serviceId=${serviceDbId}`
-        );
-        const resData = await response.json();
-
-        if (response.ok && resData.data) {
-          setAvailableSlots(resData.data);
-          if (resData.data.length > 0) {
-            setSelectedTimeIso(resData.data[0]);
-          } else {
-            setSelectedTimeIso('');
-          }
-        } else {
-          setSlotsError(resData.message || 'Không thể tải danh sách giờ trống.');
-          setAvailableSlots([]);
-          setSelectedTimeIso('');
-        }
-      } catch (err) {
-        console.error('Lỗi khi lấy slot khám:', err);
-        setSlotsError('Lỗi kết nối máy chủ API.');
-        setAvailableSlots([]);
-        setSelectedTimeIso('');
-      } finally {
-        setLoadingSlots(false);
-      }
+    // Lắng nghe real-time: khi có người đặt hoặc hủy lịch → refresh slot ngay
+    const handleAppointmentChange = () => {
+      setSlotRefreshTick((prev) => prev + 1);
     };
 
-    fetchAvailableSlots();
-  }, [selectedDentistId, selectedServiceId, date]);
+    socket.on('appointment:created', handleAppointmentChange);
+    socket.on('appointment:cancelled', handleAppointmentChange);
+
+    // Polling fallback: mỗi 15 giây cho hôm nay, 60 giây cho ngày khác
+    const isToday = date === formatDateInputValue(new Date());
+    const intervalMs = isToday ? 15000 : 60000;
+    const timer = window.setInterval(() => {
+      setSlotRefreshTick((prev) => prev + 1);
+    }, intervalMs);
+
+    return () => {
+      socket.off('appointment:created', handleAppointmentChange);
+      socket.off('appointment:cancelled', handleAppointmentChange);
+      window.clearInterval(timer);
+    };
+  }, [date, selectedDentistId, selectedServiceId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,6 +235,10 @@ export const BookingPage: React.FC = () => {
     // Gọi API gửi OTP thực tế cho tất cả đặt lịch trực tuyến
     setSendingOtp(true);
     try {
+      const latestSlots = await appointmentApi.ensureSlotAvailable(selectedDentistId, date, selectedServiceId, selectedTimeIso);
+      setAvailableSlots(latestSlots);
+      setSelectedTimeIso((prev) => latestSlots.includes(prev) ? prev : '');
+
       const res = await fetch('http://localhost:5000/api/auth/send-otp', {
         method: 'POST',
         headers: {
@@ -209,12 +248,13 @@ export const BookingPage: React.FC = () => {
       });
       const data = await res.json();
       if (!res.ok) {
-        setAntiSpamError(data.message || 'Không thể gửi mã OTP xác thực.');
+        setAntiSpamError(data.message || data.error?.message || 'Không thể gửi mã OTP xác thực.');
         return;
       }
       setShowOtpModal(true);
-    } catch (err) {
-      setAntiSpamError('Không thể kết nối đến máy chủ API để gửi OTP.');
+    } catch (err: any) {
+      setAntiSpamError(err.message || 'Không thể kết nối đến máy chủ API để gửi OTP.');
+      setSlotRefreshTick((prev) => prev + 1);
     } finally {
       setSendingOtp(false);
     }
@@ -239,11 +279,13 @@ export const BookingPage: React.FC = () => {
     return dateObj.toISOString();
   };
 
-  const formatLocalDateStr = (dateStr: string): string => {
+const formatLocalDateStr = (dateStr: string): string => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
     return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
   };
+
+  const normalizePhone = (phone: string): string => phone.trim().replace(/\s|-/g, '');
 
   const createAppointment = async (otpToken?: string) => {
     const service = services.find(s => s.id === selectedServiceId);
@@ -270,7 +312,7 @@ export const BookingPage: React.FC = () => {
         payload.patientId = mapFrontendToBackendId(user.id);
       } else {
         payload.patientName = patientName.trim();
-        payload.patientPhone = patientPhone.trim();
+        payload.patientPhone = normalizePhone(patientPhone);
       }
 
       // Gắn x-otp-token header nếu là khách vãng lai
@@ -291,29 +333,31 @@ export const BookingPage: React.FC = () => {
       const resData = await response.json();
 
       if (!response.ok) {
-        setApiError(resData.message || 'Đặt lịch hẹn thất bại.');
-        alert(resData.message || 'Đặt lịch hẹn thất bại.');
+        const message = resData.message || resData.error?.message || 'Đặt lịch hẹn thất bại.';
+        setApiError(message);
+        alert(message);
         return;
       }
 
       const bookedApp = resData.data;
 
-      const localApp = addAppointment({
-        patientId: role === 'patient' && user?.id ? user.id : `P-${Math.floor(1000 + Math.random() * 9000)}`,
+      const localApp = {
+        id: `A-${bookedApp.appointmentId}`,
+        patientId: role === 'patient' && user?.id ? user.id : `P-${bookedApp.patientId || ''}`,
         patientName: role === 'patient' && user?.id ? user.name : patientName,
         patientPhone: role === 'patient' && user?.id ? (user.phone || '') : patientPhone,
         serviceName: service.name,
         dentistId: dentist.id,
         dentistName: dentist.name,
         time: `${formatLocalDateStr(date)} @ ${selectedTimeIso ? formatSlotToTimeString(selectedTimeIso) : ''}`,
-      });
-
-      localApp.id = bookedApp.appointmentId.toString();
+        status: 'Confirmed' as const,
+      };
 
       addLog('SYSTEM', 'SUCCESS', `Khách vãng lai đặt lịch thành công qua OTP cho SĐT ${patientPhone}. Lịch hẹn ${bookedApp.appointmentId} đã được tạo.`);
 
       setCreatedAppointment(localApp);
       setIsSuccess(true);
+      await refreshAllData();
     } catch (err) {
       console.error('Lỗi khi lưu lịch hẹn:', err);
       setApiError('Lỗi kết nối máy chủ API.');
@@ -683,6 +727,10 @@ export const BookingPage: React.FC = () => {
         onClose={() => setShowOtpModal(false)}
         onVerified={handleOtpVerified}
         phoneNumber={patientPhone || user?.phone || ''}
+        dentistId={selectedDentistId}
+        startTime={selectedTimeIso}
+        serviceId={selectedServiceId}
+        sendOnOpen={false}
       />
     </div>
   );

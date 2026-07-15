@@ -86,6 +86,18 @@ async function resolveDentistId(id: string): Promise<bigint> {
   return record.dentistId;
 }
 
+function getVietnamDateStr(date: Date): string {
+  const vietnamDate = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+  return vietnamDate.toISOString().split('T')[0];
+}
+
+function getVietnamDayUtcRange(dateStr: string): { start: Date; end: Date } {
+  return {
+    start: new Date(`${dateStr}T00:00:00.000+07:00`),
+    end: new Date(`${dateStr}T23:59:59.999+07:00`),
+  };
+}
+
 export class AppointmentsService {
   /**
    * Lấy danh sách các khung giờ trống của bác sĩ trong ngày
@@ -96,10 +108,11 @@ export class AppointmentsService {
     const dentistId = dentistIdVal.toString();
     const serviceId = serviceIdVal.toString();
 
+    const isToday = dateStr === getVietnamDateStr(new Date());
     const cacheKey = `slots:${dentistId}:${dateStr}:${serviceId}`;
     
     // 1. Kiểm tra cache Redis
-    const cachedSlots = await redis.get(cacheKey);
+    const cachedSlots = isToday ? null : await redis.get(cacheKey);
     if (cachedSlots) {
       console.log(`⚡ Available slots hit cache for key: ${cacheKey}`);
       return JSON.parse(cachedSlots);
@@ -109,7 +122,7 @@ export class AppointmentsService {
     const startOfDay = new Date(`${dateStr}T00:00:00.000Z`);
     const endOfDay = new Date(`${dateStr}T23:59:59.999Z`);
 
-    const shift = await prisma.dentistShift.findFirst({
+    const shifts = await prisma.dentistShift.findMany({
       where: {
         dentistId: dentistIdVal,
         workDate: {
@@ -118,9 +131,12 @@ export class AppointmentsService {
         },
         isActive: true,
       },
+      orderBy: {
+        startTime: 'asc',
+      },
     });
 
-    if (!shift) {
+    if (shifts.length === 0) {
       return []; // Bác sĩ không có ca trực nào trong ngày này
     }
 
@@ -144,12 +160,13 @@ export class AppointmentsService {
     }
 
     // 5. Lấy danh sách lịch hẹn đã được đặt của bác sĩ trong ngày (trừ trạng thái đã hủy)
+    const dayRange = getVietnamDayUtcRange(dateStr);
     const appointments = await prisma.appointment.findMany({
       where: {
         dentistId: dentistIdVal,
         startTime: {
-          gte: new Date(`${dateStr}T00:00:00.000Z`),
-          lte: new Date(`${dateStr}T23:59:59.999Z`),
+          gte: dayRange.start,
+          lte: dayRange.end,
         },
         status: {
           notIn: ['Cancelled', 'NoShow'],
@@ -161,23 +178,25 @@ export class AppointmentsService {
       },
     });
 
-    // 6. Tính toán giờ nghỉ trưa
-    const lunchBreak = operatingHour.lunchStart && operatingHour.lunchEnd
-      ? { startTime: operatingHour.lunchStart, endTime: operatingHour.lunchEnd }
-      : null;
+    // 6. Phòng khám vận hành liên tục 08:00-20:00, không chặn giờ nghỉ trưa.
+    const lunchBreak = null;
 
     // 7. Gọi thuật toán tính toán slot trống
-    const availableSlots = calculateAvailableSlots(
-      { startTime: shift.startTime, endTime: shift.endTime },
-      appointments,
-      lunchBreak,
-      service.durationMinutes,
-      service.bufferMinutes,
-      dateStr
-    );
+    const availableSlots = Array.from(new Set(
+      shifts.flatMap((shift) => calculateAvailableSlots(
+        { startTime: shift.startTime, endTime: shift.endTime },
+        appointments,
+        lunchBreak,
+        service.durationMinutes,
+        service.bufferMinutes,
+        dateStr
+      ))
+    )).sort();
 
     // 8. Lưu kết quả vào cache Redis với TTL = 45 giây
-    await redis.set(cacheKey, JSON.stringify(availableSlots), 'EX', 45);
+    if (!isToday) {
+      await redis.set(cacheKey, JSON.stringify(availableSlots), 'EX', 45);
+    }
 
     return availableSlots;
   }
@@ -277,6 +296,25 @@ export class AppointmentsService {
       );
     }
 
+    const startDateTime = new Date(startTime);
+    if (Number.isNaN(startDateTime.getTime())) {
+      throw new AppError(400, 'Thời gian bắt đầu lịch hẹn không hợp lệ.', 'INVALID_APPOINTMENT_TIME');
+    }
+
+    const requestedDateStr = getVietnamDateStr(startDateTime);
+    const availableSlots = await this.getAvailableSlots(dentistId, requestedDateStr, serviceId);
+    const isRequestedSlotAvailable = availableSlots.some(
+      (slot) => new Date(slot).getTime() === startDateTime.getTime()
+    );
+
+    if (!isRequestedSlotAvailable) {
+      throw new AppError(
+        409,
+        'Khung giờ đã chọn không còn khả dụng cho bác sĩ hoặc dịch vụ này. Vui lòng chọn lại giờ khám.',
+        'SLOT_NOT_AVAILABLE'
+      );
+    }
+
     // 3. Khóa Redis Lock để ngăn chặn ghi trùng thời gian thực
     const lockKey = `booking_lock:${dentistId}:${startTime}`;
     const lockToken = Math.random().toString(36).substring(2);
@@ -300,8 +338,32 @@ export class AppointmentsService {
       throw new AppError(404, 'Dịch vụ không tồn tại.', 'SERVICE_NOT_FOUND');
     }
 
-    const startDateTime = new Date(startTime);
-    const endDateTime = new Date(startDateTime.getTime() + service.durationMinutes * 60 * 1000);
+    const serviceTotalMinutes = service.durationMinutes + service.bufferMinutes;
+    const endDateTime = new Date(startDateTime.getTime() + serviceTotalMinutes * 60 * 1000);
+
+    // --- Kiểm tra xung đột theo số điện thoại / patientId ---
+    // Nếu cùng bệnh nhân (hoặc cùng số điện thoại) đã có lịch hẹn khác
+    // chồng giờ với bác sĩ khác, trả về cảnh báo để UI hiển thị.
+    const conflictingAppt = await prisma.appointment.findFirst({
+      where: {
+        patientId: dbPatientId,
+        dentistId: { not: dentistIdVal },
+        status: { notIn: ['Cancelled', 'NoShow'] },
+        AND: [
+          { startTime: { lt: endDateTime } },
+          { endTime: { gt: startDateTime } },
+        ],
+      },
+      select: { appointmentId: true, dentistId: true, startTime: true, endTime: true },
+    });
+
+    if (conflictingAppt) {
+      throw new AppError(
+        409,
+        'Số điện thoại này đã có lịch hẹn trùng thời gian với bác sĩ khác. Vui lòng kiểm tra lại.',
+        'PHONE_CONFLICT'
+      );
+    }
 
     try {
       // 4. Thực hiện ghi dữ liệu vào CSDL

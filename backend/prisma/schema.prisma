@@ -188,6 +188,7 @@ model Patient {
   gender            String?   @db.VarChar(10)
   criticalAllergy   String?   @map("critical_allergy")
   medicalCondition  String?   @map("medical_condition")
+  address           String?   @db.VarChar(255)
   walletBalance     Decimal   @default(0) @map("wallet_balance") @db.Decimal(14, 2)
   loyaltyPoints     Int       @default(0) @map("loyalty_points")
   tierId            Int       @map("tier_id")
@@ -246,7 +247,7 @@ model Service {
   name             String   @db.VarChar(150)
   price            Decimal  @db.Decimal(14, 2)
   durationMinutes  Int      @map("duration_minutes") // ★ cốt lõi xử lý thời gian
-  bufferMinutes    Int      @default(5) @map("buffer_minutes")
+  bufferMinutes    Int      @default(0) @map("buffer_minutes")
   isActive         Boolean  @default(true) @map("is_active")
   description      String?
 

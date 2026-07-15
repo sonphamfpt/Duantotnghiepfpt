@@ -38,6 +38,8 @@ export interface Patient {
   points: number;
   isUnlocked?: boolean;
   isLocked?: boolean;
+  dateOfBirth?: string;
+  address?: string;
 }
 
 export interface Appointment {

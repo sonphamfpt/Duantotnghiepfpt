@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from '../../components/Icon';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../../context/AuthContext';
 import { BrandLogo } from '../../components/BrandLogo';
+import { OtpVerificationModal } from '../../components/OtpVerificationModal';
+import { clinicApi } from '../../services/api/clinicApi';
 
 const DEMO_ACCOUNTS = [
   { email: 'receptionist@goodsmile.vn', password: '12345678', role: 'receptionist' as UserRole, label: 'Lễ Tân',    icon: 'folder_shared',       color: 'hover:border-orange-500 hover:bg-orange-50/50 text-orange-700 bg-orange-50/30 border-orange-100 hover:shadow-orange-100/50' },
@@ -27,10 +29,17 @@ export const LoginRegister: React.FC = () => {
   // Register form state
   const [regName, setRegName] = useState('');
   const [regPhone, setRegPhone] = useState('');
-  const [regEmail, setRegEmail] = useState('');
+  const [regGender, setRegGender] = useState('Nam');
+  const [regBirthDate, setRegBirthDate] = useState('2000-01-01');
+  const [regAddress, setRegAddress] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegisterOtpModal, setShowRegisterOtpModal] = useState(false);
+  
+  const [isAutoFilled, setIsAutoFilled] = useState(false);
+  const [phoneLookupLoading, setPhoneLookupLoading] = useState(false);
+  const lookupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Feedback states
   const [errorMsg, setErrorMsg] = useState('');
@@ -52,11 +61,49 @@ export const LoginRegister: React.FC = () => {
     setSuccessMsg('');
   };
 
+  // Tra cứu số điện thoại bệnh nhân để tự động điền (autofill)
+  const handlePhoneChange = async (val: string) => {
+    setRegPhone(val);
+    setIsAutoFilled(false);
+    if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current);
+    
+    const phone = val.trim().replace(/[\s-]/g, '');
+    if (phone.length < 10) return;
+    
+    setPhoneLookupLoading(true);
+    lookupTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await clinicApi.lookupPatientByPhone(phone);
+        setPhoneLookupLoading(false);
+        if (res.success && res.data?.found) {
+          const d = res.data;
+          if (d.hasAccount) {
+            setErrorMsg('Số điện thoại này đã được đăng ký tài khoản. Vui lòng chuyển sang tab Đăng nhập.');
+            setRegName('');
+            setRegGender('Nam');
+            setRegBirthDate('2000-01-01');
+            setRegAddress('');
+            setIsAutoFilled(false);
+            return;
+          }
+          if (d.fullName) setRegName(d.fullName);
+          if (d.gender) setRegGender(d.gender);
+          if (d.dateOfBirth) setRegBirthDate(d.dateOfBirth);
+          if (d.address) setRegAddress(d.address);
+          setIsAutoFilled(true);
+          setErrorMsg('');
+        }
+      } catch (err) {
+        setPhoneLookupLoading(false);
+      }
+    }, 600);
+  };
+
   // Validate form fields client-side
   const validateForm = () => {
     if (isLoginTab) {
       if (!email.trim()) {
-        setErrorMsg('Vui lòng nhập địa chỉ Email.');
+        setErrorMsg('Vui lòng nhập Email hoặc Số điện thoại.');
         return false;
       }
       if (!password) {
@@ -78,13 +125,21 @@ export const LoginRegister: React.FC = () => {
         setErrorMsg('Số điện thoại không hợp lệ (Ví dụ: 0987654321).');
         return false;
       }
-      if (!regEmail.trim()) {
-        setErrorMsg('Vui lòng nhập địa chỉ Email.');
+      if (!regBirthDate) {
+        setErrorMsg('Vui lòng chọn ngày sinh của bạn.');
         return false;
       }
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(regEmail.trim())) {
-        setErrorMsg('Địa chỉ Email không hợp lệ.');
+      const birthDateObj = new Date(regBirthDate);
+      if (birthDateObj > new Date()) {
+        setErrorMsg('Ngày sinh không hợp lệ (Không được chọn ngày ở tương lai).');
+        return false;
+      }
+      if (birthDateObj.getFullYear() < 1900) {
+        setErrorMsg('Ngày sinh không hợp lệ (Năm sinh tối thiểu là từ năm 1900).');
+        return false;
+      }
+      if (!regAddress.trim()) {
+        setErrorMsg('Vui lòng nhập địa chỉ liên hệ của bạn.');
         return false;
       }
       if (regPassword.length < 6) {
@@ -99,7 +154,47 @@ export const LoginRegister: React.FC = () => {
     return true;
   };
 
-  // Submit handler (Handling both login and mock registration)
+  const completeRegistration = async (otpToken: string) => {
+    setIsLoading(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    const result = await registerPatient({
+      fullName: regName.trim(),
+      phone: regPhone.trim(),
+      dateOfBirth: regBirthDate,
+      gender: regGender,
+      password: regPassword,
+      otpToken,
+      address: regAddress.trim() || undefined,
+    });
+
+    setIsLoading(false);
+    setShowRegisterOtpModal(false);
+
+    if (result.success) {
+      setSuccessMsg('Đăng ký tài khoản thành công! Bạn đang được chuyển về trang Đăng nhập...');
+
+      setTimeout(() => {
+        setIsLoginTab(true);
+        setEmail(regPhone.trim()); // Đăng nhập mặc định bằng SĐT
+        setPassword(regPassword);
+        setSuccessMsg('');
+        setRegName('');
+        setRegPhone('');
+        setRegGender('Nam');
+        setRegBirthDate('2000-01-01');
+        setRegAddress('');
+        setRegPassword('');
+        setRegConfirmPassword('');
+        setIsAutoFilled(false);
+      }, 1500);
+    } else {
+      setErrorMsg(result.error || 'Đăng ký tài khoản thất bại.');
+    }
+  };
+
+  // Submit handler (Handling both login and registration)
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -108,8 +203,6 @@ export const LoginRegister: React.FC = () => {
     if (!validateForm()) return;
 
     setIsLoading(true);
-
-    // Trễ giả lập tốc độ mạng (300ms)
     await new Promise((r) => setTimeout(r, 300));
 
     if (isLoginTab) {
@@ -121,40 +214,14 @@ export const LoginRegister: React.FC = () => {
       } else {
         setErrorMsg(result.error || 'Đăng nhập thất bại.');
       }
-    } else {
-      // Đăng ký bệnh nhân thông qua REST API của Backend
-      const result = await registerPatient({
-        fullName: regName.trim(),
-        phone: regPhone.trim(),
-        email: regEmail.trim().toLowerCase(),
-        password: regPassword,
-      });
-
-      setIsLoading(false);
-
-      if (result.success) {
-        setSuccessMsg('Đăng ký tài khoản thành công! Bạn đang được chuyển về trang Đăng Nhập...');
-        
-        // Chuyển tab và tự động điền form sau 1.5 giây
-        setTimeout(() => {
-          setIsLoginTab(true);
-          setEmail(regEmail.trim().toLowerCase());
-          setPassword(regPassword);
-          setSuccessMsg('');
-          // Reset form đăng ký
-          setRegName('');
-          setRegPhone('');
-          setRegEmail('');
-          setRegPassword('');
-          setRegConfirmPassword('');
-        }, 1500);
-      } else {
-        setErrorMsg(result.error || 'Đăng ký tài khoản thất bại.');
-      }
+      return;
     }
-  };
 
+    setIsLoading(false);
+    setShowRegisterOtpModal(true);
+  };
   return (
+    <>
     <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row lg:h-screen lg:overflow-hidden font-body-md select-none">
       {/* Custom premium style definitions */}
       <style>{`
@@ -371,13 +438,13 @@ export const LoginRegister: React.FC = () => {
                   {/* Login Email */}
                   <div className="space-y-1.5">
                     <label className="block text-[10.5px] font-black text-slate-700 uppercase tracking-wider">
-                      Địa chỉ Email
+                      Tài khoản (Email hoặc SĐT)
                     </label>
                     <div className="relative group">
                       <Icon name="mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
                       <input
-                        type="email"
-                        placeholder="name@example.com"
+                        type="text"
+                        placeholder="name@example.com hoặc số điện thoại..."
                         value={email}
                         onChange={(e) => { setEmail(e.target.value); setErrorMsg(''); }}
                         className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm"
@@ -427,6 +494,36 @@ export const LoginRegister: React.FC = () => {
                 </>
               ) : (
                 <>
+                  {/* Register Phone (First for auto-lookup) */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[10.5px] font-black text-slate-700 uppercase tracking-wider">
+                      Số điện thoại *
+                    </label>
+                    <div className="relative group">
+                      <Icon name="call" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
+                      <input
+                        type="tel"
+                        placeholder="Nhập SĐT để tra cứu nhanh..."
+                        value={regPhone}
+                        onChange={(e) => { handlePhoneChange(e.target.value); setErrorMsg(''); }}
+                        className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-10 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm"
+                      />
+                      {phoneLookupLoading && (
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[16px] text-slate-400 animate-spin">⏳</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Auto-filled status banner */}
+                  {isAutoFilled && (
+                    <div className="flex items-start gap-2 text-emerald-800 text-[11px] bg-emerald-50/60 border border-emerald-100 rounded-2xl p-3 animate-in slide-in-from-top-1">
+                      <Icon name="person_check" className="text-[16px] shrink-0 mt-0.5" />
+                      <span className="font-bold leading-normal">
+                        Hệ thống đã tự điền thông tin của bạn từ hồ sơ khám có sẵn! Hãy đặt mật khẩu dưới đây để kích hoạt tài khoản.
+                      </span>
+                    </div>
+                  )}
+
                   {/* Register Name */}
                   <div className="space-y-1.5">
                     <label className="block text-[10.5px] font-black text-slate-700 uppercase tracking-wider">
@@ -444,35 +541,70 @@ export const LoginRegister: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Register Phone */}
-                  <div className="space-y-1.5">
-                    <label className="block text-[10.5px] font-black text-slate-700 uppercase tracking-wider">
-                      Số điện thoại
-                    </label>
-                    <div className="relative group">
-                      <Icon name="call" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
-                      <input
-                        type="tel"
-                        placeholder="0987654321"
-                        value={regPhone}
-                        onChange={(e) => { setRegPhone(e.target.value); setErrorMsg(''); }}
-                        className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm"
-                      />
+                  {/* Register Birth Date & Gender */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Birth Date */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[10.5px] font-black text-slate-700 uppercase tracking-wider">
+                        Ngày sinh *
+                      </label>
+                      <div className="relative group">
+                        <Icon name="calendar_month" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
+                        <input
+                          type="date"
+                          min="1900-01-01"
+                          max={new Date().toISOString().split('T')[0]}
+                          value={regBirthDate}
+                          onChange={(e) => { setRegBirthDate(e.target.value); setErrorMsg(''); }}
+                          className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Gender */}
+                    <div className="space-y-1.5">
+                      <label className="block text-[10.5px] font-black text-slate-700 uppercase tracking-wider">
+                        Giới tính *
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/50 h-[46px] items-center">
+                        {[
+                          { value: 'Nam', icon: 'male', label: 'Nam' },
+                          { value: 'Nữ', icon: 'female', label: 'Nữ' },
+                          { value: 'Khác', icon: 'wc', label: 'Khác' },
+                        ].map((g) => {
+                          const isSelected = regGender === g.value;
+                          return (
+                            <button
+                              key={g.value}
+                              type="button"
+                              onClick={() => { setRegGender(g.value); setErrorMsg(''); }}
+                              className={`flex items-center justify-center gap-1 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
+                                isSelected
+                                  ? 'bg-primary text-white shadow-md shadow-primary/20 scale-[1.03]'
+                                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
+                              }`}
+                            >
+                              <Icon name={g.icon} className={`text-[15px] ${isSelected ? 'text-white' : 'text-slate-400'}`} />
+                              <span>{g.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Register Email */}
+                  {/* Register Address */}
                   <div className="space-y-1.5">
                     <label className="block text-[10.5px] font-black text-slate-700 uppercase tracking-wider">
-                      Địa chỉ Email
+                      Địa chỉ liên hệ
                     </label>
                     <div className="relative group">
-                      <Icon name="mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
+                      <Icon name="home" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
                       <input
-                        type="email"
-                        placeholder="name@example.com"
-                        value={regEmail}
-                        onChange={(e) => { setRegEmail(e.target.value); setErrorMsg(''); }}
+                        type="text"
+                        placeholder="Số nhà, đường, phường, quận, thành phố..."
+                        value={regAddress}
+                        onChange={(e) => { setRegAddress(e.target.value); setErrorMsg(''); }}
                         className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm"
                       />
                     </div>
@@ -601,5 +733,12 @@ export const LoginRegister: React.FC = () => {
       </div>
       
     </div>
+    <OtpVerificationModal
+      isOpen={showRegisterOtpModal}
+      onClose={() => setShowRegisterOtpModal(false)}
+      onVerified={completeRegistration}
+      phoneNumber={regPhone.trim()}
+    />
+    </>
   );
 };

@@ -26,7 +26,7 @@ export async function request<T>(endpoint: string, options: RequestInit = {}): P
   const resData = await response.json();
 
   if (!response.ok) {
-    throw new Error(resData.message || `Lỗi kết nối máy chủ (HTTP ${response.status})`);
+    throw new Error(resData.message || resData.error?.message || `Lỗi kết nối máy chủ (HTTP ${response.status})`);
   }
 
   // Chuẩn hóa phản hồi từ API để luôn có trường success và data

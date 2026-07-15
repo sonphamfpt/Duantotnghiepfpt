@@ -180,7 +180,7 @@ async function main() {
         name: s.name,
         price: s.price,
         durationMinutes: s.durationMinutes,
-        bufferMinutes: 5,
+        bufferMinutes: 0,
         isActive: true,
       }
     });
@@ -196,9 +196,9 @@ async function main() {
       create: {
         weekday: i,
         openTime: new Date('1970-01-01T08:00:00Z'),
-        closeTime: new Date('1970-01-01T17:00:00Z'),
-        lunchStart: new Date('1970-01-01T12:00:00Z'),
-        lunchEnd: new Date('1970-01-01T13:30:00Z'),
+        closeTime: new Date('1970-01-01T20:00:00Z'),
+        lunchStart: null,
+        lunchEnd: null,
         isClosed: false,
       }
     });
@@ -471,8 +471,8 @@ async function main() {
             roomId: roomMap[d.room],
             workDate: workDateNormalized,
             shiftType,
-            startTime: shiftType === 'Morning' ? new Date('1970-01-01T08:00:00Z') : new Date('1970-01-01T13:30:00Z'),
-            endTime: shiftType === 'Morning' ? new Date('1970-01-01T12:00:00Z') : new Date('1970-01-01T17:00:00Z'),
+            startTime: shiftType === 'Morning' ? new Date('1970-01-01T08:00:00Z') : new Date('1970-01-01T14:00:00Z'),
+            endTime: shiftType === 'Morning' ? new Date('1970-01-01T14:00:00Z') : new Date('1970-01-01T20:00:00Z'),
             isActive: true,
           }
         });
@@ -527,8 +527,8 @@ async function main() {
   const allDentists = await prisma.dentist.findMany({ include: { user: true } });
   const allRooms = await prisma.room.findMany();
   const shiftConfigs: Array<{ shiftType: 'Morning' | 'Afternoon' | 'Full'; start: string; end: string }> = [
-    { shiftType: 'Morning', start: '08:00', end: '12:00' },
-    { shiftType: 'Afternoon', start: '14:00', end: '17:30' },
+    { shiftType: 'Morning', start: '08:00', end: '14:00' },
+    { shiftType: 'Afternoon', start: '14:00', end: '20:00' },
   ];
   for (let dayOffset = 0; dayOffset <= 7; dayOffset++) {
     const d = new Date();
@@ -547,7 +547,12 @@ async function main() {
               shiftType: sc.shiftType,
             },
           },
-          update: {},
+          update: {
+            roomId: room.roomId,
+            startTime: new Date(`1970-01-01T${sc.start}:00.000Z`),
+            endTime: new Date(`1970-01-01T${sc.end}:00.000Z`),
+            isActive: true,
+          },
           create: {
             dentistId: dentist.dentistId,
             roomId: room.roomId,
@@ -567,7 +572,7 @@ async function main() {
   console.log('📅 Tạo lịch hẹn mặc định cho Trần Nguyễn Minh hôm nay...');
   const patientMinh = await prisma.patient.findFirst({ where: { phone: '0901234567' } });
   const dentistHuong = await prisma.dentist.findFirst({ where: { user: { email: 'nguyenhuong@goodsmile.vn' } } });
-  const serviceKham = await prisma.service.findFirst({ where: { name: 'Khám tổng quát & Tư vấn' } });
+  const serviceKham = await prisma.service.findFirst({ where: { name: 'Khám răng tổng quát & Lập kế hoạch điều trị' } });
   const room110 = await prisma.room.findFirst({ where: { name: 'Phòng 110' } });
 
   if (patientMinh && dentistHuong && serviceKham && room110) {

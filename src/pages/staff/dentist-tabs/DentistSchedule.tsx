@@ -3,9 +3,9 @@ import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 
 const SHIFT_TYPES = {
-  Morning: { label: 'Ca sáng', color: 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100/70', time: '08:00 - 12:00' },
-  Afternoon: { label: 'Ca chiều', color: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100/70', time: '14:00 - 17:00' },
-  Full: { label: 'Cả ngày', color: 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100/70', time: '08:00 - 17:00' }
+  Morning: { label: 'Ca sáng', color: 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100/70', time: '08:00 - 14:00' },
+  Afternoon: { label: 'Ca chiều', color: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100/70', time: '14:00 - 20:00' },
+  Full: { label: 'Cả ngày', color: 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100/70', time: '08:00 - 20:00' }
 };
 
 const DENTIST_COLORS: Record<string, string> = {

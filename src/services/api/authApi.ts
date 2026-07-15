@@ -31,10 +31,10 @@ export const authApi = {
   /**
    * Đăng ký tài khoản cho bệnh nhân mới
    */
-  register: (fullName: string, phone: string, password: string = 'password123') =>
+  register: (fullName: string, phone: string, password: string, otpToken: string, dateOfBirth?: string, gender?: string, address?: string) =>
     request<{ token: string; user: AuthUser }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ fullName, phone, password }),
+      body: JSON.stringify({ fullName, phone, password, otpToken, dateOfBirth, gender, address }),
     }),
 
   /**

@@ -17,9 +17,9 @@ interface AuthContextType {
   user: UserProfile | null;
   token: string | null;
   isAuthenticated: boolean;
-  loginWithCredentials: (email: string, password: string) => Promise<{ success: boolean; role?: UserRole; error?: string }>;
+  loginWithCredentials: (phone: string, password: string) => Promise<{ success: boolean; role?: UserRole; error?: string }>;
   logout: () => void;
-  registerPatient: (data: { fullName: string; phone: string; email?: string; password: string }) => Promise<{ success: boolean; error?: string }>;
+  registerPatient: (data: { fullName: string; phone: string; dateOfBirth: string; gender: string; password: string; otpToken: string; address?: string }) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -102,9 +102,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     checkAuth();
   }, []);
 
-  const loginWithCredentials = async (email: string, password: string): Promise<{ success: boolean; role?: UserRole; error?: string }> => {
+  const loginWithCredentials = async (phone: string, password: string): Promise<{ success: boolean; role?: UserRole; error?: string }> => {
     try {
-      const response = await authApi.login(email, password);
+      const response = await authApi.login(phone, password);
 
       if (!response.success || !response.data) {
         return { success: false, error: response.message || 'Đăng nhập thất bại.' };
@@ -142,9 +142,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const registerPatient = async (data: { fullName: string; phone: string; email?: string; password: string }): Promise<{ success: boolean; error?: string }> => {
+  const registerPatient = async (data: { fullName: string; phone: string; dateOfBirth: string; gender: string; password: string; otpToken: string; address?: string }): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await authApi.register(data.fullName, data.phone, data.password);
+      const response = await authApi.register(data.fullName, data.phone, data.password, data.otpToken, data.dateOfBirth, data.gender, data.address);
 
       if (!response.success) {
         return { success: false, error: response.message || 'Đăng ký tài khoản thất bại.' };

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useClinic } from '../context/ClinicContext';
 import { Icon } from './Icon';
+import { clinicApi } from '../services/api/clinicApi';
 
 type CheckInMode = 'existing' | 'new' | 'qr';
 
@@ -23,10 +24,10 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
   const [selectedDentistId, setSelectedDentistId] = useState('');
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [newAge, setNewAge] = useState('1990');
-  const [newGender, setNewGender] = useState('Nam');
   const [isSuccess, setIsSuccess] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState('');
+  const [lookupStatus, setLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle');
+  const lookupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -53,12 +54,11 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
     setSelectedDentistId('');
     setNewName('');
     setNewPhone('');
-    setNewAge('1990');
-    setNewGender('Nam');
     setIsSuccess(false);
     setSelectedServiceId('');
     setSearchQuery('');
     setIsDropdownOpen(false);
+    setLookupStatus('idle');
     onClose();
   };
 
@@ -77,14 +77,40 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
     }, 1200);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleNewPhoneChange = async (val: string) => {
+    setNewPhone(val);
+    if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current);
+    const phone = val.trim().replace(/[\s-]/g, '');
+    if (phone.length < 10) { setLookupStatus('idle'); return; }
+    setLookupStatus('loading');
+    lookupTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await clinicApi.lookupPatientByPhone(phone);
+        if (res.success && res.data?.found) {
+          setLookupStatus('found');
+        } else {
+          setLookupStatus('not_found');
+        }
+      } catch {
+        setLookupStatus('not_found');
+      }
+    }, 600);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     let patientId = existingPatientId;
 
     if (mode === 'new') {
       if (!newName.trim() || !newPhone.trim()) {
-        alert('Vui lòng điền đầy đủ thông tin bệnh nhân mới!');
+        alert('Vui lòng điền đầy đủ thông tin: Họ tên và Số điện thoại bệnh nhân mới.');
+        return;
+      }
+
+      const phoneRegex = /(0[3|5|7|8|9])+([0-9]{8})\b/;
+      if (!phoneRegex.test(newPhone.trim())) {
+        alert('Số điện thoại không hợp lệ (Ví dụ: 0987654321).');
         return;
       }
 
@@ -93,18 +119,21 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
         return;
       }
 
-      const ageNum = Number.parseInt(newAge, 10) || 0;
-      const finalAge = ageNum > 1000 ? new Date().getFullYear() - ageNum : ageNum;
-
-      const addedPatient = addPatient({
-        name: newName.trim(),
-        phone: newPhone.trim(),
-        age: finalAge,
-        gender: newGender,
-        criticalAllergy: 'Không',
-        condition: 'Mới khám đầu',
-      });
-      patientId = addedPatient.id;
+      try {
+        const addedPatient = await addPatient({
+          name: newName.trim(),
+          phone: newPhone.trim(),
+          dateOfBirth: undefined,
+          gender: 'Nam',
+          address: undefined,
+          criticalAllergy: 'Không',
+          condition: 'Mới khám đầu',
+        });
+        patientId = addedPatient.id;
+      } catch (err: any) {
+        alert(err.message || 'Không thể tạo hồ sơ bệnh nhân.');
+        return;
+      }
     }
 
     if (!patientId || !selectedDentistId) {
@@ -269,6 +298,58 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
 
                   {mode === 'new' && (
                     <div className="space-y-4">
+                      {/* SĐT */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
+                          Số điện thoại *
+                        </label>
+                        <div className="relative">
+                          <input
+                            value={newPhone}
+                            onChange={(e) => handleNewPhoneChange(e.target.value)}
+                            placeholder="09XXXXXXXX"
+                            className={`w-full bg-surface-container-low border ${
+                              duplicatePatient ? 'border-error text-error' : 'border-outline-variant'
+                            } rounded-xl px-3 py-3 pr-10 text-sm outline-none transition-all`}
+                          />
+                          {/* Lookup status indicator */}
+                          {lookupStatus === 'loading' && (
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[18px] text-outline animate-spin">⏳</span>
+                          )}
+                          {lookupStatus === 'found' && (
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[18px]">✅</span>
+                          )}
+                          {lookupStatus === 'not_found' && (
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[18px]">🆕</span>
+                          )}
+                        </div>
+                        {lookupStatus === 'found' && (
+                          <p className="mt-1.5 text-xs text-secondary font-bold flex items-center gap-1">
+                            <Icon name="person_check" className="text-[14px]" />
+                            Số điện thoại này đã có hồ sơ khám bệnh nhân!
+                          </p>
+                        )}
+                        {duplicatePatient && (
+                          <div className="mt-2 flex items-center justify-between bg-error-container text-on-error-container p-2.5 rounded-xl text-xs animate-in fade-in slide-in-from-top-1">
+                            <span className="truncate pr-2 font-medium">SĐT đã tồn tại ({duplicatePatient.name})</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMode('existing');
+                                setSearchQuery(duplicatePatient.phone);
+                                setExistingPatientId(duplicatePatient.id);
+                                setNewPhone('');
+                                setLookupStatus('idle');
+                              }}
+                              className="font-bold underline cursor-pointer shrink-0"
+                            >
+                              Chọn cũ
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Họ tên */}
                       <div>
                         <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">Họ và tên *</label>
                         <input
@@ -277,60 +358,6 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
                           placeholder="Nguyễn Văn A"
                           className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
                         />
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="col-span-2">
-                          <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">Số điện thoại *</label>
-                          <input
-                            value={newPhone}
-                            onChange={(e) => setNewPhone(e.target.value)}
-                            placeholder="09XXXXXXXX"
-                            className={`w-full bg-surface-container-low border ${duplicatePatient ? 'border-error text-error' : 'border-outline-variant'} rounded-xl px-3 py-3 text-sm outline-none transition-all`}
-                          />
-                          {duplicatePatient && (
-                            <div className="mt-2 flex items-center justify-between bg-error-container text-on-error-container p-2.5 rounded-xl text-xs animate-in fade-in slide-in-from-top-1">
-                              <span className="truncate pr-2 font-medium">SĐT đã tồn tại ({duplicatePatient.name})</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setMode('existing');
-                                  setSearchQuery(duplicatePatient.phone);
-                                  setExistingPatientId(duplicatePatient.id);
-                                  setNewPhone('');
-                                }}
-                                className="font-bold underline cursor-pointer shrink-0"
-                              >
-                                Chọn cũ
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">Năm sinh</label>
-                          <input
-                            type="number"
-                            value={newAge}
-                            onChange={(e) => setNewAge(e.target.value)}
-                            className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-3 text-sm outline-none transition-all"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">Giới tính</label>
-                        <div className="flex gap-2">
-                          {['Nam', 'Nữ', 'Khác'].map((gender) => (
-                            <button
-                              key={gender}
-                              type="button"
-                              onClick={() => setNewGender(gender)}
-                              className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all cursor-pointer ${
-                                newGender === gender ? 'bg-primary text-on-primary border-primary' : 'border-outline-variant text-on-surface-variant hover:bg-surface-container-low'
-                              }`}
-                            >
-                              {gender}
-                            </button>
-                          ))}
-                        </div>
                       </div>
                     </div>
                   )}

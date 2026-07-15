@@ -104,9 +104,9 @@ export async function createShift(data: {
   roomId: number;
 }) {
   const shiftHours = {
-    Morning: { start: '08:00', end: '12:00' },
-    Afternoon: { start: '14:00', end: '17:30' },
-    Full: { start: '08:00', end: '17:30' },
+    Morning: { start: '08:00', end: '14:00' },
+    Afternoon: { start: '14:00', end: '20:00' },
+    Full: { start: '08:00', end: '20:00' },
   };
 
   const sc = shiftHours[data.shiftType];

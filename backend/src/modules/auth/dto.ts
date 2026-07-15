@@ -23,6 +23,9 @@ export const registerSchema = z.object({
     password: z.string({
       required_error: "Mật khẩu (password) là bắt buộc",
     }).min(6, "Mật khẩu phải có tối thiểu 6 ký tự"),
+    otpToken: z.string({
+      required_error: "Mã xác thực OTP là bắt buộc",
+    }).min(10, "Mã xác thực OTP không hợp lệ"),
     dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày sinh phải ở định dạng YYYY-MM-DD").optional().or(z.literal('')),
     gender: z.string().max(10).optional().or(z.literal('')),
   }),
