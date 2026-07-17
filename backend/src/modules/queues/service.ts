@@ -57,7 +57,7 @@ export function formatQueueTicket(ticket: any): FormattedQueueItem {
     id: `Q-${ticket.ticketId}`,
     patientId: `P-${ticket.patientId}`,
     patientName: ticket.patient?.user?.fullName || 'Bệnh nhân',
-    dentistId: `D-${ticket.dentistId}`,
+    dentistId: `D-${ticket.dentistId.toString().padStart(2, '0')}`,
     dentistName: ticket.dentist?.user?.fullName || 'Bác sĩ',
     room: ticket.room?.name || 'Phòng khám',
     status: statusStr,
@@ -152,6 +152,18 @@ export async function checkInPatient(data: {
     },
   });
 
+  try {
+    await prisma.systemLog.create({
+      data: {
+        module: 'RECEPTION',
+        logType: 'SUCCESS',
+        message: `Bệnh nhân ${ticket.patient.fullName} check-in vào hàng chờ bác sĩ ${ticket.dentist.user.fullName}.`,
+      },
+    });
+  } catch (logErr) {
+    console.error('Lỗi ghi log checkin:', logErr);
+  }
+
   return formatQueueTicket(ticket);
 }
 
@@ -184,6 +196,26 @@ export async function updateTicketStatus(
       room: true,
     },
   });
+
+  try {
+    let msg = '';
+    if (newStatus === 'InChair') {
+      msg = `Bác sĩ ${updated.dentist.user.fullName} bắt đầu khám cho bệnh nhân ${updated.patient.fullName}.`;
+    } else if (newStatus === 'Completed') {
+      msg = `Hoàn tất ca khám cho bệnh nhân ${updated.patient.fullName} tại ${updated.room?.name || 'phòng khám'}.`;
+    } else {
+      msg = `Hàng chờ của bệnh nhân ${updated.patient.fullName} được chuyển về trạng thái chờ khám.`;
+    }
+    await prisma.systemLog.create({
+      data: {
+        module: newStatus === 'InChair' ? 'DENTIST' : 'SYSTEM',
+        logType: 'SUCCESS',
+        message: msg,
+      },
+    });
+  } catch (logErr) {
+    console.error('Lỗi ghi log chuyển trạng thái hàng chờ:', logErr);
+  }
 
   return formatQueueTicket(updated);
 }

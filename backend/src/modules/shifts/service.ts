@@ -101,7 +101,7 @@ export async function createShift(data: {
   dentistId: bigint;
   workDate: Date;
   shiftType: 'Morning' | 'Afternoon' | 'Full';
-  roomId: number;
+  roomId: number | string;
 }) {
   const shiftHours = {
     Morning: { start: '08:00', end: '14:00' },
@@ -110,6 +110,18 @@ export async function createShift(data: {
   };
 
   const sc = shiftHours[data.shiftType];
+
+  let finalRoomId = 1;
+  if (typeof data.roomId === 'string') {
+    const room = await prisma.room.findFirst({
+      where: { name: data.roomId },
+    });
+    if (room) {
+      finalRoomId = room.roomId;
+    }
+  } else {
+    finalRoomId = Number(data.roomId);
+  }
 
   return await prisma.dentistShift.upsert({
     where: {
@@ -120,14 +132,14 @@ export async function createShift(data: {
       },
     },
     update: {
-      roomId: data.roomId,
+      roomId: finalRoomId,
       startTime: new Date(`1970-01-01T${sc.start}:00.000Z`),
       endTime: new Date(`1970-01-01T${sc.end}:00.000Z`),
       isActive: true,
     },
     create: {
       dentistId: data.dentistId,
-      roomId: data.roomId,
+      roomId: finalRoomId,
       workDate: data.workDate,
       shiftType: data.shiftType,
       startTime: new Date(`1970-01-01T${sc.start}:00.000Z`),

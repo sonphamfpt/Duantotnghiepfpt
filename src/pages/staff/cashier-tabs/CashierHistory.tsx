@@ -25,7 +25,8 @@ export const CashierHistory: React.FC = () => {
     const matchesMethod = methodFilter === 'ALL' || inv.paymentMethod === methodFilter;
 
     let matchesTime = true;
-    const invoiceDate = new Date(inv.createdAt);
+    const paymentDates = (inv.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
+    const invoiceDate = paymentDates.length > 0 ? new Date(Math.max(...paymentDates)) : new Date(inv.createdAt);
     const now = new Date();
     
     if (timeFilter === 'TODAY') {
@@ -47,20 +48,20 @@ export const CashierHistory: React.FC = () => {
   });
 
   // Statistics
-  const totalRevenue = paidInvoices.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+  const totalRevenue = paidInvoices.reduce((sum, inv) => sum + (inv.paidAmount || inv.netPrice || 0), 0);
   const totalCount = paidInvoices.length;
 
   const cashRevenue = paidInvoices
     .filter(inv => inv.paymentMethod === 'Cash')
-    .reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+    .reduce((sum, inv) => sum + (inv.paidAmount || inv.netPrice || 0), 0);
     
   const cardRevenue = paidInvoices
     .filter(inv => inv.paymentMethod === 'Card')
-    .reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+    .reduce((sum, inv) => sum + (inv.paidAmount || inv.netPrice || 0), 0);
     
   const transferRevenue = paidInvoices
     .filter(inv => inv.paymentMethod === 'Transfer')
-    .reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+    .reduce((sum, inv) => sum + (inv.paidAmount || inv.netPrice || 0), 0);
 
   const selectedInvoice = invoices.find((inv) => inv.id === selectedInvoiceId);
 
@@ -80,6 +81,8 @@ export const CashierHistory: React.FC = () => {
         return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'Transfer':
         return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'Wallet':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200';
     }
@@ -93,6 +96,8 @@ export const CashierHistory: React.FC = () => {
         return 'Ví / Thẻ';
       case 'Transfer':
         return 'Chuyển khoản';
+      case 'Wallet':
+        return 'Ví thành viên';
       default:
         return 'Không xác định';
     }
@@ -132,6 +137,7 @@ export const CashierHistory: React.FC = () => {
               <option value="Cash">Tiền mặt</option>
               <option value="Card">Ví / Thẻ POS</option>
               <option value="Transfer">Chuyển khoản</option>
+              <option value="Wallet">Ví thành viên</option>
             </select>
           </div>
 

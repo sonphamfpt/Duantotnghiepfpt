@@ -59,4 +59,35 @@ export const shiftApi = {
       body: JSON.stringify({ action }),
     });
   },
+
+  createShift: (data: { dentistId: string; workDate: string; shiftType: string; roomId: number | string }) => {
+    const rawDentistId = data.dentistId.split('-')[1] || data.dentistId;
+    return request<any>('/shifts', {
+      method: 'POST',
+      body: JSON.stringify({
+        dentistId: rawDentistId,
+        workDate: data.workDate,
+        shiftType: data.shiftType,
+        roomId: data.roomId,
+      }),
+    });
+  },
+
+  deleteShift: (shiftId: string) => {
+    const rawShiftId = shiftId.split('-')[1] || shiftId;
+    return request<any>(`/shifts/${rawShiftId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Cập nhật phòng trực cho một ca (thay vì tạo mới)
+   */
+  updateShiftRoom: (shiftId: string, roomId: number | string) => {
+    const rawShiftId = shiftId.split('-')[1] || shiftId;
+    return request<any>(`/shifts/${rawShiftId}/room`, {
+      method: 'PATCH',
+      body: JSON.stringify({ roomId }),
+    });
+  },
 };

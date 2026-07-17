@@ -4,44 +4,6 @@ import { AppError } from '../../middlewares/errorHandler';
 import { calculateAvailableSlots } from '../../utils/slotCalculator';
 import { Prisma } from '@prisma/client';
 
-const SERVICE_NAME_MAP: Record<string, string> = {
-  'S-01': 'Lấy cao răng & Vệ sinh',
-  '1': 'Lấy cao răng & Vệ sinh',
-  'S-02': 'Tẩy trắng răng thẩm mỹ',
-  '2': 'Tẩy trắng răng thẩm mỹ',
-  'S-03': 'Trám răng thẩm mỹ (x1)',
-  '3': 'Trám răng thẩm mỹ (x1)',
-  'S-04': 'Nhổ răng khôn thường',
-  '4': 'Nhổ răng khôn thường',
-  'S-05': 'Điều trị tủy răng',
-  '5': 'Điều trị tủy răng',
-  'S-06': 'Trồng răng Implant xương',
-  '6': 'Trồng răng Implant xương',
-  'S-07': 'Niềng răng/Chỉnh nha',
-  '7': 'Niềng răng/Chỉnh nha',
-  'S-08': 'Khám tổng quát & Tư vấn',
-  '8': 'Khám tổng quát & Tư vấn',
-  'S-09': 'Bọc răng sứ toàn sứ',
-  '9': 'Bọc răng sứ toàn sứ',
-  'S-10': 'Gắn đá nha khoa',
-  '10': 'Gắn đá nha khoa',
-  'S-11': 'Tiểu phẫu cắt chóp',
-  '11': 'Tiểu phẫu cắt chóp',
-  'S-12': 'Chụp X-quang răng',
-  '12': 'Chụp X-quang răng',
-};
-
-const DENTIST_NAME_MAP: Record<string, string> = {
-  'D-01': 'Bác sĩ Lê Minh',
-  '1': 'Bác sĩ Lê Minh',
-  'D-02': 'Bác sĩ Hoàng Nam',
-  '2': 'Bác sĩ Hoàng Nam',
-  'D-03': 'Bác sĩ Mai Lan',
-  '3': 'Bác sĩ Mai Lan',
-  'D-04': 'Bác sĩ Nguyễn Hương',
-  '4': 'Bác sĩ Nguyễn Hương',
-};
-
 async function resolveServiceId(id: string): Promise<bigint> {
   const cleanId = id.replace('S-', '');
   
@@ -52,9 +14,9 @@ async function resolveServiceId(id: string): Promise<bigint> {
     if (record) return record.serviceId;
   }
   
-  const mappedName = SERVICE_NAME_MAP[id] || id;
+  // Tra cứu theo tên dịch vụ nếu không tìm được qua numeric ID
   const record = await prisma.service.findFirst({
-    where: { name: { contains: mappedName, mode: 'insensitive' } },
+    where: { name: { contains: id, mode: 'insensitive' } },
   });
   
   if (!record) {
@@ -73,10 +35,10 @@ async function resolveDentistId(id: string): Promise<bigint> {
     if (record) return record.dentistId;
   }
   
-  const mappedName = DENTIST_NAME_MAP[id] || id;
+  // Tra cứu theo tên bác sĩ nếu không tìm được qua numeric ID
   const record = await prisma.dentist.findFirst({
     where: {
-      user: { fullName: { contains: mappedName, mode: 'insensitive' } }
+      user: { fullName: { contains: id, mode: 'insensitive' } }
     }
   });
   
@@ -259,11 +221,15 @@ export class AppointmentsService {
           where: { code: 'STANDARD' },
         });
         
+        if (!tier) {
+          throw new AppError(500, 'Không tìm thấy hạng thành viên mặc định (STANDARD). Vui lòng liên hệ quản trị viên.', 'TIER_NOT_FOUND');
+        }
+
         patient = await prisma.patient.create({
           data: {
             fullName: patientName.trim(),
             phone: patientPhone.trim(),
-            tierId: tier ? tier.tierId : 1,
+            tierId: tier.tierId,
           },
         });
       } else {
@@ -310,7 +276,7 @@ export class AppointmentsService {
     if (!isRequestedSlotAvailable) {
       throw new AppError(
         409,
-        'Khung giờ đã chọn không còn khả dụng cho bác sĩ hoặc dịch vụ này. Vui lòng chọn lại giờ khám.',
+        'Khung giờ này vừa mới được một bệnh nhân khác đặt mất hoặc không còn khả dụng. Vui lòng chọn khung giờ khám khác.',
         'SLOT_NOT_AVAILABLE'
       );
     }

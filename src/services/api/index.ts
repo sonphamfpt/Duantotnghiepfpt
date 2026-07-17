@@ -6,3 +6,4 @@ export * from './appointmentApi';
 export * from './invoiceApi';
 export * from './medicalRecordApi';
 export * from './shiftApi';
+export * from './staffApi';

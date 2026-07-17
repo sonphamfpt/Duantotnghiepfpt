@@ -72,13 +72,14 @@ const checkIfLate = (apptTime: string): { isLate: boolean; minsLate: number } =>
 };
 
 export const ReceptionistAppointments: React.FC = () => {
-  const { appointments, dentists, cancelAppointment, checkInPatient, rescheduleAppointment } = useClinic();
+  const { appointments, dentists, queue, cancelAppointment, checkInPatient, rescheduleAppointment } = useClinic();
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [filterDentist, setFilterDentist] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewDay, setViewDay] = useState<'today' | 'tomorrow' | 'week' | 'custom'>('today');
   const [customDate, setCustomDate] = useState('');
+  const [showOnlyLate, setShowOnlyLate] = useState(false);
 
   const [rescheduleApptId, setRescheduleApptId] = useState<string | null>(null);
 
@@ -100,25 +101,53 @@ export const ReceptionistAppointments: React.FC = () => {
     return dateStr;
   };
 
+  const lateAppointmentsToday = appointments.filter(a => {
+    if (a.status !== 'Confirmed') return false;
+    const isAlreadyInQueue = queue.some(q => q.patientId === a.patientId && q.status !== 'Completed');
+    if (isAlreadyInQueue) return false;
+    const apptDate = parseDateFromTime(a.time);
+    if (apptDate !== todayStr()) return false;
+    return checkIfLate(a.time).isLate;
+  });
+  const lateCount = lateAppointmentsToday.length;
+
   // ── Lọc dữ liệu live từ Context ──────────────────────────────────────────────
   const filtered = appointments.filter(a => {
-    // Lọc theo ngày
-    const apptDate = parseDateFromTime(a.time);
-    if (viewDay === 'today' && apptDate !== todayStr()) return false;
-    if (viewDay === 'tomorrow' && apptDate !== tomorrowStr()) return false;
-    
-    if (viewDay === 'custom') {
-      if (!customDate) return false;
-      const [y, m, d] = customDate.split('-');
-      const formattedCustom = `${d}/${m}/${y}`;
-      if (apptDate !== formattedCustom) {
-        return false;
+    if (showOnlyLate) {
+      if (a.status !== 'Confirmed') return false;
+      const isAlreadyInQueue = queue.some(q => q.patientId === a.patientId && q.status !== 'Completed');
+      if (isAlreadyInQueue) return false;
+      const apptDate = parseDateFromTime(a.time);
+      if (apptDate !== todayStr()) return false;
+      if (!checkIfLate(a.time).isLate) return false;
+    } else {
+      // Lọc theo ngày
+      const apptDate = parseDateFromTime(a.time);
+      if (viewDay === 'today' && apptDate !== todayStr()) return false;
+      if (viewDay === 'tomorrow' && apptDate !== tomorrowStr()) return false;
+      
+      if (viewDay === 'custom') {
+        if (!customDate) return false;
+        const [y, m, d] = customDate.split('-');
+        const formattedCustom = `${d}/${m}/${y}`;
+        if (apptDate !== formattedCustom) {
+          return false;
+        }
+      }
+      
+      // Lọc trạng thái
+      const isAlreadyInQueue = queue.some(q => q.patientId === a.patientId && q.status !== 'Completed');
+      if (filterStatus === 'pending') {
+        // Chỉ hiển thị lịch hẹn Confirmed và CHƯA check-in
+        if (a.status !== 'Confirmed' || isAlreadyInQueue) return false;
+      } else if (filterStatus !== 'all') {
+        if (a.status !== filterStatus) return false;
       }
     }
+
     // Lọc bác sĩ
     if (filterDentist !== 'all' && a.dentistId !== filterDentist) return false;
-    // Lọc trạng thái
-    if (filterStatus !== 'all' && a.status !== filterStatus) return false;
+
     // Tìm kiếm
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -135,6 +164,7 @@ export const ReceptionistAppointments: React.FC = () => {
   const confirmedCount = appointments.filter(a => a.status === 'Confirmed').length;
 
   const inProgressCount = appointments.filter(a => a.status === 'In-Progress').length;
+
 
   return (
     <div className="p-stack-lg">
@@ -164,23 +194,98 @@ export const ReceptionistAppointments: React.FC = () => {
       </div>
 
       {/* ── Quick Stats ── */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Tổng lịch hẹn',  value: totalAppts,      icon: 'calendar_today',  color: 'text-on-surface bg-surface-container border-outline-variant' },
-          { label: 'Đã xác nhận',    value: confirmedCount,  icon: 'check_circle',    color: 'text-secondary bg-secondary-container border-secondary/20' },
-          { label: 'Đang khám',      value: inProgressCount, icon: 'medical_services',color: 'text-primary bg-primary-container border-primary/20' },
+          { 
+            label: 'Tổng lịch hẹn',  
+            value: totalAppts,      
+            icon: 'calendar_today',  
+            color: 'text-on-surface bg-surface-container border-outline-variant cursor-pointer',
+            onClick: () => { setShowOnlyLate(false); setFilterStatus('all'); }
+          },
+          { 
+            label: 'Đã xác nhận',    
+            value: confirmedCount,  
+            icon: 'check_circle',    
+            color: 'text-secondary bg-secondary-container border-secondary/20 cursor-pointer',
+            onClick: () => { setShowOnlyLate(false); setFilterStatus('pending'); }
+          },
+          { 
+            label: 'Đang khám',      
+            value: inProgressCount, 
+            icon: 'medical_services',
+            color: 'text-primary bg-primary-container border-primary/20 cursor-pointer',
+            onClick: () => { setShowOnlyLate(false); setFilterStatus('In-Progress'); }
+          },
+          { 
+            label: 'Lịch trễ hẹn (≥15p)',  
+            value: lateCount,       
+            icon: 'warning',         
+            color: lateCount > 0 
+              ? 'text-error bg-error-container/40 border-error/30 animate-pulse cursor-pointer' 
+              : 'text-on-surface-variant bg-surface-container border-outline-variant cursor-pointer',
+            onClick: () => { 
+              setShowOnlyLate(!showOnlyLate); 
+              if (!showOnlyLate) { 
+                setViewDay('today'); 
+                setFilterStatus('pending'); 
+              } 
+            }
+          },
         ].map(s => (
-          <div key={s.label} className={`rounded-xl border p-4 flex items-center gap-3 ${s.color}`}>
+          <button 
+            key={s.label}
+            type="button"
+            onClick={s.onClick}
+            className={`rounded-xl border p-4 flex items-center gap-3 text-left w-full transition-all hover:shadow-md ${s.color} outline-none`}
+          >
             <Icon name={s.icon} className="text-[26px]" />
             <div>
               <p className="text-2xl font-bold">{s.value}</p>
-              <p className="text-xs font-medium opacity-80">{s.label}</p>
+              <p className="text-xs font-semibold opacity-85">{s.label}</p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
+      {/* Warning banner for receptionist */}
+      {lateCount > 0 && !showOnlyLate && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between gap-4 text-left shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-error text-white rounded-full flex items-center justify-center shrink-0 shadow-sm animate-bounce">
+              <Icon name="warning" className="text-xl" />
+            </div>
+            <div>
+              <p className="text-sm font-black text-red-900">Có {lateCount} lịch hẹn trễ giờ (trễ ≥ 15 phút) chưa check-in!</p>
+              <p className="text-xs text-red-700 mt-0.5 font-medium">Vui lòng kiểm tra danh sách trễ giờ để liên hệ điện thoại nhắc nhở hoặc hỗ trợ khách dời lịch.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setShowOnlyLate(true); setViewDay('today'); setFilterStatus('pending'); }}
+            className="px-4 py-2 bg-error hover:bg-error-dark text-white rounded-xl text-xs font-black shadow transition-all cursor-pointer border-none"
+          >
+            Xem danh sách trễ
+          </button>
+        </div>
+      )}
 
+      {showOnlyLate && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between gap-4 text-left shadow-sm">
+          <div className="flex items-center gap-3">
+            <Icon name="info" className="text-amber-600 text-2xl shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-amber-900">Đang lọc danh sách lịch hẹn trễ giờ trong hôm nay</p>
+              <p className="text-xs text-amber-700 mt-0.5">Hiển thị các lịch hẹn có trạng thái Đã xác nhận và trễ từ 15 phút trở lên.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowOnlyLate(false)}
+            className="px-4 py-2 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-xl text-xs font-bold transition-all cursor-pointer border-none"
+          >
+            Quay lại toàn bộ lịch hẹn
+          </button>
+        </div>
+      )}
 
       {/* ── Filters ── */}
       <div className="flex gap-2 mb-5 flex-wrap items-center">
@@ -198,8 +303,9 @@ export const ReceptionistAppointments: React.FC = () => {
                 onClick={() => {
                   setViewDay(d.key);
                   setCustomDate('');
+                  setShowOnlyLate(false);
                 }}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewDay === d.key ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low'}`}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${viewDay === d.key && !showOnlyLate ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low'}`}
               >
                 {d.label}
               </button>
@@ -220,13 +326,14 @@ export const ReceptionistAppointments: React.FC = () => {
                     if (val) {
                       setCustomDate(val);
                       setViewDay('custom');
+                      setShowOnlyLate(false);
                     } else {
                       setCustomDate('');
                       setViewDay('today');
                     }
                   }}
                   className={`px-3 py-1.5 text-xs font-bold outline-none cursor-pointer ${
-                    viewDay === 'custom'
+                    viewDay === 'custom' && !showOnlyLate
                       ? 'bg-primary/10 text-primary'
                       : 'text-on-surface-variant'
                   }`}
@@ -243,7 +350,10 @@ export const ReceptionistAppointments: React.FC = () => {
           <input
             placeholder="Tên, SĐT, dịch vụ..."
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
+            onChange={e => {
+              setSearchQuery(e.target.value);
+              setShowOnlyLate(false);
+            }}
             className="pl-8 pr-4 py-2 bg-white border border-outline-variant rounded-xl text-xs focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none w-44"
           />
         </div>
@@ -251,7 +361,10 @@ export const ReceptionistAppointments: React.FC = () => {
         {/* Dentist filter */}
         <select
           value={filterDentist}
-          onChange={e => setFilterDentist(e.target.value)}
+          onChange={e => {
+            setFilterDentist(e.target.value);
+            setShowOnlyLate(false);
+          }}
           className="px-3 py-2 bg-white border border-outline-variant rounded-xl text-xs focus:outline-none cursor-pointer"
         >
           <option value="all">Tất cả bác sĩ</option>
@@ -261,17 +374,26 @@ export const ReceptionistAppointments: React.FC = () => {
         {/* Status filter */}
         <select
           value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
+          onChange={e => {
+            setFilterStatus(e.target.value);
+            setShowOnlyLate(false);
+          }}
           className="px-3 py-2 bg-white border border-outline-variant rounded-xl text-xs focus:outline-none cursor-pointer"
         >
-          <option value="all">Mọi trạng thái</option>
+          <option value="pending">Chưa tiếp đón (Mặc định)</option>
+          <option value="all">Tất cả lịch hẹn</option>
           {Object.entries(APPT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
 
         {/* Clear filters */}
-        {(filterDentist !== 'all' || filterStatus !== 'all' || searchQuery) && (
+        {(filterDentist !== 'all' || filterStatus !== 'pending' || searchQuery || showOnlyLate) && (
           <button
-            onClick={() => { setFilterDentist('all'); setFilterStatus('all'); setSearchQuery(''); }}
+            onClick={() => { 
+              setFilterDentist('all'); 
+              setFilterStatus('pending'); 
+              setSearchQuery(''); 
+              setShowOnlyLate(false); 
+            }}
             className="text-xs text-on-surface-variant border border-outline-variant rounded-xl px-3 py-2 hover:bg-surface-container cursor-pointer flex items-center gap-1"
           >
             <Icon name="filter_alt_off" className="text-[14px]" />
@@ -279,6 +401,7 @@ export const ReceptionistAppointments: React.FC = () => {
           </button>
         )}
       </div>
+
 
       {/* ── Appointments Table ── */}
       <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
@@ -336,14 +459,27 @@ export const ReceptionistAppointments: React.FC = () => {
                         {/* Vào khám (chỉ Confirmed) */}
                         {appt.status === 'Confirmed' && (
                           <div className="flex gap-1.5">
-                            <button
-                              id={`btn-checkin-${appt.id}`}
-                              onClick={() => handleCheckin(appt)}
-                              className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:opacity-90 cursor-pointer flex items-center gap-1 active:scale-95 transition-all"
-                            >
-                              <Icon name="how_to_reg" className="text-[13px]" />
-                              Check-in
-                            </button>
+                            {(() => {
+                              const isAlreadyInQueue = queue.some(q => q.patientId === appt.patientId && q.status !== 'Completed');
+                              if (isAlreadyInQueue) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold">
+                                    <Icon name="check" className="text-[13px]" />
+                                    Đã tiếp đón
+                                  </span>
+                                );
+                              }
+                              return (
+                                <button
+                                  id={`btn-checkin-${appt.id}`}
+                                  onClick={() => handleCheckin(appt)}
+                                  className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:opacity-90 cursor-pointer flex items-center gap-1 active:scale-95 transition-all"
+                                >
+                                  <Icon name="how_to_reg" className="text-[13px]" />
+                                  Check-in
+                                </button>
+                              );
+                            })()}
                             <button
                               onClick={() => setRescheduleApptId(appt.id)}
                               className="px-2.5 py-1.5 border border-primary text-primary rounded-lg text-xs font-bold hover:bg-primary/10 cursor-pointer transition-all"

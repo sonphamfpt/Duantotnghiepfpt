@@ -24,6 +24,13 @@ export const DentistRecords: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlPatientId = searchParams.get('patientId');
 
+  const getEMRDetail = (notes: string | undefined, key: string, fallback: string = '') => {
+    if (!notes || !notes.includes('|')) return fallback;
+    const part = notes.split('|').find(p => p.trim().startsWith(key + ':'));
+    if (!part) return fallback;
+    return part.replace(key + ':', '').trim();
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(urlPatientId);
   const [activeSection, setActiveSection] = useState<'timeline' | 'files' | 'teeth'>('timeline');
@@ -126,12 +133,7 @@ export const DentistRecords: React.FC = () => {
     r.teethMap?.forEach(t => { toothMap[t.toothNumber] = t.condition; });
   });
 
-  // Additional static data for the selected patient
-  const staticToothMap: Record<string, Record<number, string>> = {
-    'P-8821': { 38: 'missing', 48: 'missing', 15: 'treated', 25: 'treated', 16: 'crown' },
-    'P-9902': { 46: 'decay', 38: 'missing', 36: 'treated' },
-  };
-  const mergedTeethMap = { ...(staticToothMap[selectedPatientId || ''] || {}), ...toothMap };
+  const mergedTeethMap = toothMap;
 
   const TOOTH_COLORS: Record<string, string> = {
     decay: 'bg-amber-100 border-amber-400',
@@ -200,7 +202,10 @@ export const DentistRecords: React.FC = () => {
                       </td>
                       <td className="p-4">
                         <p className="font-semibold text-on-surface">{p.phone}</p>
-                        <p className="text-xs text-on-surface-variant">{p.age} tuổi • {p.gender}</p>
+                        <p className="text-xs text-on-surface-variant">
+                          {p.age != null ? `${p.age} tuổi` : 'Chưa rõ tuổi'}
+                          {p.gender ? ` • ${p.gender}` : ''}
+                        </p>
                       </td>
                       <td className="p-4">
                         <div className="flex gap-1.5 flex-wrap">
@@ -274,7 +279,12 @@ export const DentistRecords: React.FC = () => {
               </div>
               <div className="flex-1">
                 <h3 className="font-headline-sm text-headline-sm">{selectedPatient.name}</h3>
-                <p className="text-sm opacity-80">{selectedPatient.id} • {selectedPatient.age} tuổi • {selectedPatient.gender} • {selectedPatient.phone}</p>
+                <p className="text-sm opacity-80">
+                  {selectedPatient.id}
+                  {selectedPatient.age != null ? ` • ${selectedPatient.age} tuổi` : ''}
+                  {selectedPatient.gender ? ` • ${selectedPatient.gender}` : ''}
+                  {` • ${selectedPatient.phone}`}
+                </p>
               </div>
               <div className="text-right">
                 <p className="text-xs bg-white/20 px-3 py-1.5 rounded-xl font-bold">Ví thành viên: ₫{selectedPatient.balance.toLocaleString()}</p>
@@ -499,10 +509,38 @@ export const DentistRecords: React.FC = () => {
                                 {viewEMRRecord.notes.split('|').map((part, pIdx) => {
                                   const trimmed = part.trim();
                                   if (trimmed.startsWith('Dị ứng:')) {
-                                    return <p key={pIdx}><strong>Dị ứng:</strong> <span className="text-error font-bold">{trimmed.replace('Dị ứng:', '')}</span></p>;
+                                    return <p key={pIdx}><strong>Dị ứng:</strong> <span className="text-error font-bold">{trimmed.replace('Dị ứng:', '').trim()}</span></p>;
                                   }
                                   if (trimmed.startsWith('Bệnh lý nền:')) {
-                                    return <p key={pIdx}><strong>Bệnh lý nền:</strong> <span className="text-amber-800 font-bold">{trimmed.replace('Bệnh lý nền:', '')}</span></p>;
+                                    return <p key={pIdx}><strong>Bệnh lý nền:</strong> <span className="text-amber-800 font-bold">{trimmed.replace('Bệnh lý nền:', '').trim()}</span></p>;
+                                  }
+                                  if (trimmed.startsWith('Tuổi:')) {
+                                    return <p key={pIdx}><strong>Tuổi:</strong> {trimmed.replace('Tuổi:', '').trim()}</p>;
+                                  }
+                                  if (trimmed.startsWith('Ngày sinh:')) {
+                                    const dobVal = trimmed.replace('Ngày sinh:', '').trim();
+                                    let ageStr = '';
+                                    if (dobVal) {
+                                      const dob = new Date(dobVal);
+                                      const today = new Date();
+                                      let age = today.getFullYear() - dob.getFullYear();
+                                      const m = today.getMonth() - dob.getMonth();
+                                      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+                                      ageStr = ` (${age} tuổi)`;
+                                    }
+                                    return <p key={pIdx}><strong>Ngày sinh:</strong> {dobVal ? new Date(dobVal).toLocaleDateString('vi-VN') : 'Chưa nhập'}{ageStr}</p>;
+                                  }
+                                  if (trimmed.startsWith('Giới tính:')) {
+                                    return <p key={pIdx}><strong>Giới tính:</strong> {trimmed.replace('Giới tính:', '').trim()}</p>;
+                                  }
+                                  if (trimmed.startsWith('Địa chỉ:')) {
+                                    return <p key={pIdx}><strong>Địa chỉ:</strong> {trimmed.replace('Địa chỉ:', '').trim()}</p>;
+                                  }
+                                  if (trimmed.startsWith('Bệnh sử:')) {
+                                    return <p key={pIdx} className="border-t border-amber-200/40 pt-2 mt-2"><strong>Bệnh sử / Lý do khám:</strong> <span className="italic">{trimmed.replace('Bệnh sử:', '').trim()}</span></p>;
+                                  }
+                                  if (trimmed.startsWith('Chẩn đoán:')) {
+                                    return <p key={pIdx} className="border-t border-amber-200/40 pt-2 mt-2"><strong>Chẩn đoán (ICD-10):</strong> <span className="font-bold text-primary">{trimmed.replace('Chẩn đoán:', '').trim()}</span></p>;
                                   }
                                   if (trimmed.toLowerCase().includes('đơn thuốc:')) {
                                     return (
@@ -529,7 +567,7 @@ export const DentistRecords: React.FC = () => {
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
                           <p className="text-[10px] text-slate-400 uppercase font-bold">Bác sĩ thực hiện</p>
-                          <p className="font-bold text-slate-800">Bác sĩ Nguyễn Hương</p>
+                          <p className="font-bold text-slate-800">{viewEMRRecord.dentistName}</p>
                         </div>
                         <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
                           <p className="text-[10px] text-slate-400 uppercase font-bold">Kích thước lưu trữ</p>
@@ -680,10 +718,16 @@ export const DentistRecords: React.FC = () => {
                       <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-xs text-slate-700">
                         <p className="col-span-2"><strong>Họ và tên bệnh nhân:</strong> {selectedPatient.name}</p>
                         <p><strong>Mã bệnh nhân:</strong> {selectedPatient.id}</p>
-                        <p><strong>Tuổi / Giới tính:</strong> {selectedPatient.age} tuổi / {selectedPatient.gender}</p>
+                        <p><strong>Ngày sinh:</strong> {(() => {
+                          const dobVal = getEMRDetail(viewEMRRecord.notes, 'Ngày sinh');
+                          if (!dobVal) return selectedPatient.dateOfBirth ? new Date(selectedPatient.dateOfBirth).toLocaleDateString('vi-VN') : 'Chưa nhập';
+                          return new Date(dobVal).toLocaleDateString('vi-VN');
+                        })()}</p>
+                        <p><strong>Giới tính:</strong> {getEMRDetail(viewEMRRecord.notes, 'Giới tính') || selectedPatient.gender || 'Chưa nhập'}</p>
                         <p><strong>Số điện thoại:</strong> {selectedPatient.phone}</p>
-                        <p><strong>Bệnh lý toàn thân:</strong> {selectedPatient.condition || 'Bình thường'}</p>
-                        <p className="col-span-2"><strong>Dị ứng:</strong> <span className={selectedPatient.criticalAllergy !== 'Không' ? 'text-error font-bold' : ''}>{selectedPatient.criticalAllergy}</span></p>
+                        <p><strong>Bệnh lý toàn thân:</strong> {getEMRDetail(viewEMRRecord.notes, 'Bệnh lý nền') || selectedPatient.condition || 'Bình thường'}</p>
+                        <p className="col-span-2"><strong>Địa chỉ:</strong> {getEMRDetail(viewEMRRecord.notes, 'Địa chỉ') || selectedPatient.address || 'Chưa nhập'}</p>
+                        <p className="col-span-2"><strong>Dị ứng:</strong> <span className={(getEMRDetail(viewEMRRecord.notes, 'Dị ứng') || selectedPatient.criticalAllergy) !== 'Không' ? 'text-error font-bold' : ''}>{getEMRDetail(viewEMRRecord.notes, 'Dị ứng') || selectedPatient.criticalAllergy}</span></p>
                       </div>
                     </div>
                   )}
@@ -733,9 +777,19 @@ export const DentistRecords: React.FC = () => {
                         </div>
                       )}
                       {viewEMRRecord.notes && (
-                        <div className="mt-2 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700 text-left">
+                        <div className="mt-2 bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700 text-left space-y-1">
                           <p className="font-bold text-slate-600 mb-1 text-[10px] uppercase">Ghi chú lâm sàng:</p>
-                          <p className="italic">"{viewEMRRecord.notes.includes('|') ? viewEMRRecord.notes.split('|').filter(p => !p.trim().startsWith('Dị ứng:') && !p.trim().startsWith('Bệnh lý nền:') && !p.toLowerCase().includes('đơn thuốc:')).join('. ').trim() : viewEMRRecord.notes}"</p>
+                          {viewEMRRecord.notes.includes('|') ? (
+                            viewEMRRecord.notes.split('|').map((part, idx) => {
+                              const trimmed = part.trim();
+                              if (trimmed.startsWith('Dị ứng:') || trimmed.startsWith('Bệnh lý nền:') || trimmed.toLowerCase().startsWith('đơn thuốc:')) return null;
+                              if (trimmed.startsWith('Bệnh sử:')) return <p key={idx} className="italic">"{trimmed.replace('Bệnh sử:', '').trim()}"</p>;
+                              if (trimmed.startsWith('Chẩn đoán:')) return <p key={idx}><strong>ICD-10:</strong> <span className="font-bold text-primary">{trimmed.replace('Chẩn đoán:', '').trim()}</span></p>;
+                              return <p key={idx} className="italic">{trimmed}</p>;
+                            })
+                          ) : (
+                            <p className="italic">"{viewEMRRecord.notes}"</p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -796,10 +850,12 @@ export const DentistRecords: React.FC = () => {
                       <p className="uppercase font-bold text-slate-400">Bác sĩ điều trị ký</p>
                       <p className="text-[8px] text-slate-400 italic">(Ký và đóng dấu số điện tử E-Signature)</p>
                       <div className="h-14 flex flex-col items-center justify-center relative">
-                        <span className="font-serif text-primary text-sm font-extrabold italic border-b border-primary/50 leading-none pb-0.5">Nguyễn Hương</span>
+                        <span className="font-serif text-primary text-sm font-extrabold italic border-b border-primary/50 leading-none pb-0.5">
+                          {viewEMRRecord.dentistName?.replace('Bác sĩ ', '') || ''}
+                        </span>
                         <span className="text-[7px] text-green-700 bg-green-50 px-1 border border-green-200 rounded mt-1 font-mono uppercase tracking-widest scale-90">DIGITALLY SIGNED</span>
                       </div>
-                      <p className="font-bold text-slate-800">Bác sĩ Nguyễn Hương</p>
+                      <p className="font-bold text-slate-800">{viewEMRRecord.dentistName || ''}</p>
                     </div>
                   </div>
 

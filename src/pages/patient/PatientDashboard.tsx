@@ -15,7 +15,7 @@ import { PatientBilling } from './tabs/PatientBilling';
 
 // ─── Home Tab (Dashboard Overview) ────────────────────────────────────────────
 const PatientHome: React.FC = () => {
-  const { patients, medicalRecords, invoices } = useClinic();
+  const { patients, medicalRecords, invoices, appointments } = useClinic();
   const { user } = useAuth();
 
   const patientId = user?.id || 'P-8821';
@@ -34,6 +34,10 @@ const PatientHome: React.FC = () => {
   const pendingInvoices = patientInvoices.filter(i => i.status === 'Pending');
 
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+
+  const completedCount = appointments.filter(
+    a => (a.patientId === patientId || a.patientPhone === patient.phone) && a.status === 'Completed'
+  ).length;
 
   // Extract prescription from latest record
   const latestRecordWithPrescription = records.find(r => r.prescription || r.notes?.includes('| Đơn thuốc:'));
@@ -151,7 +155,7 @@ const PatientHome: React.FC = () => {
                   <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
                     <span className="text-body-lg font-bold text-primary">₫{inv.netPrice.toLocaleString()}</span>
                     <button
-                      onClick={() => alert('Vui lòng đến quầy thu ngân để thanh toán hóa đơn này.')}
+                      onClick={() => alert('Vui lòng đến quầy thu ngân hoặc vào tab Giao dịch để thanh toán trực tuyến bằng ví thành viên.')}
                       className="px-4 py-2 border border-amber-600 text-amber-800 rounded-lg text-xs font-bold hover:bg-amber-100 active:scale-95 transition-all cursor-pointer"
                     >
                       Hướng dẫn thanh toán
@@ -198,8 +202,46 @@ const PatientHome: React.FC = () => {
       {/* Right Column: Status, Wallet, AI & Notifications */}
       <div className="col-span-12 lg:col-span-4 space-y-gutter">
 
-        {/* Removed Membership Wallet Card */}
+        {/* Membership Progress Card */}
+        <section className="bg-gradient-to-br from-[#0a2540] to-[#005eb8] text-white rounded-xl p-6 shadow-md relative overflow-hidden">
+          <div className="relative z-10 space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-350">Hạng hội viên</p>
+                <h4 className="text-lg font-black tracking-wide text-white uppercase">
+                  {completedCount >= 5 ? 'Hội viên Thân thiết (VIP)' : 'Hội viên Tiêu chuẩn'}
+                </h4>
+              </div>
+              <span className="px-2.5 py-1 bg-white/20 text-white text-[10px] font-bold rounded-full uppercase tracking-wider">
+                {completedCount} lượt khám đã xong
+              </span>
+            </div>
 
+            <div className="pt-2">
+              {completedCount >= 5 ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-emerald-300 flex items-center gap-1">
+                    <Icon name="verified" className="text-emerald-400 text-sm" />
+                    Đã nhận ưu đãi: Giảm 10% hóa đơn!
+                  </p>
+                  <p className="text-[11px] text-slate-200">Cảm ơn bạn đã luôn đồng hành cùng Nha khoa GoodSmile.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-200 font-bold">
+                    Còn {5 - completedCount} lượt khám nữa để nâng cấp lên VIP (Khuyến mãi 10%)
+                  </p>
+                  <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
+                    <div className="bg-emerald-400 h-full transition-all" style={{ width: `${Math.min((completedCount / 5) * 100, 100)}%` }}></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="absolute right-[-20px] bottom-[-20px] opacity-10 pointer-events-none">
+            <Icon name="qr_code_2" className="text-[120px] text-white" />
+          </div>
+        </section>
 
         {/* Reminders & Notifications */}
         <section className="bg-white rounded-xl border border-outline-variant p-4 space-y-3">
@@ -238,8 +280,6 @@ const PatientHome: React.FC = () => {
           </div>
         </section>
       </div>
-
-      {/* Removed Recharge Wallet Modal */}
 
       {/* Booking Modal */}
       <BookingModal

@@ -92,7 +92,7 @@ export interface Invoice {
   netPrice: number;
   status: 'Pending' | 'Partially Paid' | 'Paid';
   createdAt: string;
-  paymentMethod?: 'Cash' | 'Card' | 'Transfer';
+  paymentMethod?: 'Cash' | 'Card' | 'Transfer' | 'Wallet';
   room?: string;
   dentistName?: string;
   paidAmount?: number;

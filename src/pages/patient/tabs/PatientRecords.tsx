@@ -143,18 +143,12 @@ export const PatientRecords: React.FC = () => {
 
   const patientRecords = medicalRecords.filter(r => r.patientId === patientId);
 
-  // Dynamic tooth conditions aggregator
-  const staticToothMap: Record<string, Record<number, string>> = {
-    'P-8821': { 38: 'missing', 48: 'missing', 15: 'treated', 25: 'treated', 16: 'crown' },
-    'P-9902': { 46: 'decay', 38: 'missing', 36: 'treated' },
-  };
-
   const toothMap: Record<number, string> = {};
   patientRecords.forEach(r => {
     r.teethMap?.forEach(t => { toothMap[t.toothNumber] = t.condition; });
   });
 
-  const toothConditions = { ...(staticToothMap[patientId] || {}), ...toothMap };
+  const toothConditions = toothMap;
 
   // Dynamic VISITS list mapped from EMR medicalRecords
   const VISITS = patientRecords.map(rec => {

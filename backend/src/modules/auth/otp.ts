@@ -80,8 +80,6 @@ export const otpHelper = {
     const failsKey = `otp_fails:${phoneTrim}`;
     const countKey = `otp_count:${phoneTrim}`;
 
-    console.log(`🔎 [OTP VERIFY DEBUG] phoneTrim: "${phoneTrim}", code: "${code}"`);
-
     // 1. Kiểm tra xem có đang bị khóa không
     const isLocked = await redis.get(lockKey);
     if (isLocked) {
@@ -89,7 +87,6 @@ export const otpHelper = {
     }
 
     const storedCode = await redis.get(redisKey);
-    console.log(`🔎 [OTP VERIFY DEBUG] storedCode from Redis (key: "${redisKey}"): "${storedCode}"`);
 
     // Nếu mã OTP không tồn tại hoặc hết hạn
     if (!storedCode) {

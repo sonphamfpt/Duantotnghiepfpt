@@ -82,7 +82,7 @@ export function formatMedicalRecord(rec: any): FormattedMedicalRecord {
   return {
     id: `MR-${rec.recordId}`,
     patientId: `P-${rec.patientId}`,
-    dentistId: `D-${rec.dentistId}`,
+    dentistId: `D-${rec.dentistId.toString().padStart(2, '0')}`,
     dentistName: rec.dentist?.user?.fullName || 'Bác sĩ',
     room: rec.room?.name || 'Phòng khám',
     date: dateStr,
@@ -272,6 +272,21 @@ export async function createRecord(data: {
       files: true,
     },
   });
+
+  try {
+    const patientObj = await prisma.patient.findUnique({
+      where: { patientId: data.patientId }
+    });
+    await prisma.systemLog.create({
+      data: {
+        module: 'DENTIST',
+        logType: 'SUCCESS',
+        message: `Bác sĩ ${fullRecord?.dentist.user.fullName} hoàn tất bệnh án điều trị cho bệnh nhân ${patientObj?.fullName}.`,
+      },
+    });
+  } catch (logErr) {
+    console.error('Lỗi ghi log bệnh án:', logErr);
+  }
 
   return formatMedicalRecord(fullRecord);
 }

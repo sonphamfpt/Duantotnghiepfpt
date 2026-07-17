@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
+import { staffApi } from '../../../services/api';
 
 interface StaffMember {
   id: string;
@@ -17,69 +18,6 @@ interface StaffMember {
   };
 }
 
-const INITIAL_STAFF: StaffMember[] = [
-  {
-    id: 'STF-001',
-    name: 'Bác sĩ Lê Minh',
-    role: 'dentist',
-    roleName: 'Bác sĩ nha khoa',
-    email: 'lemin@goodsmile.vn',
-    avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=150&h=150&q=80',
-    status: 'Active',
-    permissions: { admission: false, clinical: true, checkout: false, settings: false }
-  },
-  {
-    id: 'STF-002',
-    name: 'Bác sĩ Hoàng Nam',
-    role: 'dentist',
-    roleName: 'Bác sĩ nha khoa',
-    email: 'hoangnam@goodsmile.vn',
-    avatar: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=150&h=150&q=80',
-    status: 'Active',
-    permissions: { admission: false, clinical: true, checkout: false, settings: false }
-  },
-  {
-    id: 'STF-003',
-    name: 'Bác sĩ Mai Lan',
-    role: 'dentist',
-    roleName: 'Bác sĩ nha khoa',
-    email: 'mailan@goodsmile.vn',
-    avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=150&h=150&q=80',
-    status: 'Active',
-    permissions: { admission: false, clinical: true, checkout: false, settings: false }
-  },
-  {
-    id: 'STF-004',
-    name: 'Lê Thuỳ Chi',
-    role: 'receptionist',
-    roleName: 'Lễ tân trưởng',
-    email: 'letan@goodsmile.vn',
-    avatar: 'https://images.unsplash.com/photo-1594744803329-e58b31de215f?auto=format&fit=crop&w=150&h=150&q=80',
-    status: 'Active',
-    permissions: { admission: true, clinical: false, checkout: false, settings: false }
-  },
-  {
-    id: 'STF-005',
-    name: 'Trần Văn Cường',
-    role: 'cashier',
-    roleName: 'Thu ngân chính',
-    email: 'thungan@goodsmile.vn',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80',
-    status: 'Active',
-    permissions: { admission: false, clinical: false, checkout: true, settings: false }
-  },
-  {
-    id: 'STF-006',
-    name: 'Hoàng Văn Hải',
-    role: 'manager',
-    roleName: 'Giám đốc vận hành',
-    email: 'admin@goodsmile.vn',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80',
-    status: 'Active',
-    permissions: { admission: true, clinical: true, checkout: true, settings: true }
-  }
-];
-
 interface CreatedAccountInfo {
   name: string;
   email: string;
@@ -88,7 +26,8 @@ interface CreatedAccountInfo {
 }
 
 export const ManagerRbac: React.FC = () => {
-  const [staffList, setStaffList] = useState<StaffMember[]>(INITIAL_STAFF);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(false);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
   const [createdAccount, setCreatedAccount] = useState<CreatedAccountInfo | null>(null);
   const [emailError, setEmailError] = useState('');
@@ -100,6 +39,24 @@ export const ManagerRbac: React.FC = () => {
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  const fetchStaffList = async () => {
+    setLoading(true);
+    try {
+      const response = await staffApi.getStaff();
+      if (response.success && response.data) {
+        setStaffList(response.data);
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải danh sách nhân sự:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStaffList();
+  }, []);
 
   const generatePassword = () => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP0123456789!@#';
@@ -115,36 +72,52 @@ export const ManagerRbac: React.FC = () => {
     });
   };
 
-  const togglePermission = (id: string, key: keyof StaffMember['permissions']) => {
-    setStaffList((prev) =>
-      prev.map((member) => {
-        if (member.id === id) {
-          return {
-            ...member,
-            permissions: {
-              ...member.permissions,
-              [key]: !member.permissions[key]
+  const togglePermission = async (id: string, key: keyof StaffMember['permissions']) => {
+    try {
+      const res = await staffApi.togglePermission(id, key);
+      if (res.success) {
+        setStaffList((prev) =>
+          prev.map((member) => {
+            if (member.id === id) {
+              return {
+                ...member,
+                permissions: {
+                  ...member.permissions,
+                  [key]: !member.permissions[key]
+                }
+              };
             }
-          };
-        }
-        return member;
-      })
-    );
+            return member;
+          })
+        );
+      }
+    } catch (err) {
+      console.error('Lỗi khi cập nhật phân quyền:', err);
+      alert('Không thể cập nhật phân quyền nhân sự.');
+    }
   };
 
-  const handleToggleStatus = (id: string) => {
-    setStaffList((prev) =>
-      prev.map((member) => {
-        if (member.id === id) {
-          const nextStatus = member.status === 'Active' ? 'Inactive' : 'Active';
-          return { ...member, status: nextStatus };
-        }
-        return member;
-      })
-    );
+  const handleToggleStatus = async (id: string) => {
+    try {
+      const res = await staffApi.toggleStatus(id);
+      if (res.success) {
+        setStaffList((prev) =>
+          prev.map((member) => {
+            if (member.id === id) {
+              const nextStatus = member.status === 'Active' ? 'Inactive' : 'Active';
+              return { ...member, status: nextStatus };
+            }
+            return member;
+          })
+        );
+      }
+    } catch (err) {
+      console.error('Lỗi khi thay đổi trạng thái:', err);
+      alert('Không thể thay đổi trạng thái hoạt động.');
+    }
   };
 
-  const handleAddStaffSubmit = (e: React.FormEvent) => {
+  const handleAddStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setEmailError('');
 
@@ -161,76 +134,44 @@ export const ManagerRbac: React.FC = () => {
       return;
     }
 
-    // Check duplicate email in current staff list
-    const duplicate = staffList.find((s) => s.email.toLowerCase() === emailLower);
-    if (duplicate) {
-      setEmailError('Email này đã được sử dụng bởi nhân sự khác.');
-      return;
-    }
-
-    // Check duplicate in localStorage staff accounts
     try {
-      const existing = JSON.parse(localStorage.getItem('goodsmile_staff_accounts') || '[]');
-      if (existing.find((s: any) => s.email.toLowerCase() === emailLower)) {
-        setEmailError('Email này đã tồn tại trong hệ thống tài khoản.');
-        return;
-      }
-    } catch (_) {}
-
-    const newId = `STF-${String(staffList.length + 1).padStart(3, '0')}`;
-    const roleNames: Record<string, string> = {
-      dentist: 'Bác sĩ nha khoa',
-      receptionist: 'Lễ tân tiếp nhận',
-      cashier: 'Nhân viên thu ngân',
-      manager: 'Quản lý phòng khám'
-    };
-
-    const addedMember: StaffMember = {
-      id: newId,
-      name: newName.trim(),
-      role: newRole,
-      roleName: roleNames[newRole],
-      email: emailLower,
-      avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=150&h=150&q=80',
-      status: 'Active',
-      permissions: {
-        admission: newRole === 'receptionist' || newRole === 'manager',
-        clinical: newRole === 'dentist' || newRole === 'manager',
-        checkout: newRole === 'cashier' || newRole === 'manager',
-        settings: newRole === 'manager'
-      }
-    };
-
-    // Save to staff list (UI state)
-    setStaffList((prev) => [...prev, addedMember]);
-
-    // Save login credentials to localStorage
-    try {
-      const existing = JSON.parse(localStorage.getItem('goodsmile_staff_accounts') || '[]');
-      existing.push({
+      const res = await staffApi.createStaff({
+        name: newName.trim(),
+        role: newRole,
         email: emailLower,
         password: newPassword.trim(),
-        role: newRole,
-        name: newName.trim()
       });
-      localStorage.setItem('goodsmile_staff_accounts', JSON.stringify(existing));
-    } catch (_) {}
 
-    // Show success modal with credentials
-    setCreatedAccount({
-      name: newName.trim(),
-      email: emailLower,
-      password: newPassword.trim(),
-      roleName: roleNames[newRole]
-    });
+      if (res.success) {
+        alert('Tạo tài khoản nhân sự mới thành công!');
+        fetchStaffList();
 
-    // Reset form
-    setNewName('');
-    setNewEmail('');
-    setNewPassword('');
-    setNewRole('dentist');
-    setEmailError('');
-    setShowAddStaffModal(false);
+        const roleNames: Record<string, string> = {
+          dentist: 'Bác sĩ nha khoa',
+          receptionist: 'Lễ tân tiếp nhận',
+          cashier: 'Nhân viên thu ngân',
+          manager: 'Quản lý phòng khám'
+        };
+
+        setCreatedAccount({
+          name: newName.trim(),
+          email: emailLower,
+          password: newPassword.trim(),
+          roleName: roleNames[newRole],
+        });
+
+        // Reset form
+        setNewName('');
+        setNewEmail('');
+        setNewPassword('');
+        setNewRole('dentist');
+        setEmailError('');
+        setShowAddStaffModal(false);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setEmailError(err.message || 'Lỗi khi tạo tài khoản nhân sự.');
+    }
   };
 
   const getRoleBadge = (role: StaffMember['role']) => {

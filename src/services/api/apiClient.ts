@@ -1,4 +1,6 @@
-const BASE_URL = 'http://localhost:5000/api';
+// Đọc URL gốc từ biến môi trường Vite (.env → VITE_API_BASE_URL)
+// Fallback về localhost:5000 khi chạy local mà không có .env
+export const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000') + '/api';
 
 export interface ApiResponse<T> {
   success: boolean;

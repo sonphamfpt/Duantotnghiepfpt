@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useNavigate } from 'react-router-dom';
 import { useClinic } from '../../../context/ClinicContext';
+import { useAuth } from '../../../context/AuthContext';
 
 const STATUS_STYLES = {
   Waiting: { badge: 'bg-amber-100 text-amber-800', dot: 'bg-amber-500', label: 'Đang chờ', icon: 'hourglass_top' },
@@ -11,8 +12,9 @@ const STATUS_STYLES = {
 
 export const DentistQueue: React.FC = () => {
   const { queue, patients, startTreatment } = useClinic();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const dentistId = 'D-04';
+  const dentistId = user?.id || 'D-04';
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');

@@ -4,28 +4,42 @@ import { useClinic } from '../../../context/ClinicContext';
 import { ToothState } from '../../../types/clinic';
 
 // Helper to extract date components timezone-independently
-const getDateParts = (dStr: string) => {
+const getDateParts = (dStr: any) => {
   if (!dStr) return null;
+  let str = '';
+  try {
+    if (dStr instanceof Date) {
+      str = dStr.toISOString();
+    } else if (typeof dStr === 'object') {
+      str = dStr.toString();
+    } else {
+      str = String(dStr);
+    }
+  } catch (e) {
+    return null;
+  }
+
+  const cleanDStr = str.includes('@') ? str.split('@')[0].trim() : str;
   let year = 2026;
   let month = 0; // 0-11
   let day = 1;
   
-  if (dStr.includes('/')) { // DD/MM/YYYY
-    const parts = dStr.split('/');
+  if (cleanDStr.includes('/')) { // DD/MM/YYYY
+    const parts = cleanDStr.split('/');
     if (parts.length === 3) {
       day = Number(parts[0]);
       month = Number(parts[1]) - 1;
       year = Number(parts[2]);
     }
-  } else if (dStr.includes('T')) { // ISO string
-    const parts = dStr.split('T')[0].split('-');
+  } else if (cleanDStr.includes('T')) { // ISO string
+    const parts = cleanDStr.split('T')[0].split('-');
     if (parts.length === 3) {
       year = Number(parts[0]);
       month = Number(parts[1]) - 1;
       day = Number(parts[2]);
     }
-  } else if (dStr.includes('-')) { // YYYY-MM-DD
-    const parts = dStr.split('-');
+  } else if (cleanDStr.includes('-')) { // YYYY-MM-DD
+    const parts = cleanDStr.split('-');
     if (parts.length === 3) {
       year = Number(parts[0]);
       month = Number(parts[1]) - 1;
@@ -43,12 +57,56 @@ export const ManagerRevenue: React.FC = () => {
 
   // Filter states
   const [filterType, setFilterType] = useState<'day' | 'month' | 'quarter' | 'range'>('month');
-  const [selectedDate, setSelectedDate] = useState<string>('2026-06-26'); // default current mock date
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-06');
-  const [selectedQuarter, setSelectedQuarter] = useState<number>(2); // Q2 (Apr - Jun)
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
-  const [startDate, setStartDate] = useState<string>('2026-06-01');
-  const [endDate, setEndDate] = useState<string>('2026-06-26');
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    try {
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    } catch (e) {
+      return '2026-07-15';
+    }
+  });
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    try {
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+    } catch (e) {
+      return '2026-07';
+    }
+  });
+  const [selectedQuarter, setSelectedQuarter] = useState<number>(() => {
+    try {
+      return Math.floor(new Date().getMonth() / 3) + 1;
+    } catch (e) {
+      return 3;
+    }
+  });
+  const [selectedYear, setSelectedYear] = useState<number>(() => {
+    try {
+      return new Date().getFullYear();
+    } catch (e) {
+      return 2026;
+    }
+  });
+  const [startDate, setStartDate] = useState<string>(() => {
+    try {
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
+    } catch (e) {
+      return '2026-07-01';
+    }
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    try {
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    } catch (e) {
+      return '2026-07-15';
+    }
+  });
 
   // Unified dynamic filtering logic
   const isDateInFilter = (dateStr: string) => {
@@ -58,11 +116,17 @@ export const ManagerRevenue: React.FC = () => {
     const dateObj = new Date(year, month, day);
 
     if (filterType === 'day') {
-      const [fYear, fMonth, fDay] = selectedDate.split('-').map(Number);
+      if (!selectedDate) return false;
+      const fParts = selectedDate.split('-');
+      if (fParts.length < 3) return false;
+      const [fYear, fMonth, fDay] = fParts.map(Number);
       return year === fYear && month === (fMonth - 1) && day === fDay;
     }
     if (filterType === 'month') {
-      const [fYear, fMonth] = selectedMonth.split('-').map(Number);
+      if (!selectedMonth) return false;
+      const fParts = selectedMonth.split('-');
+      if (fParts.length < 2) return false;
+      const [fYear, fMonth] = fParts.map(Number);
       return year === fYear && month === (fMonth - 1);
     }
     if (filterType === 'quarter') {
@@ -71,8 +135,12 @@ export const ManagerRevenue: React.FC = () => {
       return quarter === selectedQuarter;
     }
     if (filterType === 'range') {
-      const [sYear, sMonth, sDay] = startDate.split('-').map(Number);
-      const [eYear, eMonth, eDay] = endDate.split('-').map(Number);
+      if (!startDate || !endDate) return false;
+      const sParts = startDate.split('-');
+      const eParts = endDate.split('-');
+      if (sParts.length < 3 || eParts.length < 3) return false;
+      const [sYear, sMonth, sDay] = sParts.map(Number);
+      const [eYear, eMonth, eDay] = eParts.map(Number);
       const start = new Date(sYear, sMonth - 1, sDay, 0, 0, 0);
       const end = new Date(eYear, eMonth - 1, eDay, 23, 59, 59);
       return dateObj >= start && dateObj <= end;
@@ -89,7 +157,7 @@ export const ManagerRevenue: React.FC = () => {
   const totalServiceFee = filteredInvoices.reduce((sum, inv) => {
     if (inv.status === 'Paid') return sum + inv.totalPrice;
     if (inv.status === 'Partially Paid') {
-      const ratio = (inv.paidAmount || 0) / inv.netPrice;
+      const ratio = inv.netPrice > 0 ? (inv.paidAmount || 0) / inv.netPrice : 0;
       return sum + Math.round(inv.totalPrice * ratio);
     }
     return sum;
@@ -97,7 +165,7 @@ export const ManagerRevenue: React.FC = () => {
   const totalMemberDiscount = filteredInvoices.reduce((sum, inv) => {
     if (inv.status === 'Paid') return sum + inv.memberDiscount;
     if (inv.status === 'Partially Paid') {
-      const ratio = (inv.paidAmount || 0) / inv.netPrice;
+      const ratio = inv.netPrice > 0 ? (inv.paidAmount || 0) / inv.netPrice : 0;
       return sum + Math.round(inv.memberDiscount * ratio);
     }
     return sum;
@@ -133,7 +201,7 @@ export const ManagerRevenue: React.FC = () => {
   const serviceRevenueMap: Record<string, { category: string; quantity: number; value: number }> = {};
   filteredInvoices.forEach((inv) => {
     if ((inv.paidAmount || 0) === 0) return;
-    inv.services.forEach((svc) => {
+    (inv.services || []).forEach((svc) => {
       const key = svc.serviceName;
       if (!serviceRevenueMap[key]) {
         serviceRevenueMap[key] = { category: key, quantity: 0, value: 0 };

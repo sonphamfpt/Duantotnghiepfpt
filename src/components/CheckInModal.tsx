@@ -26,6 +26,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
   const [newPhone, setNewPhone] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState('');
+  const [selectedApptId, setSelectedApptId] = useState('');
   const [lookupStatus, setLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle');
   const lookupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -43,7 +44,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
   const cancelCount = selectedPatient 
     ? appointments.filter(a => a.patientId === selectedPatient.id && a.status === 'Cancelled').length 
     : 0;
-  const isLocked = cancelCount >= 3 && !selectedPatient?.isUnlocked;
+  const isLocked = (selectedPatient?.isLocked || cancelCount >= 3) && !selectedPatient?.isUnlocked;
 
   if (!isOpen) return null;
 
@@ -56,6 +57,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
     setNewPhone('');
     setIsSuccess(false);
     setSelectedServiceId('');
+    setSelectedApptId('');
     setSearchQuery('');
     setIsDropdownOpen(false);
     setLookupStatus('idle');
@@ -63,16 +65,30 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
   };
 
   const handleScanFake = () => {
+    if (!selectedApptId.trim()) {
+      alert('Vui lòng chọn hoặc nhập mã lịch hẹn để quét.');
+      return;
+    }
+
     setIsScanning(true);
     setTimeout(() => {
       setIsScanning(false);
-      const patient = patients.find((p) => !queue.some((q) => q.patientId === p.id && q.status !== 'Completed')) || patients[0];
-      const dentist = dentists[0];
-      if (patient && dentist) {
-        setExistingPatientId(patient.id);
-        setSelectedDentistId(dentist.id);
+      const cleanApptId = selectedApptId.trim().toUpperCase();
+      const appt = appointments.find(
+        (a) => a.id === cleanApptId || a.id === `A-${cleanApptId}`
+      );
+
+      if (appt) {
+        setExistingPatientId(appt.patientId);
+        setSelectedDentistId(appt.dentistId);
+        const serviceObj = services.find((s) => s.name === appt.serviceName);
+        if (serviceObj) {
+          setSelectedServiceId(serviceObj.id);
+        }
         setMode('existing');
-        alert(`Đã quét QR thành công!\nBệnh nhân: ${patient.name}\nBác sĩ: ${dentist.name}`);
+        alert(`Đã quét QR thành công!\nBệnh nhân: ${appt.patientName}\nBác sĩ: ${appt.dentistName}\nDịch vụ: ${appt.serviceName}`);
+      } else {
+        alert(`Không tìm thấy lịch hẹn tương ứng với mã QR: "${selectedApptId}"`);
       }
     }, 1200);
   };
@@ -205,25 +221,64 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
                   </div>
 
                   {mode === 'qr' && (
-                    <div className="py-12 flex flex-col items-center justify-center border-2 border-dashed border-primary/30 bg-primary/5 rounded-2xl">
+                    <div className="p-6 flex flex-col items-center justify-center border-2 border-dashed border-primary/30 bg-primary/5 rounded-2xl space-y-4">
                       <div className="relative">
                         <Icon name="qr_code_scanner" className="text-[64px] text-primary" />
                         {isScanning && (
                           <div className="absolute top-0 left-0 w-full h-full border-t-2 border-secondary animate-bounce pointer-events-none" />
                         )}
                       </div>
-                      <p className="font-bold text-primary mt-4 mb-2">{isScanning ? 'Đang quét...' : 'Sẵn sàng quét mã QR'}</p>
-                      <p className="text-xs text-on-surface-variant text-center max-w-xs mb-4">
-                        Hướng camera vào mã QR của lịch hẹn trên điện thoại của bệnh nhân.
-                      </p>
+                      <p className="font-bold text-primary text-sm">{isScanning ? 'Đang quét...' : 'Giả lập quét mã QR lịch hẹn'}</p>
+                      
+                      <div className="w-full max-w-sm space-y-3">
+                        <div>
+                          <label className="block text-[11px] font-bold text-on-surface-variant uppercase mb-1">
+                            Chọn lịch hẹn để quét (Dành cho Demo)
+                          </label>
+                          <select
+                            value={selectedApptId}
+                            onChange={(e) => setSelectedApptId(e.target.value)}
+                            disabled={isScanning}
+                            className="w-full bg-surface border border-outline-variant rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                          >
+                            <option value="">-- Chọn lịch hẹn để quét --</option>
+                            {appointments.filter(a => a.status === 'Confirmed').map((appt) => (
+                              <option key={appt.id} value={appt.id}>
+                                [{appt.id}] {appt.patientName} - {appt.serviceName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="h-px bg-outline-variant flex-1"></div>
+                          <span className="text-[10px] font-bold text-outline-variant uppercase">Hoặc</span>
+                          <div className="h-px bg-outline-variant flex-1"></div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-on-surface-variant uppercase mb-1">
+                            Nhập mã QR bằng tay (Ví dụ: A-1)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Nhập mã lịch hẹn..."
+                            value={selectedApptId}
+                            onChange={(e) => setSelectedApptId(e.target.value)}
+                            disabled={isScanning}
+                            className="w-full bg-surface border border-outline-variant rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-primary/30 transition-all uppercase"
+                          />
+                        </div>
+                      </div>
+
                       <button
                         type="button"
                         onClick={handleScanFake}
-                        disabled={isScanning}
-                        className="px-6 py-2 bg-primary text-on-primary rounded-xl font-bold cursor-pointer hover:bg-primary-container hover:text-on-primary-container disabled:opacity-50 flex items-center gap-2"
+                        disabled={isScanning || !selectedApptId.trim()}
+                        className="px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold cursor-pointer hover:bg-primary-container hover:text-on-primary-container disabled:opacity-40 flex items-center gap-2 text-xs transition-all mt-2"
                       >
-                        <Icon name="camera_alt" className="text-[18px]" />
-                        Giả lập quét QR
+                        <Icon name="camera_alt" className="text-[16px]" />
+                        Bấm để quét mã
                       </button>
                     </div>
                   )}

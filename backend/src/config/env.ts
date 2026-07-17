@@ -8,6 +8,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url("DATABASE_URL phải là một URL hợp lệ"),
   REDIS_URL: z.string().url("REDIS_URL phải là một URL hợp lệ"),
   JWT_SECRET: z.string().min(8, "JWT_SECRET phải có tối thiểu 8 ký tự"),
+  // Danh sách các domain frontend được phép (ngăn cách bằng dấu phẩy)
+  ALLOWED_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000'),
 });
 
 const parsed = envSchema.safeParse(process.env);

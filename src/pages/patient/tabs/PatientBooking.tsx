@@ -7,7 +7,6 @@ import { appointmentApi } from '../../../services/api';
 
 type Step = 1 | 2 | 3 | 4;
 
-const API_URL = 'http://localhost:5000/api';
 
 const mapFrontendToBackendId = (id: string): string => {
   const numPart = id.split('-')[1];
@@ -33,7 +32,7 @@ const formatLocalDateStr = (dateStr: string): string => {
 };
 
 export const PatientBooking: React.FC = () => {
-  const { services, dentists, addLog, refreshAllData } = useClinic();
+  const { services, dentists, patients, appointments, addLog, refreshAllData } = useClinic();
   const { user } = useAuth();
 
   const [step, setStep] = useState<Step>(1);
@@ -65,6 +64,14 @@ export const PatientBooking: React.FC = () => {
   const patientPhone = user?.phone || '0901234567';
   const patientId = user?.id || '2'; // database ID mặc định của bệnh nhân demo
 
+  const matchedPatient = patients.find(p => p.id === patientId);
+  const cancelCount = matchedPatient 
+    ? appointments.filter(a => a.patientId === matchedPatient.id && a.status === 'Cancelled').length 
+    : 0;
+  const isLocked = matchedPatient 
+    ? (matchedPatient.isLocked || cancelCount >= 3) && !matchedPatient.isUnlocked 
+    : false;
+
   // Tự động load danh sách slot khám trống từ API
   useEffect(() => {
     const fetchSlots = async () => {
@@ -76,28 +83,15 @@ export const PatientBooking: React.FC = () => {
 
       setLoadingSlots(true);
       setSlotsError('');
-      
-      const dentistDbId = mapFrontendToBackendId(selectedDentist);
-      const serviceDbId = mapFrontendToBackendId(selectedService);
 
       try {
-        const response = await fetch(
-          `${API_URL}/appointments/dentists/${dentistDbId}/available-slots?date=${selectedDate}&serviceId=${serviceDbId}`
-        );
-        const resData = await response.json();
-        
-        if (response.ok && resData.data) {
-          const slots = resData.data as string[];
-          setAvailableSlots(slots);
-          setSelectedTime((prev) => slots.includes(prev) ? prev : '');
-        } else {
-          setSlotsError(resData.message || resData.error?.message || 'Không thể tải danh sách giờ trống.');
-          setAvailableSlots([]);
-          setSelectedTime('');
-        }
-      } catch (err) {
+        const response = await appointmentApi.getAvailableSlots(selectedDentist, selectedService, selectedDate);
+        const slots = response.data || [];
+        setAvailableSlots(slots);
+        setSelectedTime((prev) => slots.includes(prev) ? prev : '');
+      } catch (err: any) {
         console.error('Lỗi khi lấy slot khám:', err);
-        setSlotsError('Lỗi kết nối máy chủ API.');
+        setSlotsError(err.message || 'Lỗi kết nối máy chủ API.');
         setAvailableSlots([]);
         setSelectedTime('');
       } finally {
@@ -258,50 +252,64 @@ export const PatientBooking: React.FC = () => {
       {/* Step 1: Chọn dịch vụ */}
       {step === 1 && (
         <div className="space-y-4 animate-fade-in">
-          <h3 className="font-headline-sm text-headline-sm text-on-surface mb-2">Bạn muốn khám dịch vụ gì?</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {services.filter(s => s.isActive).map((svc) => (
-              <button
-                key={svc.id}
-                onClick={() => setSelectedService(svc.id)}
-                className={`text-left p-5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
-                  selectedService === svc.id
-                    ? 'border-primary bg-primary-container shadow-md'
-                    : 'border-outline-variant bg-white hover:border-primary/40 hover:bg-surface-container-low'
-                }`}
-              >
-                <div className="flex justify-between items-start gap-3">
-                  <div className="flex-1">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${selectedService === svc.id ? 'bg-primary text-on-primary' : 'bg-secondary-container text-on-secondary-container'}`}>
-                      <Icon name="dentistry" className="text-[20px]" />
+          {isLocked ? (
+            <div className="bg-error-container/10 border border-error/20 text-on-error-container rounded-2xl p-8 text-center space-y-4 max-w-lg mx-auto my-8">
+              <div className="w-16 h-16 bg-error text-on-error rounded-full flex items-center justify-center mx-auto shadow-md">
+                <Icon name="block" className="text-3xl text-white" />
+              </div>
+              <h3 className="font-headline-sm text-headline-sm text-on-surface">Tài khoản của bạn đã bị khóa đặt lịch</h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">
+                Số điện thoại của bạn đã bị tạm khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám quá 3 lần. Vui lòng liên hệ trực tiếp với phòng khám để được hỗ trợ mở khóa.
+              </p>
+            </div>
+          ) : (
+            <>
+              <h3 className="font-headline-sm text-headline-sm text-on-surface mb-2">Bạn muốn khám dịch vụ gì?</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {services.filter(s => s.isActive).map((svc) => (
+                  <button
+                    key={svc.id}
+                    onClick={() => setSelectedService(svc.id)}
+                    className={`text-left p-5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                      selectedService === svc.id
+                        ? 'border-primary bg-primary-container shadow-md'
+                        : 'border-outline-variant bg-white hover:border-primary/40 hover:bg-surface-container-low'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="flex-1">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${selectedService === svc.id ? 'bg-primary text-on-primary' : 'bg-secondary-container text-on-secondary-container'}`}>
+                          <Icon name="dentistry" className="text-[20px]" />
+                        </div>
+                        <p className={`font-bold text-body-md ${selectedService === svc.id ? 'text-on-primary-container' : 'text-on-surface'}`}>{svc.name}</p>
+                        <p className={`text-xs mt-1 ${selectedService === svc.id ? 'text-on-primary-container/70' : 'text-on-surface-variant'}`}>
+                          ⏱ {svc.durationMin} phút
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-bold text-label-md ${selectedService === svc.id ? 'text-primary' : 'text-secondary'}`}>
+                          ₫{svc.price.toLocaleString()}
+                        </p>
+                        {selectedService === svc.id && (
+                          <Icon name="check_circle" className="text-primary text-[20px]" />
+                        )}
+                      </div>
                     </div>
-                    <p className={`font-bold text-body-md ${selectedService === svc.id ? 'text-on-primary-container' : 'text-on-surface'}`}>{svc.name}</p>
-                    <p className={`text-xs mt-1 ${selectedService === svc.id ? 'text-on-primary-container/70' : 'text-on-surface-variant'}`}>
-                      ⏱ {svc.durationMin} phút
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-bold text-label-md ${selectedService === svc.id ? 'text-primary' : 'text-secondary'}`}>
-                      ₫{svc.price.toLocaleString()}
-                    </p>
-                    {selectedService === svc.id && (
-                      <Icon name="check_circle" className="text-primary text-[20px]" />
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-          <div className="flex justify-end pt-4">
-            <button
-              disabled={!selectedService}
-              onClick={() => setStep(2)}
-              className="px-8 py-3 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-            >
-              Tiếp theo
-              <Icon name="arrow_forward" />
-            </button>
-          </div>
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-end pt-4">
+                <button
+                  disabled={!selectedService}
+                  onClick={() => setStep(2)}
+                  className="px-8 py-3 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  Tiếp theo
+                  <Icon name="arrow_forward" />
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

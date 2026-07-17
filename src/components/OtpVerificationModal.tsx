@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Icon } from './Icon';
+import { request } from '../services/api/apiClient';
 
 interface OtpVerificationModalProps {
   isOpen: boolean;
@@ -75,26 +76,18 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
     setError('');
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/send-otp', {
+      await request('/auth/send-otp', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ phone }),
       });
-      const resData: unknown = await response.json();
-      if (!response.ok) {
-        setError(getApiMessage(resData, 'Không thể gửi mã OTP mới.'));
-        return false;
-      }
 
       setCountdown(COUNTDOWN_SECONDS);
       setOtp(Array(OTP_LENGTH).fill(''));
       setTimeout(() => inputRefs.current[0]?.focus(), 100);
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Lỗi khi gửi OTP:', err);
-      setError('Lỗi kết nối máy chủ khi gửi OTP.');
+      setError(err.message || 'Lỗi kết nối máy chủ khi gửi OTP.');
       return false;
     } finally {
       setIsSendingOtp(false);
@@ -218,39 +211,13 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
   const verifyOtp = async (code: string) => {
     setError('');
     try {
-      const response = await fetch('http://localhost:5000/api/auth/verify-otp', {
+      const resData = await request<{ otpToken?: string }>('/auth/verify-otp', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ phone: phoneNumber.trim(), code: code.trim() }),
       });
-      const resData: unknown = await response.json();
-
-      if (!response.ok) {
-        const newAttempts = attempts + 1;
-        setAttempts(newAttempts);
-        setShake(true);
-        setTimeout(() => setShake(false), 600);
-
-        const apiError = resData as ApiResponsePayload;
-
-        if (apiError.error?.code === 'OTP_LOCKEDOUT' || newAttempts >= MAX_ATTEMPTS) {
-          setIsLocked(true);
-          setLockoutCountdown(LOCKOUT_SECONDS);
-          setError(getApiMessage(resData, `Đã nhập sai ${MAX_ATTEMPTS} lần. Vui lòng đợi 1 giờ để thử lại.`));
-        } else {
-          setError(getApiMessage(resData, `Mã OTP không đúng. Còn ${MAX_ATTEMPTS - newAttempts} lượt thử.`));
-        }
-
-        // Clear inputs
-        setOtp(Array(OTP_LENGTH).fill(''));
-        setTimeout(() => inputRefs.current[0]?.focus(), 100);
-        return;
-      }
 
       // Success
-      const otpToken = (resData as ApiResponsePayload).data?.otpToken;
+      const otpToken = resData.data?.otpToken;
       if (!otpToken) {
         setError('Máy chủ chưa trả về token xác thực OTP.');
         return;
@@ -261,9 +228,26 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
       setTimeout(() => {
         onVerified(otpToken);
       }, 800);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Lỗi khi xác thực OTP:', err);
-      setError('Lỗi kết nối máy chủ khi xác thực OTP.');
+
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+      setShake(true);
+      setTimeout(() => setShake(false), 600);
+
+      const errorCode = err.message?.includes('OTP_LOCKEDOUT') ? 'OTP_LOCKEDOUT' : '';
+      if (errorCode === 'OTP_LOCKEDOUT' || newAttempts >= MAX_ATTEMPTS) {
+        setIsLocked(true);
+        setLockoutCountdown(LOCKOUT_SECONDS);
+        setError(err.message || `Đã nhập sai ${MAX_ATTEMPTS} lần. Vui lòng đợi 1 giờ để thử lại.`);
+      } else {
+        setError(err.message || `Mã OTP không đúng. Còn ${MAX_ATTEMPTS - newAttempts} lượt thử.`);
+      }
+
+      // Clear inputs
+      setOtp(Array(OTP_LENGTH).fill(''));
+      setTimeout(() => inputRefs.current[0]?.focus(), 100);
     }
   };
 

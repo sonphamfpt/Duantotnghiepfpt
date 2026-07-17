@@ -1,17 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, ToothState, InvoiceItem, DoctorShift, ShiftChangeNotification } from '../types/clinic';
-import {
-  INITIAL_SERVICES,
-  INITIAL_DENTISTS,
-  INITIAL_PATIENTS,
-  INITIAL_APPOINTMENTS,
-  INITIAL_QUEUE,
-  INITIAL_INVOICES,
-  INITIAL_LOGS,
-  INITIAL_MEDICAL_RECORDS,
-  INITIAL_DENTIST_SHIFTS,
-  INITIAL_SHIFT_NOTIFICATIONS
-} from '../services/mockData';
+import { INITIAL_LOGS } from '../services/mockData';
 import { socket } from '../services/socketClient';
 
 import {
@@ -88,7 +77,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Đồng bộ hóa toàn bộ dữ liệu từ backend
   const refreshAllData = async () => {
     try {
-      const [resSvc, resDen, resPat, resApp, resQue, resInv, resShf, resNot] = await Promise.all([
+      const [resSvc, resDen, resPat, resApp, resQue, resInv, resShf, resNot, resLog] = await Promise.all([
         clinicApi.getServices(),
         clinicApi.getDentists(),
         clinicApi.getPatients(),
@@ -97,6 +86,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         invoiceApi.getInvoices(),
         shiftApi.getShifts(),
         shiftApi.getNotifications(),
+        clinicApi.getLogs(),
       ]);
 
       if (resSvc.data) setServices(resSvc.data);
@@ -104,9 +94,41 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (resPat.data) setPatients(resPat.data);
       if (resApp.data) setAppointments(resApp.data);
       if (resQue.data) setQueue(resQue.data);
-      if (resInv.data) setInvoices(resInv.data);
+      if (resInv.data) {
+        const mappedInvoices = resInv.data.map((backendInv: any) => ({
+          id: `I-${backendInv.invoiceId}`,
+          patientId: `P-${backendInv.patientId}`,
+          patientName: backendInv.patient?.fullName || 'Khách hàng',
+          patientPhone: backendInv.patient?.phone || '',
+          services: (backendInv.items || []).map((item: any) => ({
+            serviceId: `S-${item.serviceId}`,
+            serviceName: item.service?.name || 'Dịch vụ',
+            price: Number(item.price),
+          })),
+          totalPrice: Number(backendInv.totalPrice),
+          insuranceDiscount: Number(backendInv.insuranceDiscount),
+          memberDiscount: Number(backendInv.memberDiscount),
+          netPrice: Number(backendInv.netPrice),
+          status: backendInv.status === 'PartiallyPaid' ? 'Partially Paid' : backendInv.status,
+          createdAt: backendInv.createdAt,
+          paymentMethod: backendInv.payments && backendInv.payments.length > 0 
+            ? backendInv.payments[0].method 
+            : undefined,
+          room: backendInv.room?.name || undefined,
+          dentistName: backendInv.dentist?.user?.fullName || undefined,
+          paidAmount: Number(backendInv.paidAmount || 0),
+          remainingAmount: Number(backendInv.remainingAmount || 0),
+          payments: (backendInv.payments || []).map((p: any) => ({
+            date: p.paidAt || p.createdAt || backendInv.createdAt,
+            amount: Number(p.amount),
+            method: p.method,
+          })),
+        }));
+        setInvoices(mappedInvoices);
+      }
       if (resShf.data) setDoctorShifts(resShf.data);
       if (resNot.data) setShiftChangeNotifications(resNot.data);
+      if (resLog.data) setLogs(resLog.data);
     } catch (err) {
       console.error('Lỗi khi đồng bộ dữ liệu từ backend:', err);
     }
@@ -198,43 +220,53 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  const updatePatientDetails = (
+  const updatePatientDetails = async (
     patientId: string,
     details: Partial<Pick<Patient, 'criticalAllergy' | 'condition' | 'name' | 'phone' | 'age' | 'gender'>>
   ) => {
-    setPatients((prevPatients) =>
-      prevPatients.map((p) => {
-        if (p.id === patientId) {
-          addLog('SYSTEM', 'INFO', `Cập nhật thông tin bệnh nhân ${p.name} (ID: ${patientId})`);
-          return { ...p, ...details };
-        }
-        return p;
-      })
-    );
+    try {
+      const response = await clinicApi.updatePatient(patientId, {
+        name: details.name,
+        phone: details.phone,
+        criticalAllergy: details.criticalAllergy,
+        condition: details.condition,
+        gender: details.gender,
+        age: details.age,
+      });
+      if (response.success) {
+        addLog('SYSTEM', 'INFO', `Cập nhật thông tin bệnh nhân (ID: ${patientId}) thành công.`);
+        await refreshAllData();
+      }
+    } catch (err: any) {
+      console.error('Lỗi khi cập nhật thông tin bệnh nhân:', err);
+      alert(err.message || 'Không thể cập nhật thông tin bệnh nhân.');
+    }
   };
 
-  const unlockPatient = (patientId: string) => {
-    setPatients((prevPatients) =>
-      prevPatients.map((p) => {
-        if (p.id === patientId) {
-          addLog('SYSTEM', 'SUCCESS', `Mở khóa tài khoản cho bệnh nhân ${p.name} (ID: ${patientId})`);
-          return { ...p, isUnlocked: true, isLocked: false };
-        }
-        return p;
-      })
-    );
+  const unlockPatient = async (patientId: string) => {
+    try {
+      const response = await clinicApi.unlockPatient(patientId);
+      if (response.success) {
+        addLog('SYSTEM', 'SUCCESS', `Mở khóa tài khoản bệnh nhân (ID: ${patientId}) thành công.`);
+        await refreshAllData();
+      }
+    } catch (err: any) {
+      console.error('Lỗi khi mở khóa bệnh nhân:', err);
+      alert(err.message || 'Không thể mở khóa tài khoản bệnh nhân.');
+    }
   };
 
-  const lockPatient = (patientId: string) => {
-    setPatients((prevPatients) =>
-      prevPatients.map((p) => {
-        if (p.id === patientId) {
-          addLog('SYSTEM', 'WARN', `Khóa tài khoản bệnh nhân ${p.name} (ID: ${patientId})`);
-          return { ...p, isLocked: true, isUnlocked: false };
-        }
-        return p;
-      })
-    );
+  const lockPatient = async (patientId: string) => {
+    try {
+      const response = await clinicApi.lockPatient(patientId, 'Khóa thủ công bởi nhân viên.');
+      if (response.success) {
+        addLog('SYSTEM', 'WARN', `Khóa tài khoản bệnh nhân (ID: ${patientId}) thành công.`);
+        await refreshAllData();
+      }
+    } catch (err: any) {
+      console.error('Lỗi khi khóa bệnh nhân:', err);
+      alert(err.message || 'Không thể khóa tài khoản bệnh nhân.');
+    }
   };
 
   const checkInPatient = async (patientId: string, dentistId: string, customRoom?: string, serviceName?: string) => {
@@ -332,40 +364,44 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  const addService = (newServiceData: Omit<Service, 'id' | 'isActive'>) => {
-    const id = `S-${Date.now().toString(36).toUpperCase().slice(-5)}`;
-    const newService: Service = {
-      ...newServiceData,
-      id,
-      isActive: true
-    };
-    setServices((prev) => [...prev, newService]);
-    addLog('SYSTEM', 'SUCCESS', `Cấu hình thêm dịch vụ mới: ${newServiceData.name} - Giá: ₫${newServiceData.price.toLocaleString()}`);
+  const addService = async (newServiceData: Omit<Service, 'id' | 'isActive'>) => {
+    try {
+      const response = await clinicApi.addService({
+        name: newServiceData.name,
+        price: newServiceData.price,
+        durationMin: newServiceData.durationMin,
+      });
+      if (response.success) {
+        addLog('SYSTEM', 'SUCCESS', `Cấu hình thêm dịch vụ mới thành công: ${newServiceData.name}.`);
+        await refreshAllData();
+      }
+    } catch (err) {
+      console.error('Lỗi khi thêm dịch vụ:', err);
+    }
   };
 
-  const toggleServiceActive = (serviceId: string) => {
-    setServices((prevServices) =>
-      prevServices.map((s) => {
-        if (s.id === serviceId) {
-          const nextActive = !s.isActive;
-          addLog('SYSTEM', nextActive ? 'SUCCESS' : 'WARN', `Dịch vụ "${s.name}" đã được ${nextActive ? 'kích hoạt' : 'vô hiệu hóa'}.`);
-          return { ...s, isActive: nextActive };
-        }
-        return s;
-      })
-    );
+  const toggleServiceActive = async (serviceId: string) => {
+    try {
+      const response = await clinicApi.toggleServiceActive(serviceId);
+      if (response.success) {
+        addLog('SYSTEM', 'SUCCESS', `Cập nhật trạng thái kích hoạt dịch vụ thành công.`);
+        await refreshAllData();
+      }
+    } catch (err) {
+      console.error('Lỗi khi đổi trạng thái dịch vụ:', err);
+    }
   };
 
-  const updateServicePrice = (serviceId: string, newPrice: number) => {
-    setServices((prevServices) =>
-      prevServices.map((s) => {
-        if (s.id === serviceId) {
-          addLog('SYSTEM', 'SUCCESS', `Cấu hình cập nhật giá dịch vụ ${s.name}: ₫${s.price.toLocaleString()} -> ₫${newPrice.toLocaleString()}`);
-          return { ...s, price: newPrice };
-        }
-        return s;
-      })
-    );
+  const updateServicePrice = async (serviceId: string, newPrice: number) => {
+    try {
+      const response = await clinicApi.updateServicePrice(serviceId, newPrice);
+      if (response.success) {
+        addLog('SYSTEM', 'SUCCESS', `Cập nhật đơn giá dịch vụ thành công.`);
+        await refreshAllData();
+      }
+    } catch (err) {
+      console.error('Lỗi khi cập nhật giá dịch vụ:', err);
+    }
   };
 
   const swapShifts = async (shiftId1: string, shiftId2: string, conflictAppointmentIds?: string[]) => {
@@ -418,30 +454,26 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  const rescheduleAppointment = (
+  const rescheduleAppointment = async (
     appointmentId: string,
     newTime: string,
     newDentistId?: string,
     newDentistName?: string
   ) => {
-    setAppointments((prev) =>
-      prev.map((a) => {
-        if (a.id === appointmentId) {
-          const updated = { ...a, time: newTime };
-          if (newDentistId && newDentistName) {
-            updated.dentistId = newDentistId;
-            updated.dentistName = newDentistName;
-          }
-          addLog(
-            'RECEPTION',
-            'SUCCESS',
-            `Dời lịch hẹn ${appointmentId} của ${a.patientName} sang lúc ${newTime} (Bác sĩ: ${updated.dentistName}).`
-          );
-          return updated;
-        }
-        return a;
-      })
-    );
+    try {
+      const response = await appointmentApi.reschedule(appointmentId, newTime, newDentistId);
+      if (response.success) {
+        addLog(
+          'RECEPTION',
+          'SUCCESS',
+          `Dời lịch hẹn ${appointmentId} sang lúc ${newTime}${newDentistName ? ` (Bác sĩ: ${newDentistName})` : ''}.`
+        );
+        await refreshAllData();
+      }
+    } catch (err: any) {
+      console.error('Lỗi khi dời lịch hẹn:', err);
+      alert(err.message || 'Không thể dời lịch hẹn. Vui lòng thử lại.');
+    }
   };
 
   const cancelAppointment = async (appointmentId: string) => {
@@ -490,14 +522,43 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         fetchPatientRecords,
         swapShifts,
         transferShift,
-        changeShiftRoom: (shiftId: string, roomId: string) => {
-          console.log('changeShiftRoom called', shiftId, roomId);
+        changeShiftRoom: async (shiftId: string, roomId: string) => {
+          try {
+            const res = await shiftApi.updateShiftRoom(shiftId, roomId);
+            if (res.success) {
+              addLog('SYSTEM', 'SUCCESS', `Cập nhật phòng trực cho ca ${shiftId} thành công.`);
+              await refreshAllData();
+            }
+          } catch (err) {
+            console.error('Lỗi cập nhật phòng trực:', err);
+          }
         },
-        addShift: (shift: any) => {
-          console.log('addShift called', shift);
+        addShift: async (shift: any) => {
+          try {
+            const res = await shiftApi.createShift({
+              dentistId: shift.dentistId,
+              workDate: shift.date,
+              shiftType: shift.shiftType,
+              roomId: shift.room,
+            });
+            if (res.success) {
+              addLog('SYSTEM', 'SUCCESS', `Thêm ca trực mới cho ${shift.dentistName} thành công.`);
+              await refreshAllData();
+            }
+          } catch (err) {
+            console.error('Lỗi thêm ca trực:', err);
+          }
         },
-        deleteShift: (shiftId: string) => {
-          console.log('deleteShift called', shiftId);
+        deleteShift: async (shiftId: string) => {
+          try {
+            const res = await shiftApi.deleteShift(shiftId);
+            if (res.success) {
+              addLog('SYSTEM', 'WARN', `Xóa ca trực ${shiftId} thành công.`);
+              await refreshAllData();
+            }
+          } catch (err) {
+            console.error('Lỗi xóa ca trực:', err);
+          }
         },
         resolveShiftConflict_Update,
         resolveShiftConflict_Cancel,

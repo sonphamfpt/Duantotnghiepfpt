@@ -180,7 +180,7 @@ async function main() {
         name: s.name,
         price: s.price,
         durationMinutes: s.durationMinutes,
-        bufferMinutes: 0,
+        bufferMinutes: 15,
         isActive: true,
       }
     });
@@ -219,6 +219,7 @@ async function main() {
     data: {
       roleId: roleManager!.roleId,
       email: 'manager@goodsmile.vn',
+      phone: '0909000001',
       passwordHash: '$2b$10$AGg5dmxgt19uWEeL.RgSKOUBA1XHNUSz7yu3wRc6iwo9vxzEiktiW', // mật khẩu: 12345678
       fullName: 'Quản trị viên GoodSmile',
       status: 'Active',
@@ -230,6 +231,7 @@ async function main() {
     data: {
       roleId: roleReceptionist!.roleId,
       email: 'receptionist@goodsmile.vn',
+      phone: '0909000002',
       passwordHash: '$2b$10$AGg5dmxgt19uWEeL.RgSKOUBA1XHNUSz7yu3wRc6iwo9vxzEiktiW', // mật khẩu: 12345678
       fullName: 'Nguyễn Lễ Tân',
       status: 'Active',
@@ -241,6 +243,7 @@ async function main() {
     data: {
       roleId: roleCashier!.roleId,
       email: 'cashier@goodsmile.vn',
+      phone: '0909000003',
       passwordHash: '$2b$10$AGg5dmxgt19uWEeL.RgSKOUBA1XHNUSz7yu3wRc6iwo9vxzEiktiW', // mật khẩu: 12345678
       fullName: 'Nguyễn Thu Ngân',
       status: 'Active',
@@ -375,11 +378,13 @@ async function main() {
     }
   ];
 
-  for (const d of dentists) {
+  for (let i = 0; i < dentists.length; i++) {
+    const d = dentists[i];
     const user = await prisma.user.create({
       data: {
         roleId: roleDentist!.roleId,
         email: d.email,
+        phone: `090900001${i + 1}`,
         passwordHash: '$2b$10$AGg5dmxgt19uWEeL.RgSKOUBA1XHNUSz7yu3wRc6iwo9vxzEiktiW',
         fullName: d.name,
         status: 'Active',

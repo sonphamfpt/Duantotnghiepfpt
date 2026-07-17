@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 
-// Địa chỉ backend WebSocket
-const SOCKET_URL = 'http://localhost:5000';
+// Đọc URL backend từ biến môi trường Vite (đồng bộ với apiClient)
+const SOCKET_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000';
 
 // Tạo kết nối Socket.io singleton
 // autoConnect: false → kết nối thủ công trong ClinicContext

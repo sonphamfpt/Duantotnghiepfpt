@@ -4,7 +4,7 @@ import { useClinic } from '../../context/ClinicContext';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/Icon';
 import { OtpVerificationModal } from '../../components/OtpVerificationModal';
-import { appointmentApi } from '../../services/api';
+import { appointmentApi, request } from '../../services/api';
 import { socket } from '../../services/socketClient';
 
 export const BookingPage: React.FC = () => {
@@ -133,27 +133,21 @@ export const BookingPage: React.FC = () => {
     setLoadingSlots(true);
     setSlotsError('');
 
-    const dentistDbId = mapFrontendToBackendId(selectedDentistId);
-    const serviceDbId = mapFrontendToBackendId(selectedServiceId);
-
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/appointments/dentists/${dentistDbId}/available-slots?date=${date}&serviceId=${serviceDbId}`
-      );
-      const resData = await response.json();
+      const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
+      const slots = response.data || [];
 
-      if (response.ok && resData.data) {
-        const slots = resData.data as string[];
+      if (slots.length > 0) {
         setAvailableSlots(slots);
         setSelectedTimeIso((prev) => slots.includes(prev) ? prev : (slots[0] || ''));
       } else {
-        setSlotsError(resData.message || resData.error?.message || 'Không thể tải danh sách giờ trống.');
+        setSlotsError('Không có khung giờ trống. Vui lòng chọn bác sĩ hoặc ngày khác.');
         setAvailableSlots([]);
         setSelectedTimeIso('');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Lỗi khi lấy slot khám:', err);
-      setSlotsError('Lỗi kết nối máy chủ API.');
+      setSlotsError(err.message || 'Lỗi kết nối máy chủ API.');
       setAvailableSlots([]);
       setSelectedTimeIso('');
     } finally {
@@ -239,18 +233,10 @@ export const BookingPage: React.FC = () => {
       setAvailableSlots(latestSlots);
       setSelectedTimeIso((prev) => latestSlots.includes(prev) ? prev : '');
 
-      const res = await fetch('http://localhost:5000/api/auth/send-otp', {
+      await request('/auth/send-otp', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ phone: checkPhone.trim() }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setAntiSpamError(data.message || data.error?.message || 'Không thể gửi mã OTP xác thực.');
-        return;
-      }
       setShowOtpModal(true);
     } catch (err: any) {
       setAntiSpamError(err.message || 'Không thể kết nối đến máy chủ API để gửi OTP.');
@@ -300,46 +286,20 @@ const formatLocalDateStr = (dateStr: string): string => {
     const startTimeIso = selectedTimeIso;
 
     try {
-      const payload: any = {
-        dentistId: dentistDbId,
-        serviceId: serviceDbId,
+      const response = await appointmentApi.createAppointment({
+        dentistId: selectedDentistId,
+        serviceId: selectedServiceId,
         startTime: startTimeIso,
         bookingChannel: 'Online',
         patientNotes: notes || undefined,
-      };
-
-      if (role === 'patient' && user?.id) {
-        payload.patientId = mapFrontendToBackendId(user.id);
-      } else {
-        payload.patientName = patientName.trim();
-        payload.patientPhone = normalizePhone(patientPhone);
-      }
-
-      // Gắn x-otp-token header nếu là khách vãng lai
-      const headers: any = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('goodsmile_token') || ''}`,
-      };
-      if (otpToken) {
-        headers['x-otp-token'] = otpToken;
-      }
-
-      const response = await fetch('http://localhost:5000/api/appointments', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
+        ...(role === 'patient' && user?.id
+          ? { patientId: user.id }
+          : { patientName: patientName.trim(), patientPhone: normalizePhone(patientPhone) }
+        ),
+        otpToken,
       });
 
-      const resData = await response.json();
-
-      if (!response.ok) {
-        const message = resData.message || resData.error?.message || 'Đặt lịch hẹn thất bại.';
-        setApiError(message);
-        alert(message);
-        return;
-      }
-
-      const bookedApp = resData.data;
+      const bookedApp = response.data;
 
       const localApp = {
         id: `A-${bookedApp.appointmentId}`,
@@ -358,10 +318,15 @@ const formatLocalDateStr = (dateStr: string): string => {
       setCreatedAppointment(localApp);
       setIsSuccess(true);
       await refreshAllData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Lỗi khi lưu lịch hẹn:', err);
-      setApiError('Lỗi kết nối máy chủ API.');
-      alert('Không thể kết nối đến máy chủ API.');
+      const errMsg = err.message || 'Không thể kết nối đến máy chủ API.';
+      setApiError(errMsg);
+      setAntiSpamError(errMsg);
+      setSlotRefreshTick((prev) => prev + 1);
+      setTimeout(() => {
+        document.getElementById('booking-error-banner')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
     } finally {
       setSubmitting(false);
     }
@@ -685,7 +650,7 @@ const formatLocalDateStr = (dateStr: string): string => {
 
                   {/* Anti-spam error */}
                   {antiSpamError && (
-                    <div className="flex items-start gap-3 text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm animate-in fade-in">
+                    <div id="booking-error-banner" className="flex items-start gap-3 text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm animate-in fade-in">
                       <Icon name="gpp_bad" className="text-[20px] shrink-0 mt-0.5" />
                       <span className="font-medium">{antiSpamError}</span>
                     </div>
