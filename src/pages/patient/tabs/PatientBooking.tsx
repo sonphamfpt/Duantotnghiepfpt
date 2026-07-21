@@ -184,13 +184,17 @@ export const PatientBooking: React.FC = () => {
     }
   };
 
-  const checkRateLimit = (phone: string): boolean => {
-    const activeAppts = appointments.filter(
-      a => a.patientPhone === phone.trim() &&
-      a.status !== 'Completed' && a.status !== 'Cancelled'
-    );
+  const checkRateLimit = (_phone: string): boolean => {
+    // Dùng patientId để so sánh chính xác, tránh lỗi format phone
+    // Chỉ đếm status Pending và Confirmed (đang chờ thực sự)
+    const activeAppts = matchedPatient
+      ? appointments.filter(
+          a => a.patientId === matchedPatient.id &&
+          (a.status === 'Pending' || a.status === 'Confirmed')
+        )
+      : [];
     if (activeAppts.length >= 3) {
-      const msg = 'Bạn đã có 3 lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.';
+      const msg = `Bạn đã có ${activeAppts.length} lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.`;
       setSubmitError(msg);
       showAlert('Giới hạn lịch hẹn', msg, 'warning');
       return false;
