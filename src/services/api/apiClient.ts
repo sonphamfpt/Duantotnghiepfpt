@@ -11,7 +11,7 @@ export interface ApiResponse<T> {
 /**
  * Hàm gọi API dùng chung, tự động quản lý JWT token và parse JSON.
  */
-export async function request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+export async function request<T>(endpoint: string, options: RequestInit = {}, config?: { skipAuthRedirect?: boolean }): Promise<ApiResponse<T>> {
   const token = localStorage.getItem('goodsmile_token');
   
   const headers = {
@@ -32,7 +32,7 @@ export async function request<T>(endpoint: string, options: RequestInit = {}): P
     const errorMsg = resData.error?.message || resData.message || `Lỗi kết nối máy chủ (HTTP ${response.status})`;
 
     // 401: Token hết hạn hoặc tài khoản bị khoá → tự động đăng xuất và redirect
-    if (response.status === 401) {
+    if (response.status === 401 && !config?.skipAuthRedirect) {
       const isInactive = errorCode === 'USER_INACTIVE';
       localStorage.removeItem('goodsmile_token');
       localStorage.removeItem('goodsmile_user');

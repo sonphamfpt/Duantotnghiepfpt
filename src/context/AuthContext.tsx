@@ -27,6 +27,7 @@ interface AuthContextType {
   user: UserProfile | null;
   token: string | null;
   isAuthenticated: boolean;
+  isInitializing: boolean;
   loginWithCredentials: (phone: string, password: string) => Promise<{ success: boolean; role?: UserRole; error?: string }>;
   logout: () => void;
   registerPatient: (data: { fullName: string; phone: string; dateOfBirth: string; gender: string; password: string; otpToken: string; address?: string }) => Promise<{ success: boolean; error?: string }>;
@@ -67,17 +68,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // Khôi phục phiên đăng nhập khi load trang từ localStorage token
   React.useEffect(() => {
     const checkAuth = async () => {
       const storedToken = localStorage.getItem('goodsmile_token');
-      if (!storedToken) return;
+      if (!storedToken) {
+        setIsInitializing(false);
+        return;
+      }
+
+      setToken(storedToken);
 
       try {
         const response = await authApi.getMe();
         if (response.success && response.data) {
-          const userRes = response.data.user;
+          const userRes = response.data;
           const roleCode = (typeof userRes.role === 'object' ? userRes.role.code : userRes.role) as UserRole;
 
           const defaultProfile = ROLE_PROFILES[roleCode];
@@ -105,9 +112,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
           // Token không hợp lệ → xóa đi
           localStorage.removeItem('goodsmile_token');
+          setToken(null);
         }
       } catch (err) {
         console.error('Lỗi khi khôi phục phiên đăng nhập:', err);
+        localStorage.removeItem('goodsmile_token');
+        setToken(null);
+      } finally {
+        setIsInitializing(false);
       }
     };
 
@@ -238,7 +250,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <AuthContext.Provider value={{ role, user, token, isAuthenticated, loginWithCredentials, logout, registerPatient }}>
+    <AuthContext.Provider value={{ role, user, token, isAuthenticated, isInitializing, loginWithCredentials, logout, registerPatient }}>
       {children}
     </AuthContext.Provider>
   );

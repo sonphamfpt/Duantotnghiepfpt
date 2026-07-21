@@ -41,7 +41,7 @@ export const authApi = {
    * Lấy thông tin user hiện tại từ token (khôi phục session)
    */
   getMe: () =>
-    request<{ user: AuthUser }>('/auth/me', {
+    request<AuthUser>('/auth/me', {
       method: 'GET',
-    }),
+    }, { skipAuthRedirect: true }),
 };

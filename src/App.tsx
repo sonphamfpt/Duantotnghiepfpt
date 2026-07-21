@@ -27,8 +27,18 @@ import { ManagerDashboard } from './pages/staff/ManagerDashboard';
 
 // Waiting Room board
 import { QueueTracking } from './pages/queue-tracking/QueueTracking';
+import { Icon } from './components/Icon';
 
 // ── Route Wrappers ──
+
+const AuthLoadingScreen = () => (
+  <div className="min-h-screen flex items-center justify-center bg-surface">
+    <div className="flex flex-col items-center gap-3 text-on-surface-variant">
+      <Icon name="progress_activity" className="text-[32px] animate-spin text-primary" />
+      <p className="text-sm">Đang khôi phục phiên đăng nhập...</p>
+    </div>
+  </div>
+);
 
 const PublicRoute: React.FC<{ component: React.ComponentType }> = ({ component: Component }) => (
   <MainLayout>
@@ -41,8 +51,12 @@ const RoleGuardRoute: React.FC<{ component: React.ComponentType; allowedRoles: U
   component: Component,
   allowedRoles,
 }) => {
-  const { isAuthenticated, role } = useAuth();
+  const { isAuthenticated, isInitializing, role } = useAuth();
   const location = useLocation();
+
+  if (isInitializing) {
+    return <AuthLoadingScreen />;
+  }
 
   // Chưa đăng nhập → về trang Login, ghi nhớ URL gốc
   if (!isAuthenticated) {
@@ -64,7 +78,11 @@ const RoleGuardRoute: React.FC<{ component: React.ComponentType; allowedRoles: U
 
 // Redirect logged-in users away from login page
 const GuestOnlyRoute: React.FC<{ component: React.ComponentType }> = ({ component: Component }) => {
-  const { isAuthenticated, role } = useAuth();
+  const { isAuthenticated, isInitializing, role } = useAuth();
+
+  if (isInitializing) {
+    return <AuthLoadingScreen />;
+  }
 
   if (isAuthenticated) {
     const dest = role === 'patient' ? '/patient' : `/dashboard/${role}`;

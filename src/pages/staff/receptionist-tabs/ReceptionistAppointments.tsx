@@ -77,7 +77,7 @@ export const ReceptionistAppointments: React.FC = () => {
   const { showConfirm, showAlert } = useConfirm();
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [filterDentist, setFilterDentist] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('pending');
+  const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewDay, setViewDay] = useState<'today' | 'tomorrow' | 'week' | 'custom'>('today');
   const [customDate, setCustomDate] = useState('');
@@ -382,17 +382,17 @@ export const ReceptionistAppointments: React.FC = () => {
           }}
           className="px-3 py-2 bg-white border border-outline-variant rounded-xl text-xs focus:outline-none cursor-pointer"
         >
-          <option value="pending">Chưa tiếp đón (Mặc định)</option>
-          <option value="all">Tất cả lịch hẹn</option>
+          <option value="all"> Tất cả lịch hẹn (Mặc định)</option>
+          <option value="pending">Chưa tiếp đón</option>
           {Object.entries(APPT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
 
         {/* Clear filters */}
-        {(filterDentist !== 'all' || filterStatus !== 'pending' || searchQuery || showOnlyLate) && (
+        {(filterDentist !== 'all' || filterStatus !== 'all' || searchQuery || showOnlyLate) && (
           <button
             onClick={() => { 
               setFilterDentist('all'); 
-              setFilterStatus('pending'); 
+              setFilterStatus('all'); 
               setSearchQuery(''); 
               setShowOnlyLate(false); 
             }}
