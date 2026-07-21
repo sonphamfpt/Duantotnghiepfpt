@@ -8,6 +8,8 @@ import { ManagerRbac } from './manager-tabs/ManagerRbac';
 import { ManagerSettings } from './manager-tabs/ManagerSettings';
 import { ManagerSchedule } from './manager-tabs/ManagerSchedule';
 import { ManagerPatients } from './manager-tabs/ManagerPatients';
+import { ManagerReviews } from './manager-tabs/ManagerReviews';
+import { ManagerAiChat } from './manager-tabs/ManagerAiChat';
 
 export const ManagerDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -27,6 +29,10 @@ export const ManagerDashboard: React.FC = () => {
         return <ManagerSettings />;
       case 'patients':
         return <ManagerPatients />;
+      case 'reviews':
+        return <ManagerReviews />;
+      case 'aichat':
+        return <ManagerAiChat />;
       default:
         return <ManagerOverview />;
     }

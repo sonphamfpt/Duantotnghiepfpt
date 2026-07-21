@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth, UserRole } from './context/AuthContext';
 import { ClinicProvider } from './context/ClinicContext';
+import { ConfirmProvider } from './context/ConfirmContext';
 import { MainLayout } from './layouts/MainLayout';
 import { DashboardLayout } from './layouts/DashboardLayout';
 
@@ -76,53 +77,55 @@ const GuestOnlyRoute: React.FC<{ component: React.ComponentType }> = ({ componen
 export default function App() {
   return (
     <AuthProvider>
-      <ClinicProvider>
-        <Router>
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<PublicRoute component={Home} />} />
-            <Route path="/about" element={<PublicRoute component={AboutUs} />} />
-            <Route path="/services" element={<PublicRoute component={Services} />} />
-            <Route path="/doctors" element={<PublicRoute component={Doctors} />} />
-            <Route path="/doctors/:id" element={<PublicRoute component={DoctorDetail} />} />
-            <Route path="/contact" element={<PublicRoute component={Contact} />} />
-            <Route path="/book" element={<PublicRoute component={BookingPage} />} />
+      <ConfirmProvider>
+        <ClinicProvider>
+          <Router>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<PublicRoute component={Home} />} />
+              <Route path="/about" element={<PublicRoute component={AboutUs} />} />
+              <Route path="/services" element={<PublicRoute component={Services} />} />
+              <Route path="/doctors" element={<PublicRoute component={Doctors} />} />
+              <Route path="/doctors/:id" element={<PublicRoute component={DoctorDetail} />} />
+              <Route path="/contact" element={<PublicRoute component={Contact} />} />
+              <Route path="/book" element={<PublicRoute component={BookingPage} />} />
 
-            {/* Auth — redirect away if already logged in */}
-            <Route path="/login" element={<GuestOnlyRoute component={LoginRegister} />} />
+              {/* Auth — redirect away if already logged in */}
+              <Route path="/login" element={<GuestOnlyRoute component={LoginRegister} />} />
 
-            {/* Waiting Room TV Board — public display screen */}
-            <Route path="/queue-board" element={<QueueTracking />} />
+              {/* Waiting Room TV Board — public display screen */}
+              <Route path="/queue-board" element={<QueueTracking />} />
 
-            {/* Protected: Patient Portal */}
-            <Route
-              path="/patient"
-              element={<RoleGuardRoute component={PatientDashboard} allowedRoles={['patient']} />}
-            />
+              {/* Protected: Patient Portal */}
+              <Route
+                path="/patient"
+                element={<RoleGuardRoute component={PatientDashboard} allowedRoles={['patient']} />}
+              />
 
-            {/* Protected: Staff Workspaces — kiểm tra đúng vai trò */}
-            <Route
-              path="/dashboard/receptionist"
-              element={<RoleGuardRoute component={ReceptionistDashboard} allowedRoles={['receptionist', 'manager']} />}
-            />
-            <Route
-              path="/dashboard/dentist"
-              element={<RoleGuardRoute component={DentistDashboard} allowedRoles={['dentist', 'manager']} />}
-            />
-            <Route
-              path="/dashboard/cashier"
-              element={<RoleGuardRoute component={CashierDashboard} allowedRoles={['cashier', 'manager']} />}
-            />
-            <Route
-              path="/dashboard/manager"
-              element={<RoleGuardRoute component={ManagerDashboard} allowedRoles={['manager']} />}
-            />
+              {/* Protected: Staff Workspaces — kiểm tra đúng vai trò */}
+              <Route
+                path="/dashboard/receptionist"
+                element={<RoleGuardRoute component={ReceptionistDashboard} allowedRoles={['receptionist', 'manager']} />}
+              />
+              <Route
+                path="/dashboard/dentist"
+                element={<RoleGuardRoute component={DentistDashboard} allowedRoles={['dentist', 'manager']} />}
+              />
+              <Route
+                path="/dashboard/cashier"
+                element={<RoleGuardRoute component={CashierDashboard} allowedRoles={['cashier', 'manager']} />}
+              />
+              <Route
+                path="/dashboard/manager"
+                element={<RoleGuardRoute component={ManagerDashboard} allowedRoles={['manager']} />}
+              />
 
-            {/* Catch-all */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Router>
-      </ClinicProvider>
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Router>
+        </ClinicProvider>
+      </ConfirmProvider>
     </AuthProvider>
   );
 }

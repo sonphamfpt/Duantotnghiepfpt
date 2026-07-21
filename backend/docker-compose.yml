@@ -23,6 +23,18 @@ services:
     volumes:
       - redis_data:/data
 
+  goodsmile-pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: goodsmile-pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@goodsmile.vn
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - goodsmile-db
+
   goodsmile-backend:
     build:
       context: .

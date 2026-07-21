@@ -2,109 +2,17 @@ import React, { useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
+import { ReviewModal } from '../../../components/ReviewModal';
 
 const STATUS_CONFIG = {
   Confirmed: { label: 'Đã xác nhận', color: 'bg-secondary-container text-on-secondary-container border-secondary/20', icon: 'event_available' },
   'In-Progress': { label: 'Đang khám', color: 'bg-primary-container text-on-primary-container border-primary/20', icon: 'medical_services' },
   Completed: { label: 'Hoàn thành', color: 'bg-surface-container text-on-surface-variant border-outline-variant', icon: 'check_circle' },
   Cancelled: { label: 'Đã huỷ', color: 'bg-error-container text-on-error-container border-error/20', icon: 'cancel' },
+  NoShow: { label: 'Quá hạn / Không đến', color: 'bg-outline-variant/30 text-outline border-outline-variant', icon: 'event_busy' },
 } as const;
 
-const INITIAL_UPCOMING_APPOINTMENTS = [
-  {
-    id: 'MY-01',
-    service: 'Tái khám chỉnh nha (Khay 8)',
-    dentist: 'Bác sĩ Nguyễn Hương',
-    room: 'Phòng 110',
-    avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=150&h=150&q=80',
-    date: 'Thứ Bảy, 27/06/2026', // Lịch ngày mai (sát giờ)
-    time: '09:00 AM',
-    status: 'Confirmed' as const,
-    duration: 45,
-    price: 0,
-    notes: 'Mang theo khay niềng cũ và vệ sinh răng trước khi đến',
-    isLateCancel: true, // Chỉ còn dưới 1 tiếng
-    rating: 0,
-  },
-  {
-    id: 'MY-02',
-    service: 'Lấy cao răng & Vệ sinh',
-    dentist: 'Bác sĩ Mai Lan',
-    room: 'Phòng 108',
-    avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=150&h=150&q=80',
-    date: 'Thứ Ba, 30/06/2026', // Lịch tuần sau
-    time: '11:00 AM',
-    status: 'Confirmed' as const,
-    duration: 30,
-    price: 300000,
-    notes: '',
-    isLateCancel: false,
-    rating: 0,
-  },
-];
 
-const PAST_APPOINTMENTS = [
-  {
-    id: 'PAST-01',
-    service: 'Tái khám chỉnh nha (Khay 7)',
-    dentist: 'Bác sĩ Nguyễn Hương',
-    date: '27/05/2026',
-    time: '09:00 AM',
-    status: 'Completed' as const,
-    price: 0,
-    rating: 5,
-    room: 'Phòng khám',
-    avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=150&h=150&q=80',
-    duration: 30,
-    notes: '',
-    isLateCancel: false,
-  },
-  {
-    id: 'PAST-02',
-    service: 'Khám tổng quát & Tư vấn',
-    dentist: 'Bác sĩ Mai Lan',
-    date: '15/05/2026',
-    time: '10:30 AM',
-    status: 'Completed' as const,
-    price: 100000,
-    rating: 4,
-    room: 'Phòng khám',
-    avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=150&h=150&q=80',
-    duration: 30,
-    notes: '',
-    isLateCancel: false,
-  },
-  {
-    id: 'PAST-03',
-    service: 'Nhổ răng khôn (hàm dưới)',
-    dentist: 'Bác sĩ Hoàng Nam',
-    date: '28/09/2025',
-    time: '02:00 PM',
-    status: 'Completed' as const,
-    price: 1750000,
-    rating: 5,
-    room: 'Phòng khám',
-    avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=150&h=150&q=80',
-    duration: 45,
-    notes: '',
-    isLateCancel: false,
-  },
-  {
-    id: 'PAST-04',
-    service: 'Tẩy trắng răng thẩm mỹ',
-    dentist: 'Bác sĩ Mai Lan',
-    date: '10/08/2025',
-    time: '03:00 PM',
-    status: 'Cancelled' as const,
-    price: 0,
-    rating: 0,
-    room: 'Phòng khám',
-    avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=150&h=150&q=80',
-    duration: 30,
-    notes: '',
-    isLateCancel: false,
-  },
-];
 
 // Helper to parse backend time format
 const parseAppointmentTime = (timeStr: string) => {
@@ -167,7 +75,7 @@ export const PatientAppointments: React.FC = () => {
   const [activeReviewId, setActiveReviewId] = useState<string | null>(null);
   const [modalRating, setModalRating] = useState<number>(5);
   const [modalComment, setModalComment] = useState<string>('');
-  const [historyFilter, setHistoryFilter] = useState<'All' | 'Completed' | 'Cancelled'>('All');
+  const [historyFilter, setHistoryFilter] = useState<'All' | 'Completed' | 'Cancelled' | 'NoShow'>('All');
 
   // Filter appointments for the current logged-in patient
   const myAppointments = React.useMemo(() => {
@@ -192,20 +100,14 @@ export const PatientAppointments: React.FC = () => {
         time: parsed.timeLabel,
         status: a.status,
         duration: 30,
-        price: a.serviceName.includes('Niềng răng') ? 0 : 300000,
+        price: 0,
         notes: '',
         isLateCancel: parsed.isLateCancel,
         rating: 5
       };
     });
 
-    // Nếu không có lịch sử khám nào trong DB, trả về các lịch sử mẫu để giao diện sinh động
-    if (dbAppts.length === 0) {
-      return [
-        ...INITIAL_UPCOMING_APPOINTMENTS,
-        ...PAST_APPOINTMENTS
-      ];
-    }
+
     return dbAppts;
   }, [myAppointments]);
 
@@ -214,7 +116,7 @@ export const PatientAppointments: React.FC = () => {
   );
 
   const pastAppointments = mappedAppointments.filter(
-    a => a.status === 'Completed' || a.status === 'Cancelled'
+    a => a.status === 'Completed' || a.status === 'Cancelled' || a.status === 'NoShow'
   );
 
   const tabs = [
@@ -240,9 +142,9 @@ export const PatientAppointments: React.FC = () => {
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {[
-          { label: 'Tổng lịch hẹn', value: upcomingAppointments.length + PAST_APPOINTMENTS.length, icon: 'calendar_month', color: 'text-primary bg-primary-container' },
+          { label: 'Tổng lịch hẹn', value: upcomingAppointments.length + pastAppointments.length, icon: 'calendar_month', color: 'text-primary bg-primary-container' },
           { label: 'Sắp tới', value: upcomingAppointments.length, icon: 'event_upcoming', color: 'text-secondary bg-secondary-container' },
-          { label: 'Hoàn thành', value: PAST_APPOINTMENTS.filter(a => a.status === 'Completed').length, icon: 'task_alt', color: 'text-on-surface bg-surface-container' },
+          { label: 'Hoàn thành', value: pastAppointments.filter(a => a.status === 'Completed').length, icon: 'task_alt', color: 'text-on-surface bg-surface-container' },
         ].map((stat) => (
           <div key={stat.label} className="bg-white rounded-xl border border-outline-variant p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${stat.color}`}>
@@ -286,6 +188,7 @@ export const PatientAppointments: React.FC = () => {
             <option value="All">Tất cả trạng thái</option>
             <option value="Completed">Đã hoàn thành</option>
             <option value="Cancelled">Đã huỷ</option>
+            <option value="NoShow">Không đến / Quá hạn</option>
           </select>
         )}
       </div>
@@ -615,91 +518,14 @@ export const PatientAppointments: React.FC = () => {
         </div>
       )}
 
-      {/* Review & Feedback Modal */}
-      {activeReviewId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6 animate-fade-in border border-outline-variant text-left">
-            <div className="flex justify-between items-center border-b border-outline-variant pb-4">
-              <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
-                <Icon name="rate_review" className="text-primary" />
-                Đánh giá ca khám
-              </h3>
-              <button onClick={() => setActiveReviewId(null)} className="text-on-surface-variant hover:text-on-surface cursor-pointer rounded-full p-1 hover:bg-surface-container border-none bg-transparent">
-                <Icon name="close" />
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-bold text-on-surface">
-                  {PAST_APPOINTMENTS.find(a => a.id === activeReviewId)?.service}
-                </p>
-                <p className="text-xs text-on-surface-variant mt-0.5">
-                  Bác sĩ: {PAST_APPOINTMENTS.find(a => a.id === activeReviewId)?.dentist} • Ngày {PAST_APPOINTMENTS.find(a => a.id === activeReviewId)?.date}
-                </p>
-              </div>
-
-              {/* Rating Star Selector */}
-              <div className="flex flex-col items-center py-4 bg-surface-container-low rounded-2xl border border-outline-variant/60">
-                <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Chất lượng dịch vụ</p>
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      onClick={() => setModalRating(star)}
-                      className="text-amber-400 cursor-pointer hover:scale-125 transition-transform border-none bg-transparent"
-                    >
-                      <Icon
-                        name={star <= modalRating ? 'star' : 'star_border'}
-                        className="text-[36px]"
-                      />
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-amber-700 font-bold mt-2">
-                  {modalRating === 5 ? 'Cực kỳ hài lòng' :
-                   modalRating === 4 ? 'Rất hài lòng' :
-                   modalRating === 3 ? 'Bình thường' :
-                   modalRating === 2 ? 'Không hài lòng' : 'Rất tệ'}
-                </p>
-              </div>
-
-              {/* Comment Textarea */}
-              <div>
-                <label className="block text-xs font-bold uppercase text-on-surface-variant mb-2">Nhận xét chi tiết</label>
-                <textarea
-                  value={modalComment}
-                  onChange={(e) => setModalComment(e.target.value)}
-                  placeholder="Chia sẻ trải nghiệm của bạn về ca khám này (thái độ phục vụ, tay nghề bác sĩ, cơ sở vật chất...)"
-                  rows={4}
-                  className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-body-md focus:ring-2 focus:ring-primary/50 outline-none resize-none"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setActiveReviewId(null)}
-                className="flex-1 py-3 border border-outline-variant hover:bg-slate-100 text-on-surface rounded-xl font-bold transition-all cursor-pointer text-xs"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                onClick={() => {
-                  setReviewMap(prev => ({
-                    ...prev,
-                    [activeReviewId]: { rating: modalRating, comment: modalComment }
-                  }));
-                  setActiveReviewId(null);
-                }}
-                className="flex-1 py-3 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md text-xs"
-              >
-                Gửi Đánh Giá
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Review & Feedback Modal Tích hợp AI */}
+      <ReviewModal
+        isOpen={Boolean(activeReviewId)}
+        onClose={() => setActiveReviewId(null)}
+        patientId="P-9902"
+        appointmentId={activeReviewId || undefined}
+        serviceName={mappedAppointments.find(a => a.id === activeReviewId)?.service}
+      />
     </div>
   );
 };

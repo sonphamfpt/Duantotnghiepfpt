@@ -225,9 +225,12 @@ async function main() {
       status: 'Active',
     }
   });
+  await prisma.staffPermission.create({
+    data: { userId: adminUser.userId, admission: true, clinical: true, checkout: true, settings: true }
+  });
 
   // 7.1.2 Tạo Lễ Tân
-  await prisma.user.create({
+  const receptionistUser = await prisma.user.create({
     data: {
       roleId: roleReceptionist!.roleId,
       email: 'receptionist@goodsmile.vn',
@@ -237,9 +240,12 @@ async function main() {
       status: 'Active',
     }
   });
+  await prisma.staffPermission.create({
+    data: { userId: receptionistUser.userId, admission: true, clinical: false, checkout: false, settings: false }
+  });
 
   // 7.1.3 Tạo Thu Ngân
-  await prisma.user.create({
+  const cashierUser = await prisma.user.create({
     data: {
       roleId: roleCashier!.roleId,
       email: 'cashier@goodsmile.vn',
@@ -248,6 +254,9 @@ async function main() {
       fullName: 'Nguyễn Thu Ngân',
       status: 'Active',
     }
+  });
+  await prisma.staffPermission.create({
+    data: { userId: cashierUser.userId, admission: false, clinical: false, checkout: true, settings: false }
   });
 
   // 7.2 Tạo Bác sĩ
@@ -389,6 +398,10 @@ async function main() {
         fullName: d.name,
         status: 'Active',
       }
+    });
+
+    await prisma.staffPermission.create({
+      data: { userId: user.userId, admission: false, clinical: true, checkout: false, settings: false }
     });
 
     const dentist = await prisma.dentist.create({
@@ -581,14 +594,16 @@ async function main() {
   const room110 = await prisma.room.findFirst({ where: { name: 'Phòng 110' } });
 
   if (patientMinh && dentistHuong && serviceKham && room110) {
+    const startTime = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 tiếng sau
+    const endTime = new Date(startTime.getTime() + 20 * 60 * 1000); // +20 phút
     await prisma.appointment.create({
       data: {
         patientId: patientMinh.patientId,
         dentistId: dentistHuong.dentistId,
         serviceId: serviceKham.serviceId,
         roomId: room110.roomId,
-        startTime: new Date(`${new Date().toISOString().split('T')[0]}T04:00:00.000Z`), // 11:00 AM local (UTC+7)
-        endTime: new Date(`${new Date().toISOString().split('T')[0]}T04:20:00.000Z`),
+        startTime,
+        endTime,
         status: 'Confirmed',
         bookingChannel: 'Online'
       }

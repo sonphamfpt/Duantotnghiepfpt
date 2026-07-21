@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { OtpVerificationModal } from '../../../components/OtpVerificationModal';
+import { AlertModal } from '../../../components/AlertModal';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
 import { appointmentApi } from '../../../services/api';
@@ -32,7 +33,7 @@ const formatLocalDateStr = (dateStr: string): string => {
 };
 
 export const PatientBooking: React.FC = () => {
-  const { services, dentists, patients, appointments, addLog, refreshAllData } = useClinic();
+  const { services, dentists, patients, appointments, addLog, refreshAllData, doctorShifts } = useClinic();
   const { user } = useAuth();
 
   const [step, setStep] = useState<Step>(1);
@@ -52,6 +53,11 @@ export const PatientBooking: React.FC = () => {
   const [submitError, setSubmitError] = useState('');
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [slotRefreshTick, setSlotRefreshTick] = useState(0);
+  const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string; type: 'error' | 'warning' | 'info' | 'success' }>({ open: false, title: '', message: '', type: 'error' });
+
+  const showAlert = (title: string, message: string, type: 'error' | 'warning' | 'info' | 'success' = 'error') => {
+    setAlertModal({ open: true, title, message, type });
+  };
 
   const formatDateInputValue = (value: Date): string => {
     const year = value.getFullYear();
@@ -60,9 +66,9 @@ export const PatientBooking: React.FC = () => {
     return `${year}-${month}-${day}`;
   };
 
-  const patientName = user?.name || 'Trần Nguyễn Minh';
-  const patientPhone = user?.phone || '0901234567';
-  const patientId = user?.id || '2'; // database ID mặc định của bệnh nhân demo
+  const patientName = user?.name || 'Bệnh nhân';
+  const patientPhone = user?.phone || '';
+  const patientId = user?.id || '';
 
   const matchedPatient = patients.find(p => p.id === patientId);
   const cancelCount = matchedPatient 
@@ -71,6 +77,18 @@ export const PatientBooking: React.FC = () => {
   const isLocked = matchedPatient 
     ? (matchedPatient.isLocked || cancelCount >= 3) && !matchedPatient.isUnlocked 
     : false;
+
+  useEffect(() => {
+    if (selectedDentist && selectedDate) {
+      const isStillOnDuty = doctorShifts.some(
+        s => s.dentistId === selectedDentist && s.date === selectedDate
+      );
+      if (!isStillOnDuty) {
+        setSelectedDentist('');
+        setSelectedTime('');
+      }
+    }
+  }, [selectedDate, doctorShifts, selectedDentist]);
 
   // Tự động load danh sách slot khám trống từ API
   useEffect(() => {
@@ -85,7 +103,7 @@ export const PatientBooking: React.FC = () => {
       setSlotsError('');
 
       try {
-        const response = await appointmentApi.getAvailableSlots(selectedDentist, selectedService, selectedDate);
+        const response = await appointmentApi.getAvailableSlots(selectedDentist, selectedDate, selectedService);
         const slots = response.data || [];
         setAvailableSlots(slots);
         setSelectedTime((prev) => slots.includes(prev) ? prev : '');
@@ -112,16 +130,16 @@ export const PatientBooking: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [selectedDate, selectedDentist, selectedService]);
 
-  // Build next 14 days for date picker
+  // Build next 14 days for date picker, starting from today
   const today = new Date();
   const dateOptions: { label: string; value: string; dayName: string }[] = [];
-  for (let i = 1; i <= 14; i++) {
+  for (let i = 0; i <= 14; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
     const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
     dateOptions.push({
-      label: `${d.getDate()}/${d.getMonth() + 1}`,
-      value: d.toISOString().split('T')[0],
+      label: i === 0 ? `Hôm nay, ${d.getDate()}/${d.getMonth() + 1}` : `${d.getDate()}/${d.getMonth() + 1}`,
+      value: formatDateInputValue(d),
       dayName: dayNames[d.getDay()],
     });
   }
@@ -158,10 +176,44 @@ export const PatientBooking: React.FC = () => {
       setStep(4);
     } catch (err: any) {
       console.error('Lỗi khi đặt lịch khám:', err);
-      setSubmitError(err.message || 'Lỗi kết nối máy chủ API.');
+      const errMsg = err.message || 'Lỗi kết nối máy chủ API.';
+      setSubmitError(errMsg);
+      showAlert('Đặt lịch không thành công', errMsg, 'error');
     } finally {
       setSubmittingAppt(false);
     }
+  };
+
+  const checkRateLimit = (phone: string): boolean => {
+    const activeAppts = appointments.filter(
+      a => a.patientPhone === phone.trim() &&
+      a.status !== 'Completed' && a.status !== 'Cancelled'
+    );
+    if (activeAppts.length >= 3) {
+      const msg = 'Bạn đã có 3 lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.';
+      setSubmitError(msg);
+      showAlert('Giới hạn lịch hẹn', msg, 'warning');
+      return false;
+    }
+    return true;
+  };
+
+  const checkDuplicate = (phone: string, dateStr: string, timeIso: string): boolean => {
+    const formattedDate = formatLocalDateStr(dateStr);
+    const formattedTime = formatSlotTime(timeIso);
+    const timeStr = `${formattedDate} @ ${formattedTime}`;
+    const duplicate = appointments.find(
+      a => a.patientPhone === phone.trim() &&
+      a.time === timeStr &&
+      a.status !== 'Cancelled'
+    );
+    if (duplicate) {
+      const msg = 'Bạn đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.';
+      setSubmitError(msg);
+      showAlert('Trùng lịch hẹn', msg, 'warning');
+      return false;
+    }
+    return true;
   };
 
   const handleConfirm = async () => {
@@ -169,6 +221,9 @@ export const PatientBooking: React.FC = () => {
       setSubmitError('Vui lòng hoàn thành đầy đủ các bước chọn dịch vụ, bác sĩ, ngày và khung giờ hẹn khám.');
       return;
     }
+
+    if (!checkRateLimit(patientPhone)) return;
+    if (!checkDuplicate(patientPhone, selectedDate, selectedTime)) return;
 
     setSubmitError('');
     setSubmittingAppt(true);
@@ -205,8 +260,8 @@ export const PatientBooking: React.FC = () => {
 
   const steps = [
     { num: 1, label: 'Chọn dịch vụ' },
-    { num: 2, label: 'Chọn bác sĩ' },
-    { num: 3, label: 'Chọn lịch' },
+    { num: 2, label: 'Chọn ngày khám' },
+    { num: 3, label: 'Chọn bác sĩ & giờ' },
     { num: 4, label: 'Xác nhận' },
   ];
 
@@ -313,66 +368,16 @@ export const PatientBooking: React.FC = () => {
         </div>
       )}
 
-      {/* Step 2: Chọn bác sĩ */}
+      {/* Step 2: Chọn ngày khám */}
       {step === 2 && (
-        <div className="space-y-4 animate-fade-in">
-          <h3 className="font-headline-sm text-headline-sm text-on-surface mb-2">Chọn bác sĩ điều trị</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {dentists.map((doc) => (
-              <button
-                key={doc.id}
-                onClick={() => setSelectedDentist(doc.id)}
-                className={`text-left p-5 rounded-xl border-2 transition-all duration-200 cursor-pointer flex items-center gap-4 ${
-                  selectedDentist === doc.id
-                    ? 'border-primary bg-primary-container shadow-md'
-                    : 'border-outline-variant bg-white hover:border-primary/40 hover:bg-surface-container-low'
-                }`}
-              >
-                <img src={doc.avatar} alt={doc.name} className={`w-16 h-16 rounded-full object-cover border-2 ${selectedDentist === doc.id ? 'border-primary' : 'border-outline-variant'}`} />
-                <div className="flex-1">
-                  <p className={`font-bold ${selectedDentist === doc.id ? 'text-on-primary-container' : 'text-on-surface'}`}>{doc.name}</p>
-                  <p className={`text-xs mt-0.5 ${selectedDentist === doc.id ? 'text-on-primary-container/70' : 'text-on-surface-variant'}`}>{doc.role}</p>
-                  <div className={`mt-2 inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${selectedDentist === doc.id ? 'bg-primary/20 text-primary' : 'bg-surface-container text-on-surface-variant'}`}>
-                    <Icon name="meeting_room" className="text-[12px]" />
-                    {doc.room}
-                  </div>
-                </div>
-                {selectedDentist === doc.id && (
-                  <Icon name="check_circle" className="text-primary text-[24px]" />
-                )}
-              </button>
-            ))}
-          </div>
-          <div className="flex justify-between pt-4">
-            <button onClick={() => setStep(1)} className="px-6 py-3 border border-outline text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer flex items-center gap-2">
-              <Icon name="arrow_back" />
-              Quay lại
-            </button>
-            <button
-              disabled={!selectedDentist}
-              onClick={() => setStep(3)}
-              className="px-8 py-3 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-            >
-              Tiếp theo
-              <Icon name="arrow_forward" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Chọn ngày & giờ */}
-      {step === 3 && (
         <div className="space-y-6 animate-fade-in">
-          <h3 className="font-headline-sm text-headline-sm text-on-surface mb-2">Chọn ngày và giờ khám</h3>
-
-          {/* Date picker */}
+          <h3 className="font-headline-sm text-headline-sm text-on-surface mb-2">Chọn ngày khám</h3>
           <div>
-            <p className="text-label-md font-bold text-on-surface-variant uppercase tracking-wider mb-3">Chọn ngày</p>
             <div className="grid grid-cols-7 gap-2">
               {dateOptions.map((d) => (
                 <button
                   key={d.value}
-                  onClick={() => { setSelectedDate(d.value); setSelectedTime(''); }}
+                  onClick={() => { setSelectedDate(d.value); setSelectedTime(''); setSelectedDentist(''); }}
                   className={`flex flex-col items-center px-2 py-3 rounded-xl border-2 transition-all cursor-pointer ${
                     selectedDate === d.value
                       ? 'border-primary bg-primary text-on-primary shadow-md'
@@ -385,11 +390,72 @@ export const PatientBooking: React.FC = () => {
               ))}
             </div>
           </div>
+          <div className="flex justify-between pt-4">
+            <button onClick={() => setStep(1)} className="px-6 py-3 border border-outline text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer flex items-center gap-2">
+              <Icon name="arrow_back" />
+              Quay lại
+            </button>
+            <button
+              disabled={!selectedDate}
+              onClick={() => setStep(3)}
+              className="px-8 py-3 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+            >
+              Tiếp theo
+              <Icon name="arrow_forward" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Chọn bác sĩ & giờ */}
+      {step === 3 && (
+        <div className="space-y-6 animate-fade-in">
+          <div>
+            <h3 className="font-headline-sm text-headline-sm text-on-surface mb-3">Chọn bác sĩ điều trị</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {(() => {
+                const activeDentists = dentists.filter(doc =>
+                  doctorShifts.some(shift => shift.dentistId === doc.id && shift.date === selectedDate)
+                );
+                if (activeDentists.length === 0) {
+                  return (
+                    <div className="col-span-full bg-surface-container-low border border-outline-variant rounded-xl p-6 text-center text-on-surface-variant text-sm">
+                      Không có bác sĩ nào trực vào ngày này. Vui lòng quay lại bước trước chọn ngày khác.
+                    </div>
+                  );
+                }
+                return activeDentists.map((doc) => (
+                  <button
+                    key={doc.id}
+                    onClick={() => { setSelectedDentist(doc.id); setSelectedTime(''); }}
+                    className={`text-left p-5 rounded-xl border-2 transition-all duration-200 cursor-pointer flex items-center gap-4 ${
+                      selectedDentist === doc.id
+                        ? 'border-primary bg-primary-container shadow-md'
+                        : 'border-outline-variant bg-white hover:border-primary/40 hover:bg-surface-container-low'
+                    }`}
+                  >
+                    <img src={doc.avatar} alt={doc.name} className={`w-16 h-16 rounded-full object-cover border-2 ${selectedDentist === doc.id ? 'border-primary' : 'border-outline-variant'}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-bold ${selectedDentist === doc.id ? 'text-on-primary-container' : 'text-on-surface'}`}>{doc.name}</p>
+                      <p className={`text-xs mt-0.5 ${selectedDentist === doc.id ? 'text-on-primary-container/70' : 'text-on-surface-variant'}`}>{doc.role}</p>
+                      <div className={`mt-2 inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${selectedDentist === doc.id ? 'bg-primary/20 text-primary' : 'bg-surface-container text-on-surface-variant'}`}>
+                        <Icon name="meeting_room" className="text-[12px]" />
+                        {doc.room}
+                      </div>
+                    </div>
+                    {selectedDentist === doc.id && (
+                      <Icon name="check_circle" className="text-primary text-[24px]" />
+                    )}
+                  </button>
+                ));
+              })()}
+            </div>
+          </div>
 
           {/* Time picker */}
-          {selectedDate && (
+          {selectedDentist && (
             <div>
-              <p className="text-label-md font-bold text-on-surface-variant uppercase tracking-wider mb-3">Chọn giờ</p>
+              <p className="text-label-md font-bold text-on-surface-variant uppercase tracking-wider mb-3">Chọn khung giờ khám</p>
               
               {loadingSlots && (
                 <div className="flex items-center gap-2 text-primary py-4">
@@ -406,7 +472,7 @@ export const PatientBooking: React.FC = () => {
 
               {!loadingSlots && !slotsError && availableSlots.length === 0 && (
                 <div className="bg-surface-container-low border border-outline-variant rounded-xl p-4 text-center text-on-surface-variant text-sm">
-                  Không có khung giờ khám nào khả dụng hoặc bác sĩ không có ca trực vào ngày này. Vui lòng chọn ngày khác.
+                  Không còn khung giờ khám nào trống cho bác sĩ này vào ngày đã chọn. Vui lòng chọn bác sĩ hoặc ngày khác.
                 </div>
               )}
 
@@ -470,29 +536,36 @@ export const PatientBooking: React.FC = () => {
             </div>
           )}
 
-          {/* Note */}
-          <div>
-            <label className="block text-label-md font-bold text-on-surface-variant uppercase tracking-wider mb-2">Ghi chú triệu chứng (tuỳ chọn)</label>
-            <textarea
-              rows={3}
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              placeholder="Ví dụ: Răng bên phải hàm dưới bị ê buốt khi uống nước lạnh từ 2 tuần nay..."
-              className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-body-md focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none resize-none"
-            />
-          </div>
+          {/* Note Input */}
+          {selectedDentist && selectedTime && (
+            <div className="pt-2 animate-fade-in">
+              <label className="block text-label-md font-bold text-on-surface-variant uppercase tracking-wider mb-2">Ghi chú triệu chứng (Không bắt buộc)</label>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Ví dụ: Răng bên phải hàm dưới bị ê buốt khi uống nước lạnh từ 2 tuần nay..."
+                rows={3}
+                className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-body-md focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none resize-none"
+              />
+            </div>
+          )}
 
-          <div className="flex justify-between pt-2">
+          <div className="flex justify-between pt-4">
             <button onClick={() => setStep(2)} className="px-6 py-3 border border-outline text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer flex items-center gap-2">
               <Icon name="arrow_back" />
               Quay lại
             </button>
             <button
-              disabled={!selectedDate || !selectedTime}
-              onClick={() => setStep(4)}
+              disabled={!selectedDentist || !selectedTime}
+              onClick={() => {
+                if (!checkRateLimit(patientPhone)) return;
+                if (!checkDuplicate(patientPhone, selectedDate, selectedTime)) return;
+                setStep(4);
+                setSubmitError('');
+              }}
               className="px-8 py-3 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
             >
-              Xem xác nhận
+              Tiếp theo
               <Icon name="arrow_forward" />
             </button>
           </div>
@@ -632,6 +705,14 @@ export const PatientBooking: React.FC = () => {
           dentistId={selectedDentist}
           startTime={selectedTime}
           serviceId={selectedService}
+      />
+
+      <AlertModal
+        isOpen={alertModal.open}
+        onClose={() => setAlertModal(prev => ({ ...prev, open: false }))}
+        type={alertModal.type}
+        title={alertModal.title}
+        message={alertModal.message}
       />
     </div>
   );

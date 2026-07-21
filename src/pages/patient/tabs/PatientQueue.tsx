@@ -16,7 +16,7 @@ const maskName = (name: string) => {
 export const PatientQueue: React.FC = () => {
   const { queue, dentists } = useClinic();
   const { user } = useAuth();
-  const patientId = user?.id || 'P-8821';
+  const patientId = user?.id || '';
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Live clock

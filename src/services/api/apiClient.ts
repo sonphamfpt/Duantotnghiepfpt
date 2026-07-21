@@ -28,7 +28,24 @@ export async function request<T>(endpoint: string, options: RequestInit = {}): P
   const resData = await response.json();
 
   if (!response.ok) {
-    throw new Error(resData.message || resData.error?.message || `Lỗi kết nối máy chủ (HTTP ${response.status})`);
+    const errorCode = resData.error?.code || '';
+    const errorMsg = resData.error?.message || resData.message || `Lỗi kết nối máy chủ (HTTP ${response.status})`;
+
+    // 401: Token hết hạn hoặc tài khoản bị khoá → tự động đăng xuất và redirect
+    if (response.status === 401) {
+      const isInactive = errorCode === 'USER_INACTIVE';
+      localStorage.removeItem('goodsmile_token');
+      localStorage.removeItem('goodsmile_user');
+      if (!window.location.pathname.startsWith('/login')) {
+        const msg = isInactive
+          ? 'Tài khoản của bạn đã bị ngưng hoạt động. Bạn sẽ được đăng xuất ngay.'
+          : 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+        alert(msg);
+        window.location.href = '/login';
+      }
+    }
+
+    throw new Error(errorMsg);
   }
 
   // Chuẩn hóa phản hồi từ API để luôn có trường success và data

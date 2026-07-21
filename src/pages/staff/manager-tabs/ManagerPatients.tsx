@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useClinic } from '../../../context/ClinicContext';
 import { Icon } from '../../../components/Icon';
+import { useConfirm } from '../../../context/ConfirmContext';
 
 // Dynamic helper to calculate patient ranking/tier based on visit frequency (number of medical records)
 export const getPatientTier = (recordCount: number) => {
@@ -12,6 +13,7 @@ export const getPatientTier = (recordCount: number) => {
 
 export const ManagerPatients: React.FC = () => {
   const { patients, appointments, medicalRecords, unlockPatient, lockPatient } = useClinic();
+  const { showConfirm, showAlert } = useConfirm();
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -210,9 +212,21 @@ export const ManagerPatients: React.FC = () => {
                         {stats.isLocked ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (confirm(`Bạn có chắc chắn muốn mở khóa tài khoản cho bệnh nhân ${patient.name}?`)) {
+                            onClick={async () => {
+                              const isConfirmed = await showConfirm({
+                                title: 'Mở khóa tài khoản',
+                                message: `Bạn có chắc chắn muốn mở khóa tài khoản cho bệnh nhân ${patient.name}? Bệnh nhân sẽ có thể tiếp tục đặt lịch hẹn trực tuyến.`,
+                                type: 'info',
+                                confirmLabel: 'Đồng ý mở khóa',
+                                cancelLabel: 'Quay lại'
+                              });
+                              if (isConfirmed) {
                                 unlockPatient(patient.id);
+                                await showAlert({
+                                  title: 'Thành công',
+                                  message: `Đã mở khóa tài khoản bệnh nhân ${patient.name} thành công.`,
+                                  type: 'success'
+                                });
                               }
                             }}
                             className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-1 ml-auto"
@@ -223,9 +237,21 @@ export const ManagerPatients: React.FC = () => {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (confirm(`Bạn có chắc chắn muốn KHÓA tài khoản bệnh nhân ${patient.name}?`)) {
+                            onClick={async () => {
+                              const isConfirmed = await showConfirm({
+                                title: 'Khóa tài khoản',
+                                message: `Bạn có chắc chắn muốn KHÓA tài khoản của bệnh nhân ${patient.name}? Bệnh nhân sẽ KHÔNG thể tự đặt lịch hẹn trực tuyến nữa.`,
+                                type: 'warning',
+                                confirmLabel: 'Đồng ý khóa',
+                                cancelLabel: 'Quay lại'
+                              });
+                              if (isConfirmed) {
                                 lockPatient(patient.id);
+                                await showAlert({
+                                  title: 'Thành công',
+                                  message: `Đã khóa tài khoản bệnh nhân ${patient.name} thành công.`,
+                                  type: 'success'
+                                });
                               }
                             }}
                             className="px-4 py-1.5 bg-error hover:bg-error/95 text-white font-bold text-[11px] rounded-lg transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-1 ml-auto"

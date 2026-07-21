@@ -3,6 +3,7 @@ import { Icon } from '../../components/Icon';
 import { useSearchParams } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { useAuth } from '../../context/AuthContext';
+import { useConfirm } from '../../context/ConfirmContext';
 import { DentalChart } from '../../components/DentalChart';
 import { ToothState } from '../../types/clinic';
 
@@ -38,9 +39,10 @@ const TEMPLATE_PRESETS: Record<string, Array<{ name: string; quantity: number; u
 // ─── Home (Bàn khám lâm sàng) ──────────────────────────────────────────────────
 const DentistHome: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { queue, patients, medicalRecords, services, startTreatment, completeTreatment, fetchPatientRecords } = useClinic();
+  const { queue, patients, medicalRecords, services, startTreatment, completeTreatment, fetchPatientRecords, updatePatientDetails } = useClinic();
 
   const { user } = useAuth();
+  const { showAlert, showConfirm } = useConfirm();
   const dentistId = user?.id || 'D-04';
   const dentistName = user?.name || 'Bác sĩ Nguyễn Hương';
 
@@ -200,18 +202,57 @@ const DentistHome: React.FC = () => {
 
   React.useEffect(() => {
     if (activePatient) {
+      // Lấy danh sách bệnh án của bệnh nhân này (mới nhất trước)
+      const pId = activePatient.id;
+      const pRecords = medicalRecords
+        .filter(r => r.patientId === pId)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Helper: trích xuất giá trị từ EMR notes theo key
+      // Ví dụ: "Ngày sinh: 2000-05-20 | Giới tính: Nam | ..."
+      const extractFromNotes = (notes: string | undefined, key: string): string => {
+        if (!notes) return '';
+        const match = notes.match(new RegExp(`${key}:\\s*([^|\\n]+)`));
+        return match ? match[1].trim() : '';
+      };
+
+      // Tìm ngày sinh từ EMR notes nếu API không trả về
+      let resolvedDOB = activePatient.dateOfBirth
+        ? activePatient.dateOfBirth.split('T')[0]
+        : '';
+      if (!resolvedDOB) {
+        for (const rec of pRecords) {
+          const dob = extractFromNotes(rec.notes, 'Ngày sinh');
+          if (dob) { resolvedDOB = dob; break; }
+        }
+      }
+
+      // Tìm giới tính từ EMR notes nếu API trả null
+      let resolvedGender = activePatient.gender || '';
+      if (!resolvedGender) {
+        for (const rec of pRecords) {
+          const g = extractFromNotes(rec.notes, 'Giới tính');
+          if (g) { resolvedGender = g; break; }
+        }
+      }
+
+      // Tìm địa chỉ từ EMR notes nếu API trả rỗng
+      let resolvedAddress = activePatient.address || '';
+      if (!resolvedAddress) {
+        for (const rec of pRecords) {
+          const addr = extractFromNotes(rec.notes, 'Địa chỉ');
+          if (addr) { resolvedAddress = addr; break; }
+        }
+      }
+
       setFormAllergy(activePatient.criticalAllergy || 'Không');
       setFormCondition(activePatient.condition || 'Bình thường');
-      setFormDOB(activePatient.dateOfBirth ? activePatient.dateOfBirth.split('T')[0] : '');
-      setFormGender(activePatient.gender || '');
-      setFormAddress(activePatient.address || '');
+      setFormDOB(resolvedDOB);
+      setFormGender(resolvedGender);
+      setFormAddress(resolvedAddress);
 
       // Sync active teeth state from EMR
-      const pId = activePatient.id;
-      const pRecords = medicalRecords.filter(r => r.patientId === pId);
-
       const consolidated: Record<number, ToothState> = {};
-
       // Overwrite from medical records (oldest to newest)
       [...pRecords].reverse().forEach(r => {
         r.teethMap?.forEach(t => {
@@ -254,9 +295,8 @@ const DentistHome: React.FC = () => {
     setRxTemplate('');
     setChiefComplaint('');
     setIcdCode('');
-    setFormDOB('');
-    setFormGender('');
-    setFormAddress('');
+    // formDOB, formGender, formAddress: Không reset ở đây —
+    // useEffect [activePatient?.id] sẽ tự autofill từ DB khi activePatient thay đổi
     setTreatmentType('independent');
     setSelectedPlanId('');
     setUploadedFiles([]);
@@ -265,8 +305,27 @@ const DentistHome: React.FC = () => {
 
   const handleToothClick = (num: number) => { setSelectedToothNum(num); };
 
-  const handleDiagnoseTooth = (condition: ToothState['condition'], serviceId?: string) => {
+  const handleDiagnoseTooth = async (condition: ToothState['condition'], serviceId?: string) => {
     if (!selectedToothNum) return;
+
+    const conditionLabels: Record<string, string> = {
+      healthy: 'Khỏe mạnh (Xóa bệnh lý)',
+      decay: 'Sâu răng',
+      treated: 'Đã trám',
+      missing: 'Mất răng',
+      crown: 'Bọc sứ',
+      bridge: 'Cầu răng',
+    };
+
+    const isConfirmed = await showConfirm({
+      title: 'Xác nhận chẩn đoán',
+      message: `Bạn có chắc chắn chẩn đoán Răng ${selectedToothNum} là "${conditionLabels[condition]}" không?`,
+      type: 'warning',
+      confirmLabel: 'Xác nhận',
+      cancelLabel: 'Hủy'
+    });
+    if (!isConfirmed) return;
+
     const service = services.find(s => s.id === serviceId);
     const newToothState: ToothState = {
       toothNumber: selectedToothNum,
@@ -282,15 +341,11 @@ const DentistHome: React.FC = () => {
       setPerformedServices(prev => [...prev, serviceId]);
     }
 
-    const conditionLabels: Record<string, string> = {
-      healthy: 'Khỏe mạnh',
-      decay: 'Sâu răng',
-      treated: 'Đã trám',
-      missing: 'Mất răng',
-      crown: 'Bọc sứ',
-      bridge: 'Cầu răng',
-    };
-    alert(`Đã chẩn đoán Răng ${selectedToothNum}: ${conditionLabels[condition] || condition}`);
+    await showAlert({
+      title: 'Thành công',
+      message: `Đã chẩn đoán Răng ${selectedToothNum}: ${conditionLabels[condition]}`,
+      type: 'success'
+    });
     setSelectedToothNum(null);
   };
 
@@ -298,11 +353,15 @@ const DentistHome: React.FC = () => {
     setPerformedServices(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
   };
 
-  const handleAddDrug = (drugId: string) => {
+  const handleAddDrug = async (drugId: string) => {
     const drug = AVAILABLE_DRUGS.find(d => d.id === drugId);
     if (!drug) return;
     if (prescriptionDrugs.some(d => d.name === drug.name)) {
-      alert('Thuốc này đã có trong đơn!');
+      await showAlert({
+        title: 'Cảnh báo',
+        message: 'Thuốc này đã có trong đơn thuốc!',
+        type: 'warning'
+      });
       return;
     }
     setPrescriptionDrugs(prev => [
@@ -322,10 +381,14 @@ const DentistHome: React.FC = () => {
     }
   };
 
-  const handleFinalize = () => {
+  const handleFinalize = async () => {
     if (!selectedQueueId) return;
     if (!icdCode.trim()) {
-      alert('Không thể hoàn tất ca điều trị. Vui lòng nhập Chẩn đoán y khoa (Mã ICD-10) trước!');
+      await showAlert({
+        title: 'Thiếu thông tin',
+        message: 'Không thể hoàn tất ca điều trị. Vui lòng nhập Chẩn đoán y khoa (Mã ICD-10) trước!',
+        type: 'warning'
+      });
       return;
     }
     const drugListStr = prescriptionDrugs.map(d => `${d.name} (${d.quantity} ${d.unit}) - ${d.instruction}`).join('; ');
@@ -339,7 +402,19 @@ const DentistHome: React.FC = () => {
       `Chẩn đoán: ${icdCode}`,
       ...(drugListStr ? [`Đơn thuốc: ${drugListStr}`] : []),
     ].join(' | ');
-    completeTreatment(
+
+    if (activePatient) {
+      // Chỉ gửi fields có giá trị thực — không ghi đè dữ liệu cũ bằng chuỗi rỗng
+      await updatePatientDetails(activePatient.id, {
+        criticalAllergy: formAllergy || undefined,
+        condition: formCondition || undefined,
+        gender: formGender || undefined,
+        dateOfBirth: formDOB || undefined,
+        address: formAddress || undefined,
+      });
+    }
+
+    const result = await completeTreatment(
       selectedQueueId,
       activeTeethState,
       finalNotes,
@@ -348,13 +423,37 @@ const DentistHome: React.FC = () => {
       selectedPlanId,
       uploadedFiles
     );
-    if (treatmentType === 'plan_session') {
-      alert(`Đã hoàn tất phiên điều trị thuộc Phác đồ #${selectedPlanId} thành công (Không sinh thêm hóa đơn)!`);
-    } else if (treatmentType === 'plan_init') {
-      alert('Đã khởi tạo phác đồ điều trị thành công và gửi hóa đơn tổng sang quầy Thu ngân!');
-    } else {
-      alert('Đã hoàn tất ca điều trị lâm sàng và gửi hóa đơn thanh toán thành công!');
+
+    if (!result.success) {
+      await showAlert({
+        title: 'Lỗi hệ thống',
+        message: `Không thể hoàn tất ca điều trị:\n${result.error || 'Lỗi không xác định từ máy chủ.'}`,
+        type: 'error'
+      });
+      return;
     }
+
+    if (treatmentType === 'plan_session') {
+      await showAlert({
+        title: 'Thành công',
+        message: `Đã hoàn tất phiên điều trị thuộc Phác đồ #${selectedPlanId} thành công (Không sinh thêm hóa đơn)!`,
+        type: 'success'
+      });
+    } else if (treatmentType === 'plan_init') {
+      await showAlert({
+        title: 'Thành công',
+        message: 'Đã khởi tạo phác đồ điều trị thành công và gửi hóa đơn tổng sang quầy Thu ngân!',
+        type: 'success'
+      });
+    } else {
+      await showAlert({
+        title: 'Thành công',
+        message: 'Đã hoàn tất ca điều trị lâm sàng và gửi hóa đơn thanh toán thành công!',
+        type: 'success'
+      });
+    }
+
+    setShowSignModal(false);
     setSelectedQueueId(null);
     setPerformedServices([]);
     setServiceSearch('');
@@ -364,15 +463,98 @@ const DentistHome: React.FC = () => {
     setUploadedFiles([]);
   };
 
-  const handleOpenSignModal = () => {
+  const handleOpenSignModal = async () => {
+    // 1. Validate "Bệnh sử & Chẩn đoán" fields
+    if (!formAllergy.trim()) {
+      await showAlert({
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập ghi chú Dị ứng (hoặc ghi "Không") tại tab "Bệnh sử & Chẩn đoán"!',
+        type: 'warning'
+      });
+      setActiveTab('diagnosis');
+      return;
+    }
+    if (!formCondition.trim()) {
+      await showAlert({
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập ghi chú Bệnh lý nền (hoặc ghi "Không") tại tab "Bệnh sử & Chẩn đoán"!',
+        type: 'warning'
+      });
+      setActiveTab('diagnosis');
+      return;
+    }
+    if (!formDOB.trim()) {
+      await showAlert({
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập Ngày sinh bệnh nhân tại tab "Bệnh sử & Chẩn đoán"!',
+        type: 'warning'
+      });
+      setActiveTab('diagnosis');
+      return;
+    }
+    const dobDate = new Date(formDOB);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (dobDate > today) {
+      await showAlert({
+        title: 'Ngày sinh không hợp lệ',
+        message: 'Ngày sinh của bệnh nhân không thể ở tương lai!',
+        type: 'warning'
+      });
+      setActiveTab('diagnosis');
+      return;
+    }
+    if (!formGender.trim()) {
+      await showAlert({
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng chọn Giới tính bệnh nhân tại tab "Bệnh sử & Chẩn đoán"!',
+        type: 'warning'
+      });
+      setActiveTab('diagnosis');
+      return;
+    }
+    if (!formAddress.trim()) {
+      await showAlert({
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập Địa chỉ liên hệ của bệnh nhân tại tab "Bệnh sử & Chẩn đoán"!',
+        type: 'warning'
+      });
+      setActiveTab('diagnosis');
+      return;
+    }
+    if (!chiefComplaint.trim()) {
+      await showAlert({
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập Mô tả bệnh sử & Lý do khám tại tab "Bệnh sử & Chẩn đoán"!',
+        type: 'warning'
+      });
+      setActiveTab('diagnosis');
+      return;
+    }
     if (!icdCode.trim()) {
-      alert('Vui lòng nhập Chẩn đoán y khoa (Mã ICD-10) tại tab "Bệnh sử & Chẩn đoán" trước khi xem và ký bệnh án!');
+      await showAlert({
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập Chẩn đoán y khoa (Mã ICD-10) tại tab "Bệnh sử & Chẩn đoán"!',
+        type: 'warning'
+      });
       setActiveTab('diagnosis');
       setTimeout(() => {
         document.getElementById('icd-code-input')?.focus();
       }, 100);
       return;
     }
+
+    // 2. Validate "Chỉ định dịch vụ" - must select at least 1 service
+    if (performedServices.length === 0) {
+      await showAlert({
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng chọn ít nhất một dịch vụ điều trị đã thực hiện tại tab "Chỉ định dịch vụ"!',
+        type: 'warning'
+      });
+      setActiveTab('services');
+      return;
+    }
+
     setShowSignModal(true);
   };
 
@@ -568,6 +750,7 @@ const DentistHome: React.FC = () => {
                         type="date"
                         value={formDOB}
                         onChange={e => setFormDOB(e.target.value)}
+                        max={new Date().toLocaleDateString('sv')}
                         className="w-full bg-slate-50 border border-outline-variant/65 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white focus:outline-none transition-all"
                       />
                       {!activePatient.dateOfBirth && (
@@ -656,12 +839,16 @@ const DentistHome: React.FC = () => {
                       </div>
 
                       <div
-                        onClick={() => {
+                        onClick={async () => {
                           if (patientPlans.length > 0) {
                             setTreatmentType('plan_session');
                             if (!selectedPlanId) setSelectedPlanId(patientPlans[0].id);
                           } else {
-                            alert('Bệnh nhân này hiện chưa có Phác đồ điều trị dài hạn nào để chọn phiên tiếp theo!');
+                            await showAlert({
+                              title: 'Thông báo',
+                              message: 'Bệnh nhân này hiện chưa có Phác đồ điều trị dài hạn nào để chọn phiên tiếp theo!',
+                              type: 'info'
+                            });
                           }
                         }}
                         className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex flex-col gap-1 select-none ${patientPlans.length === 0 ? 'opacity-50 cursor-not-allowed bg-slate-100 border-slate-200' : treatmentType === 'plan_session' ? 'border-amber-600 bg-amber-50/30' : 'border-outline-variant hover:border-slate-305 bg-white'}`}
@@ -1321,7 +1508,6 @@ const DentistHome: React.FC = () => {
                 <button
                   onClick={() => {
                     handleFinalize();
-                    setShowSignModal(false);
                   }}
                   className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all"
                 >

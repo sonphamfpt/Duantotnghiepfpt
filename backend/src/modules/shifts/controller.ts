@@ -2,8 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import * as service from './service';
 import { CreateShiftSchema, SwapShiftsSchema, TransferShiftSchema, ResolveConflictSchema } from './dto';
 import { serializeBigInt } from '../../utils/serialize';
+import { socketManager } from '../../config/socket';
 
-const parseId = (id: any): bigint => {
+const parseId = (id: string | number | bigint): bigint => {
   if (typeof id === 'string') {
     const parts = id.split('-');
     const numStr = parts[1] || parts[0];
@@ -30,9 +31,9 @@ export async function getShiftsHandler(req: Request, res: Response, next: NextFu
     // Ánh xạ sang DoctorShift (định dạng khớp với Frontend)
     const formatted = data.map(s => {
       const dateObj = new Date(s.workDate);
-      const y = dateObj.getFullYear();
-      const m = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-      const d = dateObj.getDate().toString().padStart(2, '0');
+      const y = dateObj.getUTCFullYear();
+      const m = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
+      const d = dateObj.getUTCDate().toString().padStart(2, '0');
       const dateStr = `${y}-${m}-${d}`;
 
       return {
@@ -70,6 +71,8 @@ export async function createShiftHandler(req: Request, res: Response, next: Next
       roomId: body.roomId,
     });
 
+    socketManager.emit('shift:changed', { action: 'create', dentistId: dentistId.toString() });
+
     return res.status(201).json({
       success: true,
       message: 'Tạo ca trực thành công',
@@ -87,6 +90,7 @@ export async function swapShiftsHandler(req: Request, res: Response, next: NextF
   try {
     const { shiftId1, shiftId2 } = SwapShiftsSchema.parse(req.body);
     const data = await service.swapShifts(parseId(shiftId1), parseId(shiftId2));
+    socketManager.emit('shift:changed', { action: 'swap' });
     return res.status(200).json({
       success: true,
       data: serializeBigInt(data),
@@ -103,6 +107,7 @@ export async function transferShiftHandler(req: Request, res: Response, next: Ne
   try {
     const { shiftId, targetDentistId } = TransferShiftSchema.parse(req.body);
     const data = await service.transferShift(parseId(shiftId), parseId(targetDentistId));
+    socketManager.emit('shift:changed', { action: 'transfer' });
     return res.status(200).json({
       success: true,
       data: serializeBigInt(data),
@@ -118,11 +123,11 @@ export async function transferShiftHandler(req: Request, res: Response, next: Ne
 export async function getShiftNotificationsHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const notifications = await service.getShiftNotifications();
-    
-    const formatted = notifications.map((notif: any) => {
-      const affected = notif.affectedItems.map((item: any) => ({
+
+    const formatted = notifications.map((notif) => {
+      const affected = notif.affectedItems.map((item) => ({
         appointmentId: item.appointmentId.toString(),
-        patientName: item.appointment.patient.user.fullName,
+        patientName: item.appointment.patient.user?.fullName || item.appointment.patient.fullName,
         patientPhone: item.appointment.patient.phone,
         time: item.appointment.startTime.toISOString(),
         serviceName: item.appointment.service.name,
@@ -166,6 +171,48 @@ export async function resolveConflictItemHandler(req: Request, res: Response, ne
     return res.status(200).json({
       success: true,
       data,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/**
+ * Xóa ca trực bác sĩ
+ */
+export async function deleteShiftHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const shiftId = parseId(req.params.shiftId);
+    const data = await service.deleteShift(shiftId);
+    socketManager.emit('shift:changed', { action: 'delete', shiftId: shiftId.toString() });
+    return res.status(200).json({
+      success: true,
+      message: data.message,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/**
+ * Cập nhật phòng trực cho một ca trực (manager)
+ */
+export async function updateShiftRoomHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const shiftId = parseId(req.params.shiftId);
+    const { roomId } = req.body;
+
+    if (!roomId) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin phòng khám.' });
+    }
+
+    const data = await service.updateShiftRoom(shiftId, Number(roomId));
+    socketManager.emit('shift:changed', { action: 'room_update', shiftId: shiftId.toString() });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật phòng trực thành công.',
+      data: serializeBigInt(data),
     });
   } catch (err) {
     return next(err);

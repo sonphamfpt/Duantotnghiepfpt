@@ -79,7 +79,8 @@ export const clinicApi = {
     criticalAllergy?: string;
     condition?: string;
     gender?: string;
-    age?: number;
+    dateOfBirth?: string; // định dạng YYYY-MM-DD
+    address?: string;
   }) => {
     return request<any>(`/patients/${patientId}`, {
       method: 'PATCH',
@@ -105,4 +106,38 @@ export const clinicApi = {
       method: 'PATCH',
     });
   },
+
+  /**
+   * Lấy chi tiết hồ sơ 1 bác sĩ theo ID (ví dụ D-01)
+   */
+  getDentistDetail: (id: string) => request<any>(`/dentists/${id}`),
+
+  /**
+   * Cập nhật hồ sơ bác sĩ chuyên sâu (Admin/Manager)
+   */
+  updateDentist: (id: string, payload: {
+    name?: string;
+    specialty?: string;
+    degree?: string;
+    experienceYears?: number;
+    casesHandled?: string;
+    motto?: string;
+    bio?: string;
+    education?: string[];
+    certifications?: string[];
+    clinicalStrengths?: string[];
+    workHistory?: { periodText?: string; description: string }[];
+  }) =>
+    request<any>(`/dentists/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  /**
+   * Ngưng hoạt động / Khóa bác sĩ
+   */
+  deleteDentist: (id: string) =>
+    request<any>(`/dentists/${id}`, {
+      method: 'DELETE',
+    }),
 };

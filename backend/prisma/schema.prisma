@@ -205,6 +205,7 @@ model Patient {
   medicalRecords     MedicalRecord[]
   treatmentPlans     TreatmentPlan[]
   invoices           Invoice[]
+  reviews            ServiceReview[]
 
   @@map("patients")
 }
@@ -255,6 +256,7 @@ model Service {
   invoiceItems          InvoiceItem[]
   medicalRecordServices MedicalRecordService[]
   queueTickets          QueueTicket[]
+  reviews               ServiceReview[]
 
   @@map("services")
 }
@@ -335,6 +337,7 @@ model Appointment {
 
   queueTicket           QueueTicket?
   shiftChangeAffected   ShiftChangeAffectedItem[]
+  serviceReview         ServiceReview?
 
   @@index([dentistId, startTime])
   @@index([patientId])
@@ -642,3 +645,44 @@ model SystemLog {
   @@index([createdAt(sort: Desc)])
   @@map("system_logs")
 }
+
+// ─────────────────────────────────────────────
+// 11. ĐÁNH GIÁ DỊCH VỤ & AI PHẢN HỒI
+// ─────────────────────────────────────────────
+
+enum ReviewSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum ReviewStatus {
+  Pending
+  Approved
+  Hidden
+}
+
+model ServiceReview {
+  reviewId      BigInt          @id @default(autoincrement()) @map("review_id")
+  patientId     BigInt          @map("patient_id")
+  patient       Patient         @relation(fields: [patientId], references: [patientId])
+  appointmentId BigInt?         @unique @map("appointment_id")
+  appointment   Appointment?    @relation(fields: [appointmentId], references: [appointmentId])
+  serviceId     BigInt?         @map("service_id")
+  service       Service?        @relation(fields: [serviceId], references: [serviceId])
+  
+  rating        Int             @db.SmallInt
+  comment       String          @db.Text
+  sentiment     ReviewSentiment @default(NEUTRAL)
+  aiReply       String?         @map("ai_reply") @db.Text
+  aiRepliedAt   DateTime?       @map("ai_replied_at")
+  status        ReviewStatus    @default(Approved)
+
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@index([patientId])
+  @@index([serviceId])
+  @@map("service_reviews")
+}
+

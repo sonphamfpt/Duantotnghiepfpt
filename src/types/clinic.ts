@@ -51,7 +51,7 @@ export interface Appointment {
   dentistId: string;
   dentistName: string;
   time: string;
-  status: 'Confirmed' | 'In-Progress' | 'Completed' | 'Cancelled';
+  status: 'Pending' | 'Confirmed' | 'In-Progress' | 'Completed' | 'Cancelled' | 'NoShow';
 }
 
 export interface QueueItem {
@@ -177,3 +177,19 @@ export interface ShiftChangeNotification {
   newDentistName: string;
   affectedItems: ShiftConflictItem[];
 }
+
+export interface ServiceReviewItem {
+  id: string;
+  patientId?: string;
+  patientName: string;
+  patientPhone?: string;
+  serviceName: string;
+  dentistName?: string;
+  rating: number;
+  comment: string;
+  sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
+  aiReply?: string;
+  status?: 'Pending' | 'Approved' | 'Hidden';
+  createdAt: string;
+}
+

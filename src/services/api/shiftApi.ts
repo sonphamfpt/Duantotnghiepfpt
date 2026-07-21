@@ -54,9 +54,11 @@ export const shiftApi = {
   resolveConflict: (notifId: string, appointmentId: string, action: 'approve' | 'reject') => {
     const rawNotifId = notifId.split('-')[1] || notifId;
     const rawApptId = appointmentId.split('-')[1] || appointmentId;
+    // Backend Zod schema chỉ chấp nhận 'updated' | 'cancelled'
+    const backendAction = action === 'approve' ? 'updated' : 'cancelled';
     return request<any>(`/shifts/notifications/${rawNotifId}/resolve-item/${rawApptId}`, {
       method: 'POST',
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action: backendAction }),
     });
   },
 

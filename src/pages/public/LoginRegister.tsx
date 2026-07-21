@@ -10,6 +10,7 @@ const DEMO_ACCOUNTS = [
   { phone: '0909000002', password: '12345678', role: 'receptionist' as UserRole, label: 'Lễ Tân',    icon: 'folder_shared',       color: 'hover:border-orange-500 hover:bg-orange-50/50 text-orange-700 bg-orange-50/30 border-orange-100 hover:shadow-orange-100/50' },
   { phone: '0909000014', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. N. Hương', icon: 'dentistry',           color: 'hover:border-blue-500 hover:bg-blue-50/50 text-blue-700 bg-blue-50/30 border-blue-100 hover:shadow-blue-100/50' },
   { phone: '0909000011', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. Lê Minh',  icon: 'dentistry',           color: 'hover:border-indigo-500 hover:bg-indigo-50/50 text-indigo-700 bg-indigo-50/30 border-indigo-100 hover:shadow-indigo-100/50' },
+  { phone: '0909000013', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. H. Nam',   icon: 'dentistry',           color: 'hover:border-cyan-500 hover:bg-cyan-50/50 text-cyan-700 bg-cyan-50/30 border-cyan-100 hover:shadow-cyan-100/50' },
   { phone: '0909000003', password: '12345678', role: 'cashier'      as UserRole, roleLabel: 'Thu Ngân', label: 'Thu Ngân',  icon: 'payments',            color: 'hover:border-amber-500 hover:bg-amber-50/50 text-amber-700 bg-amber-50/30 border-amber-100 hover:shadow-amber-100/50' },
   { phone: '0909000001', password: '12345678', role: 'manager'      as UserRole, label: 'Quản Lý',  icon: 'admin_panel_settings', color: 'hover:border-purple-500 hover:bg-purple-50/50 text-purple-700 bg-purple-50/30 border-purple-100 hover:shadow-purple-100/50' },
   { phone: '0901234567', password: '12345678', role: 'patient'      as UserRole, label: 'Bệnh Nhân', icon: 'person',              color: 'hover:border-green-500 hover:bg-green-50/50 text-green-700 bg-green-50/30 border-green-100 hover:shadow-green-100/50' },
@@ -39,8 +40,13 @@ export const LoginRegister: React.FC = () => {
   const [showRegisterOtpModal, setShowRegisterOtpModal] = useState(false);
   
   const [isAutoFilled, setIsAutoFilled] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
   const [phoneLookupLoading, setPhoneLookupLoading] = useState(false);
   const lookupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Field-level errors (hiển thị ngay dưới từng trường)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const clearFieldError = (field: string) => setFieldErrors(prev => ({ ...prev, [field]: '' }));
 
   // Feedback states
   const [errorMsg, setErrorMsg] = useState('');
@@ -66,11 +72,18 @@ export const LoginRegister: React.FC = () => {
   const handlePhoneChange = async (val: string) => {
     setRegPhone(val);
     setIsAutoFilled(false);
+    setPhoneError('');
+    // Reset các trường auto-fill khi SĐT thay đổi
+    setRegName('');
+    setRegGender('Nam');
+    setRegBirthDate('2000-01-01');
+    setRegAddress('');
+
     if (lookupTimerRef.current) clearTimeout(lookupTimerRef.current);
-    
+
     const phone = val.trim().replace(/[\s-]/g, '');
     if (phone.length < 10) return;
-    
+
     setPhoneLookupLoading(true);
     lookupTimerRef.current = setTimeout(async () => {
       try {
@@ -78,29 +91,30 @@ export const LoginRegister: React.FC = () => {
         setPhoneLookupLoading(false);
         if (res.success && res.data?.found) {
           const d = res.data;
+
           if (d.hasAccount) {
-            setErrorMsg('Số điện thoại này đã được đăng ký tài khoản. Vui lòng chuyển sang tab Đăng nhập.');
-            setRegName('');
-            setRegGender('Nam');
-            setRegBirthDate('2000-01-01');
-            setRegAddress('');
+            // TH1: SĐT đã có tài khoản → cảnh báo ngay tại field, KHÔNG auto-fill
+            setPhoneError('Số điện thoại này đã có tài khoản. Vui lòng chuyển sang tab Đăng nhập.');
             setIsAutoFilled(false);
-            return;
+          } else {
+            // TH2: Có hồ sơ bệnh nhân nhưng chưa có tài khoản → auto-fill thông tin
+            // (Lễ tân hoặc bác sĩ đã nhập hồ sơ trước đó)
+            if (d.fullName) setRegName(d.fullName);
+            if (d.gender) setRegGender(d.gender);
+            if (d.dateOfBirth) setRegBirthDate(d.dateOfBirth);
+            if (d.address) setRegAddress(d.address);
+            setIsAutoFilled(true);
+            setPhoneError('');
           }
-          if (d.fullName) setRegName(d.fullName);
-          if (d.gender) setRegGender(d.gender);
-          if (d.dateOfBirth) setRegBirthDate(d.dateOfBirth);
-          if (d.address) setRegAddress(d.address);
-          setIsAutoFilled(true);
-          setErrorMsg('');
         }
+        // TH3: SĐT hoàn toàn mới (found = false) → để trống, không làm gì thêm
       } catch (err) {
         setPhoneLookupLoading(false);
       }
     }, 600);
   };
 
-  // Validate form fields client-side
+  // Validate form fields client-side — lỗi hiển thị ngay dưới từng trường
   const validateForm = () => {
     if (isLoginTab) {
       if (!email.trim()) {
@@ -112,45 +126,52 @@ export const LoginRegister: React.FC = () => {
         return false;
       }
     } else {
-      if (!regName.trim()) {
-        setErrorMsg('Vui lòng nhập họ và tên.');
-        return false;
-      }
+      const errs: Record<string, string> = {};
+
       if (!regPhone.trim()) {
-        setErrorMsg('Vui lòng nhập số điện thoại.');
-        return false;
+        errs.phone = 'Vui lòng nhập số điện thoại.';
+      } else if (phoneError) {
+        // SĐT đã có tài khoản
+        errs.phone = phoneError;
+      } else {
+        const phoneRegex = /(0[3|5|7|8|9])+([0-9]{8})\b/;
+        if (!phoneRegex.test(regPhone.trim())) {
+          errs.phone = 'Số điện thoại không hợp lệ (Ví dụ: 0987654321).';
+        }
       }
-      // Simple regex for Vietnamese phone number
-      const phoneRegex = /(0[3|5|7|8|9])+([0-9]{8})\b/;
-      if (!phoneRegex.test(regPhone.trim())) {
-        setErrorMsg('Số điện thoại không hợp lệ (Ví dụ: 0987654321).');
-        return false;
+
+      if (!regName.trim()) {
+        errs.name = 'Vui lòng nhập họ và tên.';
       }
+
       if (!regBirthDate) {
-        setErrorMsg('Vui lòng chọn ngày sinh của bạn.');
-        return false;
+        errs.birthDate = 'Vui lòng chọn ngày sinh.';
+      } else {
+        const birthDateObj = new Date(regBirthDate);
+        if (birthDateObj > new Date()) {
+          errs.birthDate = 'Ngày sinh không được ở tương lai.';
+        } else if (birthDateObj.getFullYear() < 1900) {
+          errs.birthDate = 'Năm sinh tối thiểu từ năm 1900.';
+        }
       }
-      const birthDateObj = new Date(regBirthDate);
-      if (birthDateObj > new Date()) {
-        setErrorMsg('Ngày sinh không hợp lệ (Không được chọn ngày ở tương lai).');
-        return false;
-      }
-      if (birthDateObj.getFullYear() < 1900) {
-        setErrorMsg('Ngày sinh không hợp lệ (Năm sinh tối thiểu là từ năm 1900).');
-        return false;
-      }
+
       if (!regAddress.trim()) {
-        setErrorMsg('Vui lòng nhập địa chỉ liên hệ của bạn.');
-        return false;
+        errs.address = 'Vui lòng nhập địa chỉ liên hệ.';
       }
+
       if (regPassword.length < 6) {
-        setErrorMsg('Mật khẩu phải chứa ít nhất 6 ký tự.');
+        errs.password = 'Mật khẩu phải chứa ít nhất 6 ký tự.';
+      }
+
+      if (regPassword && regPassword !== regConfirmPassword) {
+        errs.confirmPassword = 'Mật khẩu xác nhận không khớp.';
+      }
+
+      if (Object.values(errs).some(v => v)) {
+        setFieldErrors(errs);
         return false;
       }
-      if (regPassword !== regConfirmPassword) {
-        setErrorMsg('Mật khẩu xác nhận không khớp.');
-        return false;
-      }
+      setFieldErrors({});
     }
     return true;
   };
@@ -501,26 +522,56 @@ export const LoginRegister: React.FC = () => {
                       Số điện thoại *
                     </label>
                     <div className="relative group">
-                      <Icon name="call" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
+                      <Icon
+                        name="call"
+                        className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors text-[18px] ${
+                          phoneError ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary'
+                        }`}
+                      />
                       <input
                         type="tel"
                         placeholder="Nhập SĐT để tra cứu nhanh..."
                         value={regPhone}
-                        onChange={(e) => { handlePhoneChange(e.target.value); setErrorMsg(''); }}
-                        className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-10 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm"
+                        onChange={(e) => handlePhoneChange(e.target.value)}
+                        className={`w-full bg-slate-50/50 border rounded-2xl pl-11 pr-10 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:outline-none transition-all shadow-sm ${
+                          phoneError
+                            ? 'border-red-400 focus:border-red-400 focus:ring-red-100 bg-red-50/30'
+                            : 'border-slate-200 focus:border-primary focus:ring-primary/10'
+                        }`}
                       />
                       {phoneLookupLoading && (
                         <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[16px] text-slate-400 animate-spin">⏳</span>
                       )}
+                      {!phoneLookupLoading && isAutoFilled && (
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-emerald-500 text-[18px]">✓</span>
+                      )}
                     </div>
+
+                    {/* Phone error — SĐT đã có tài khoản */}
+                    {phoneError && (
+                      <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3 py-2 animate-in slide-in-from-top-1">
+                        <div className="flex items-center gap-1.5">
+                          <Icon name="error" className="text-red-500 text-[15px] shrink-0" />
+                          <p className="text-[11px] font-semibold text-red-700">{phoneError}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setIsLoginTab(true); setEmail(regPhone); setErrorMsg(''); setPhoneError(''); }}
+                          className="ml-2 shrink-0 inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                        >
+                          <Icon name="login" className="text-[12px]" />
+                          Đăng nhập ngay
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Auto-filled status banner */}
-                  {isAutoFilled && (
+                  {/* Auto-filled status banner — chỉ hiện khi có hồ sơ nhưng chưa có tài khoản */}
+                  {isAutoFilled && !phoneError && (
                     <div className="flex items-start gap-2 text-emerald-800 text-[11px] bg-emerald-50/60 border border-emerald-100 rounded-2xl p-3 animate-in slide-in-from-top-1">
-                      <Icon name="person_check" className="text-[16px] shrink-0 mt-0.5" />
+                      <Icon name="person_check" className="text-[16px] shrink-0 mt-0.5 text-emerald-600" />
                       <span className="font-bold leading-normal">
-                        Hệ thống đã tự điền thông tin của bạn từ hồ sơ khám có sẵn! Hãy đặt mật khẩu dưới đây để kích hoạt tài khoản.
+                        ✅ Tìm thấy hồ sơ bệnh nhân! Hệ thống đã tự điền thông tin từ CSDL. Hãy đặt mật khẩu để kích hoạt tài khoản.
                       </span>
                     </div>
                   )}
@@ -531,15 +582,20 @@ export const LoginRegister: React.FC = () => {
                       Họ và tên
                     </label>
                     <div className="relative group">
-                      <Icon name="person" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
+                      <Icon name="person" className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors text-[18px] ${fieldErrors.name ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary'}`} />
                       <input
                         type="text"
                         placeholder="Nguyễn Văn A"
                         value={regName}
-                        onChange={(e) => { setRegName(e.target.value); setErrorMsg(''); }}
-                        className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm"
+                        onChange={(e) => { setRegName(e.target.value); clearFieldError('name'); }}
+                        className={`w-full bg-slate-50/50 border rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:outline-none transition-all shadow-sm ${fieldErrors.name ? 'border-red-400 focus:border-red-400 focus:ring-red-100 bg-red-50/20' : 'border-slate-200 focus:border-primary focus:ring-primary/10'}`}
                       />
                     </div>
+                    {fieldErrors.name && (
+                      <p className="flex items-center gap-1 text-[11px] font-semibold text-red-600 mt-1">
+                        <Icon name="error" className="text-[13px] shrink-0" />{fieldErrors.name}
+                      </p>
+                    )}
                   </div>
 
                   {/* Register Birth Date & Gender */}
@@ -550,16 +606,21 @@ export const LoginRegister: React.FC = () => {
                         Ngày sinh *
                       </label>
                       <div className="relative group">
-                        <Icon name="calendar_month" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
+                        <Icon name="calendar_month" className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors text-[18px] ${fieldErrors.birthDate ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary'}`} />
                         <input
                           type="date"
                           min="1900-01-01"
                           max={new Date().toISOString().split('T')[0]}
                           value={regBirthDate}
-                          onChange={(e) => { setRegBirthDate(e.target.value); setErrorMsg(''); }}
-                          className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm cursor-pointer"
+                          onChange={(e) => { setRegBirthDate(e.target.value); clearFieldError('birthDate'); }}
+                          className={`w-full bg-slate-50/50 border rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 focus:bg-white focus:ring-4 focus:outline-none transition-all shadow-sm cursor-pointer ${fieldErrors.birthDate ? 'border-red-400 focus:border-red-400 focus:ring-red-100 bg-red-50/20' : 'border-slate-200 focus:border-primary focus:ring-primary/10'}`}
                         />
                       </div>
+                      {fieldErrors.birthDate && (
+                        <p className="flex items-center gap-1 text-[11px] font-semibold text-red-600 mt-1">
+                          <Icon name="error" className="text-[13px] shrink-0" />{fieldErrors.birthDate}
+                        </p>
+                      )}
                     </div>
 
                     {/* Gender */}
@@ -600,15 +661,20 @@ export const LoginRegister: React.FC = () => {
                       Địa chỉ liên hệ
                     </label>
                     <div className="relative group">
-                      <Icon name="home" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
+                      <Icon name="home" className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors text-[18px] ${fieldErrors.address ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary'}`} />
                       <input
                         type="text"
                         placeholder="Số nhà, đường, phường, quận, thành phố..."
                         value={regAddress}
-                        onChange={(e) => { setRegAddress(e.target.value); setErrorMsg(''); }}
-                        className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm"
+                        onChange={(e) => { setRegAddress(e.target.value); clearFieldError('address'); }}
+                        className={`w-full bg-slate-50/50 border rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:outline-none transition-all shadow-sm ${fieldErrors.address ? 'border-red-400 focus:border-red-400 focus:ring-red-100 bg-red-50/20' : 'border-slate-200 focus:border-primary focus:ring-primary/10'}`}
                       />
                     </div>
+                    {fieldErrors.address && (
+                      <p className="flex items-center gap-1 text-[11px] font-semibold text-red-600 mt-1">
+                        <Icon name="error" className="text-[13px] shrink-0" />{fieldErrors.address}
+                      </p>
+                    )}
                   </div>
 
                   {/* Register Password */}
@@ -617,13 +683,13 @@ export const LoginRegister: React.FC = () => {
                       Mật khẩu
                     </label>
                     <div className="relative group">
-                      <Icon name="lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
+                      <Icon name="lock" className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors text-[18px] ${fieldErrors.password ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary'}`} />
                       <input
                         type={showRegPassword ? 'text' : 'password'}
                         placeholder="Tối thiểu 6 ký tự"
                         value={regPassword}
-                        onChange={(e) => { setRegPassword(e.target.value); setErrorMsg(''); }}
-                        className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-11 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm"
+                        onChange={(e) => { setRegPassword(e.target.value); clearFieldError('password'); clearFieldError('confirmPassword'); }}
+                        className={`w-full bg-slate-50/50 border rounded-2xl pl-11 pr-11 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:outline-none transition-all shadow-sm ${fieldErrors.password ? 'border-red-400 focus:border-red-400 focus:ring-red-100 bg-red-50/20' : 'border-slate-200 focus:border-primary focus:ring-primary/10'}`}
                       />
                       <button
                         type="button"
@@ -633,6 +699,11 @@ export const LoginRegister: React.FC = () => {
                         <Icon name={showRegPassword ? 'visibility_off' : 'visibility'} />
                       </button>
                     </div>
+                    {fieldErrors.password && (
+                      <p className="flex items-center gap-1 text-[11px] font-semibold text-red-600 mt-1">
+                        <Icon name="error" className="text-[13px] shrink-0" />{fieldErrors.password}
+                      </p>
+                    )}
                   </div>
 
                   {/* Confirm Password */}
@@ -641,20 +712,25 @@ export const LoginRegister: React.FC = () => {
                       Xác nhận mật khẩu
                     </label>
                     <div className="relative group">
-                      <Icon name="lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
+                      <Icon name="lock" className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors text-[18px] ${fieldErrors.confirmPassword ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary'}`} />
                       <input
                         type={showRegPassword ? 'text' : 'password'}
                         placeholder="Nhập lại mật khẩu"
                         value={regConfirmPassword}
-                        onChange={(e) => { setRegConfirmPassword(e.target.value); setErrorMsg(''); }}
-                        className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 focus:outline-none transition-all shadow-sm"
+                        onChange={(e) => { setRegConfirmPassword(e.target.value); clearFieldError('confirmPassword'); }}
+                        className={`w-full bg-slate-50/50 border rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:outline-none transition-all shadow-sm ${fieldErrors.confirmPassword ? 'border-red-400 focus:border-red-400 focus:ring-red-100 bg-red-50/20' : 'border-slate-200 focus:border-primary focus:ring-primary/10'}`}
                       />
                     </div>
+                    {fieldErrors.confirmPassword && (
+                      <p className="flex items-center gap-1 text-[11px] font-semibold text-red-600 mt-1">
+                        <Icon name="error" className="text-[13px] shrink-0" />{fieldErrors.confirmPassword}
+                      </p>
+                    )}
                   </div>
                 </>
               )}
 
-              {/* Error Banner */}
+              {/* Error Banner — chỉ hiển thị lỗi API server (đăng nhập sai, lỗi mạng...) */}
               {errorMsg && (
                 <div className="flex items-start gap-2.5 text-red-700 text-xs bg-red-50 border border-red-100 rounded-2xl p-3.5 animate-in fade-in duration-200">
                   <Icon name="error" className="text-[18px] shrink-0 mt-0.5" />

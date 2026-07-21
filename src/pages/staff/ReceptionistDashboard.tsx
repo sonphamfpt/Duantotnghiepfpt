@@ -164,7 +164,7 @@ const ReceptionistHome: React.FC = () => {
             <div className="px-5 py-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low">
               <h3 className="font-headline-sm text-primary flex items-center gap-2">
                 <Icon name="event_available" />
-                Lịch Hẹn Đã Xác Nhận Hôm Nay
+                Lịch Hẹn Hôm Nay
               </h3>
               <span className="bg-primary-fixed text-primary px-3 py-1 rounded-full text-xs font-bold">
                 {confirmedAppts.length} lịch hẹn
@@ -223,9 +223,8 @@ const ReceptionistHome: React.FC = () => {
               {queue.filter(q => q.status !== 'Completed').length > 0 ? (
                 queue.filter(q => q.status !== 'Completed').map((item, idx) => (
                   <div key={item.id} className="px-4 py-3 flex items-center gap-3">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                      item.status === 'In Chair' ? 'bg-primary-container text-on-primary-container' : 'bg-amber-100 text-amber-800'
-                    }`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${item.status === 'In Chair' ? 'bg-primary-container text-on-primary-container' : 'bg-amber-100 text-amber-800'
+                      }`}>
                       {idx + 1}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -262,12 +261,10 @@ const ReceptionistHome: React.FC = () => {
                 const inChair = dItem?.status === 'In Chair';
                 const waiting = queue.filter(q => q.dentistId === d.id && q.status === 'Waiting').length;
                 return (
-                  <div key={d.id} className={`flex items-center gap-3 p-2.5 rounded-xl border ${
-                    inChair ? 'border-primary/30 bg-primary-container/10' : waiting > 0 ? 'border-amber-200 bg-amber-50/50' : 'border-outline-variant bg-surface-container-low'
-                  }`}>
-                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                      inChair ? 'bg-primary animate-pulse' : waiting > 0 ? 'bg-amber-500' : 'bg-outline'
-                    }`} />
+                  <div key={d.id} className={`flex items-center gap-3 p-2.5 rounded-xl border ${inChair ? 'border-primary/30 bg-primary-container/10' : waiting > 0 ? 'border-amber-200 bg-amber-50/50' : 'border-outline-variant bg-surface-container-low'
+                    }`}>
+                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${inChair ? 'bg-primary animate-pulse' : waiting > 0 ? 'bg-amber-500' : 'bg-outline'
+                      }`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-on-surface truncate">{d.name.replace('Bác sĩ ', 'BS. ')}</p>
                       <p className="text-[10px] text-on-surface-variant">{d.room}</p>
@@ -299,10 +296,10 @@ export const ReceptionistDashboard: React.FC = () => {
   const tab = searchParams.get('tab');
 
   switch (tab) {
-    case 'queue':        return <ReceptionistQueue />;
+    case 'queue': return <ReceptionistQueue />;
     case 'appointments': return <ReceptionistAppointments />;
-    case 'reminders':    return <ReceptionistReminders />;
+    case 'reminders': return <ReceptionistReminders />;
 
-    default:             return <ReceptionistHome />;
+    default: return <ReceptionistHome />;
   }
 };

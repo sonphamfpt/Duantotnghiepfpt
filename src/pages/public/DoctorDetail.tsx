@@ -4,29 +4,6 @@ import { useClinic } from '../../context/ClinicContext';
 import { Icon } from '../../components/Icon';
 import { BookingModal } from '../../components/BookingModal';
 
-// Map to professional display titles & bios for the card view
-const CARD_DISPLAY_DATA: Record<string, { displayTitle: string; displayName: string; shortBio: string }> = {
-  'D-01': {
-    displayTitle: 'Thạc sĩ - Bác sĩ',
-    displayName: 'ThS. BS Lê Minh',
-    shortBio: 'Trưởng khoa Bảo tồn & Vi Phẫu răng. Chuyên sâu điều trị tủy vi phẫu, bảo tồn răng thật tối đa.'
-  },
-  'D-02': {
-    displayTitle: 'Bác sĩ CKII',
-    displayName: 'BS. CKII Hoàng Nam',
-    shortBio: 'Giám đốc Phẫu thuật Hàm Mặt & Cấy ghép Implant. Chuyên gia Implant toàn hàm All-on-4/6.'
-  },
-  'D-03': {
-    displayTitle: 'Bác sĩ CKI',
-    displayName: 'BS. CKI Mai Lan',
-    shortBio: 'Trưởng bộ phận Phục Hình Thẩm Mỹ. Chuyên sâu thiết kế nụ cười, dán sứ Veneer Emax.'
-  },
-  'D-04': {
-    displayTitle: 'Thạc sĩ - Bác sĩ',
-    displayName: 'ThS. BS Nguyễn Hương',
-    shortBio: 'Cố vấn Chỉnh Nha & Niềng Răng. Bác sĩ hạng Diamond Provider của Invisalign toàn cầu.'
-  }
-};
 
 export const DoctorDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -259,11 +236,9 @@ export const DoctorDetail: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
             {otherDoctors.map(doc => {
-              const displayInfo = CARD_DISPLAY_DATA[doc.id] || {
-                displayTitle: doc.degree || 'Bác sĩ nha khoa',
-                displayName: doc.name,
-                shortBio: doc.specialty || doc.role
-              };
+              const displayTitle = doc.degree || 'Bác sĩ nha khoa';
+              const displayName = doc.name;
+              const shortBio = doc.bio || doc.specialty || doc.role;
 
               return (
                 <Link
@@ -283,16 +258,16 @@ export const DoctorDetail: React.FC = () => {
                   {/* Doctor Info */}
                   <div className="flex-1 flex flex-col items-center w-full min-w-0">
                     <span className="text-[10px] font-extrabold text-[#006d33] uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 mb-2">
-                      {displayInfo.displayTitle}
+                      {displayTitle}
                     </span>
                     <h3 className="text-base font-extrabold text-[#0f172a] group-hover:text-[#005eb8] transition-colors truncate w-full">
-                      {displayInfo.displayName}
+                      {displayName}
                     </h3>
                     <p className="text-xs text-[#64748b] font-semibold mt-1 truncate w-full">
                       {doc.specialty || doc.role}
                     </p>
                     <p className="text-[11px] text-[#94a3b8] font-medium mt-2 line-clamp-2 w-full text-center leading-relaxed">
-                      {displayInfo.shortBio}
+                      {shortBio}
                     </p>
                   </div>
 

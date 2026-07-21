@@ -6,48 +6,18 @@ import { BookingModal } from '../../components/BookingModal';
 
 const CATEGORIES = ['Tất cả chuyên khoa', 'Bảo tồn & Vi Phẫu', 'Phẫu thuật Hàm Mặt & Implant', 'Phục Hình Thẩm Mỹ', 'Chỉnh Nha & Niềng Răng'];
 
-// Map to professional display titles & bios for the card view
-const CARD_DISPLAY_DATA: Record<string, { displayTitle: string; displayName: string; shortBio: string }> = {
-  'D-01': {
-    displayTitle: 'Thạc sĩ - Bác sĩ',
-    displayName: 'ThS. BS Lê Minh',
-    shortBio: 'Trưởng khoa Bảo tồn & Vi Phẫu răng. Chuyên sâu điều trị tủy vi phẫu, bảo tồn răng thật tối đa.'
-  },
-  'D-02': {
-    displayTitle: 'Bác sĩ CKII',
-    displayName: 'BS. CKII Hoàng Nam',
-    shortBio: 'Giám đốc Phẫu thuật Hàm Mặt & Cấy ghép Implant. Chuyên gia Implant toàn hàm All-on-4/6.'
-  },
-  'D-03': {
-    displayTitle: 'Bác sĩ CKI',
-    displayName: 'BS. CKI Mai Lan',
-    shortBio: 'Trưởng bộ phận Phục Hình Thẩm Mỹ. Chuyên sâu thiết kế nụ cười, dán sứ Veneer Emax.'
-  },
-  'D-04': {
-    displayTitle: 'Thạc sĩ - Bác sĩ',
-    displayName: 'ThS. BS Nguyễn Hương',
-    shortBio: 'Cố vấn Chỉnh Nha & Niềng Răng. Bác sĩ hạng Diamond Provider của Invisalign toàn cầu.'
-  }
-};
-
 export const Doctors: React.FC = () => {
   const { dentists } = useClinic();
   const [activeCategory, setActiveCategory] = useState('Tất cả chuyên khoa');
   const [isBookingOpen, setIsBookingOpen] = useState(false);
 
-  // Merge context data
+  // Merge context data từ CSDL
   const enrichedDentists = dentists.map(d => {
-    const displayData = CARD_DISPLAY_DATA[d.id] || {
-      displayTitle: d.degree || 'Bác sĩ nha khoa',
-      displayName: d.name,
-      shortBio: d.specialty || d.role
-    };
-
     return {
       ...d,
-      displayTitle: displayData.displayTitle,
-      displayName: displayData.displayName,
-      shortBio: displayData.shortBio,
+      displayTitle: d.degree || 'Bác sĩ nha khoa',
+      displayName: d.name,
+      shortBio: d.bio || d.specialty || d.role,
       profile: {
         specialty: d.specialty || 'Bác sĩ Răng Hàm Mặt',
         degree: d.degree || 'Bác sĩ',

@@ -7,7 +7,7 @@ export const PatientBilling: React.FC = () => {
   const { invoices, patients, processPayment, appointments } = useClinic();
   const { user } = useAuth();
   const patientId = user?.id || 'P-8821';
-  const patientName = user?.name || 'Trần Nguyễn Minh';
+  const patientName = user?.name || 'Bệnh nhân';
   
   const currentPatient = patients.find(p => p.id === patientId);
   const completedCount = appointments.filter(

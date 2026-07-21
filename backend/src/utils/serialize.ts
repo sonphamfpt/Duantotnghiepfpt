@@ -8,6 +8,9 @@ export function serializeBigInt(obj: any): any {
   if (obj === null || obj === undefined) {
     return obj;
   }
+  if (obj instanceof Date) {
+    return obj;
+  }
   if (typeof obj === 'bigint') {
     return obj.toString();
   }

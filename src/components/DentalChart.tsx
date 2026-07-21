@@ -161,14 +161,6 @@ export const DentalChart: React.FC<DentalChartProps> = ({
 }) => {
   const [chartType, setChartType] = useState<'adult' | 'child'>('adult');
 
-  useEffect(() => {
-    if (patientAge !== undefined && patientAge < 12) {
-      setChartType('child');
-    } else {
-      setChartType('adult');
-    }
-  }, [patientAge]);
-
   // Tooth quadrants according to ISO FDI Notation
   const upperRight = [18, 17, 16, 15, 14, 13, 12, 11];
   const upperLeft = [21, 22, 23, 24, 25, 26, 27, 28];

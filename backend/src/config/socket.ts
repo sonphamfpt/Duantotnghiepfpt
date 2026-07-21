@@ -7,7 +7,12 @@ export type ClinicEventType =
   | 'queue:status_changed'   // Trạng thái hàng chờ thay đổi (InChair / Completed)
   | 'invoice:created'        // Hóa đơn mới được tạo (sau khi bác sĩ lưu bệnh án)
   | 'invoice:paid'           // Hóa đơn đã thanh toán
-  | 'shift:swap_requested';  // Bác sĩ yêu cầu đổi ca trực
+  | 'shift:swap_requested'   // Bác sĩ yêu cầu đổi ca trực
+  | 'appointment:created'
+  | 'appointment:cancelled'
+  | 'shift:changed'          // Cập nhật ca trực (Thêm, Sửa, Xóa, Hoán đổi, Chuyển giao)
+  | 'staff:status_changed'   // Trạng thái hoạt động tài khoản nhân viên thay đổi (Active / Inactive)
+  | 'staff:permission_changed'; // Phân quyền nhân viên thay đổi
 
 export interface ClinicEventPayload {
   event: ClinicEventType;

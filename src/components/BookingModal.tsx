@@ -3,6 +3,7 @@ import { useClinic } from '../context/ClinicContext';
 import { useAuth } from '../context/AuthContext';
 import { Icon } from './Icon';
 import { OtpVerificationModal } from './OtpVerificationModal';
+import { AlertModal } from './AlertModal';
 import { appointmentApi, BookingChannel } from '../services/api';
 
 interface BookingModalProps {
@@ -20,7 +21,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   defaultPatientPhone = '',
   defaultDentistName = ''
 }) => {
-  const { services, dentists, patients, appointments, addLog, refreshAllData } = useClinic();
+  const { services, dentists, patients, appointments, addLog, refreshAllData, doctorShifts } = useClinic();
   const { role, user } = useAuth();
   
   const [patientName, setPatientName] = useState(defaultPatientName);
@@ -30,16 +31,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const initialDentistId = dentists.find(d => d.name === defaultDentistName)?.id || '';
   const [selectedDentistId, setSelectedDentistId] = useState(initialDentistId);
   
+  const formatDateInputValue = (value: Date): string => {
+    const year = value.getFullYear();
+    const month = (value.getMonth() + 1).toString().padStart(2, '0');
+    const day = value.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
   const todayObj = new Date();
-  const minDateStr = todayObj.toISOString().split('T')[0];
+  const minDateStr = formatDateInputValue(todayObj);
   const maxDateObj = new Date();
   maxDateObj.setDate(maxDateObj.getDate() + 7);
-  const maxDateStr = maxDateObj.toISOString().split('T')[0];
+  const maxDateStr = formatDateInputValue(maxDateObj);
 
-  // Set default date to tomorrow
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const [date, setDate] = useState(tomorrow.toISOString().split('T')[0]);
+  const [date, setDate] = useState(minDateStr);
   const [timeSlot, setTimeSlot] = useState('');
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -48,18 +53,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [staffBookingChannel, setStaffBookingChannel] = useState<Extract<BookingChannel, 'Phone' | 'WalkIn'>>('WalkIn');
   const [slotRefreshTick, setSlotRefreshTick] = useState(0);
 
-  const formatDateInputValue = (value: Date): string => {
-    const year = value.getFullYear();
-    const month = (value.getMonth() + 1).toString().padStart(2, '0');
-    const day = value.getDate().toString().padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
   // OTP state
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [antiSpamError, setAntiSpamError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdAppointment, setCreatedAppointment] = useState<any>(null);
+  const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string; type: 'error' | 'warning' | 'info' | 'success' }>({ open: false, title: '', message: '', type: 'error' });
+
+  const showAlert = (title: string, message: string, type: 'error' | 'warning' | 'info' | 'success' = 'error') => {
+    setAntiSpamError(message);
+    setAlertModal({ open: true, title, message, type });
+  };
 
   const formatLocalDateStr = (dateStr: string): string => {
     if (!dateStr) return '';
@@ -93,6 +97,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setSelectedDentistId(dentist.id);
     }
   }, [defaultDentistName, dentists, selectedDentistId]);
+
+  useEffect(() => {
+    if (selectedDentistId && date) {
+      const isStillOnDuty = doctorShifts.some(
+        s => s.dentistId === selectedDentistId && s.date === date
+      );
+      if (!isStillOnDuty) {
+        setSelectedDentistId('');
+        setTimeSlot('');
+      }
+    }
+  }, [date, doctorShifts, selectedDentistId]);
 
   const formatSlotToTimeString = (isoString: string): string => {
     if (!isoString) return '';
@@ -149,11 +165,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   // Anti-spam: Rate limit — max 3 active appointments per phone
   const checkRateLimit = (phone: string): boolean => {
     const activeAppts = appointments.filter(
-      a => a.patientPhone === phone.trim() && 
+      a => a.patientPhone === phone.trim() &&
       a.status !== 'Completed' && a.status !== 'Cancelled'
     );
     if (activeAppts.length >= 3) {
-      setAntiSpamError('Số điện thoại này đã có 3 lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.');
+      showAlert(
+        isStaffBooking ? 'Giới hạn lịch hẹn' : 'Quá giới hạn',
+        isStaffBooking ? 'Bệnh nhân này đã có 3 lịch hẹn đang chờ. Yêu cầu hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.' : 'Số điện thoại này đã có 3 lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.',
+        'warning'
+      );
       return false;
     }
     return true;
@@ -161,14 +181,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   // Anti-spam: Duplicate detection — same phone + same date + same time
   const checkDuplicate = (phone: string, dateStr: string, time: string): boolean => {
-    const timeStr = `${dateStr} @ ${time}`;
+    const timeStr = `${formatLocalDateStr(dateStr)} @ ${time}`;
     const duplicate = appointments.find(
       a => a.patientPhone === phone.trim() && 
       a.time === timeStr &&
       a.status !== 'Cancelled'
     );
     if (duplicate) {
-      setAntiSpamError('Bạn đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.');
+      showAlert(
+        'Trùng lịch hẹn',
+        isStaffBooking ? 'Bệnh nhân này đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.' : 'Bạn đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.',
+        'warning'
+      );
       return false;
     }
     return true;
@@ -268,7 +292,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setIsSuccess(true);
     } catch (err: any) {
       console.error('Lỗi khi tạo lịch hẹn:', err);
-      setAntiSpamError(err.message || 'Không thể tạo lịch hẹn. Vui lòng thử lại.');
+      const errMsg = err.message || 'Không thể tạo lịch hẹn. Vui lòng thử lại.';
+      showAlert('Đặt lịch thất bại', errMsg, 'error');
     } finally {
       setSubmitting(false);
     }
@@ -554,41 +579,53 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     Bác sĩ điều trị *
                   </label>
                   <div className="flex flex-col gap-2.5">
-                    {dentists.map(dentist => (
-                      <button
-                        key={dentist.id}
-                        type="button"
-                        onClick={() => setSelectedDentistId(dentist.id)}
-                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer relative overflow-hidden flex items-center gap-3 ${
-                          selectedDentistId === dentist.id
-                            ? 'border-primary bg-primary-container/10 shadow-sm'
-                            : 'border-outline-variant hover:border-primary/40 bg-white'
-                        }`}
-                      >
-                        {selectedDentistId === dentist.id && (
-                          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary rounded-l-xl" />
-                        )}
-                        
-                        <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant overflow-hidden">
-                          <Icon name="person" className="text-on-surface-variant text-xl" />
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-on-surface">{dentist.name}</p>
-                          <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-1">
-                            <Icon name="meeting_room" className="text-[14px]" /> {dentist.room}
+                    {(() => {
+                      const activeDentists = dentists.filter(dentist => 
+                        doctorShifts.some(s => s.dentistId === dentist.id && s.date === date)
+                      );
+                      if (activeDentists.length === 0) {
+                        return (
+                          <p className="text-xs text-on-surface-variant italic py-4 text-center bg-slate-50 rounded-xl border border-dashed border-outline-variant">
+                            Không có bác sĩ nào trực vào ngày này. Vui lòng chọn ngày khám khác.
                           </p>
-                        </div>
-                        
-                        <div className="shrink-0">
-                          {selectedDentistId === dentist.id ? (
-                            <Icon name="check_circle" className="text-primary text-xl" />
-                          ) : (
-                            <Icon name="radio_button_unchecked" className="text-outline-variant text-xl" />
+                        );
+                      }
+                      return activeDentists.map(dentist => (
+                        <button
+                          key={dentist.id}
+                          type="button"
+                          onClick={() => setSelectedDentistId(dentist.id)}
+                          className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer relative overflow-hidden flex items-center gap-3 ${
+                            selectedDentistId === dentist.id
+                              ? 'border-primary bg-primary-container/10 shadow-sm'
+                              : 'border-outline-variant hover:border-primary/40 bg-white'
+                          }`}
+                        >
+                          {selectedDentistId === dentist.id && (
+                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary rounded-l-xl" />
                           )}
-                        </div>
-                      </button>
-                    ))}
+                          
+                          <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant overflow-hidden">
+                            <Icon name="person" className="text-on-surface-variant text-xl" />
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-on-surface">{dentist.name}</p>
+                            <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-1">
+                              <Icon name="meeting_room" className="text-[14px]" /> {dentist.room}
+                            </p>
+                          </div>
+                          
+                          <div className="shrink-0">
+                            {selectedDentistId === dentist.id ? (
+                              <Icon name="check_circle" className="text-primary text-xl" />
+                            ) : (
+                              <Icon name="radio_button_unchecked" className="text-outline-variant text-xl" />
+                            )}
+                          </div>
+                        </button>
+                      ));
+                    })()}
                   </div>
                 </div>
 
@@ -634,6 +671,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         dentistId={selectedDentistId}
         startTime={timeSlot}
         serviceId={selectedServiceId}
+      />
+
+      <AlertModal
+        isOpen={alertModal.open}
+        onClose={() => setAlertModal(prev => ({ ...prev, open: false }))}
+        type={alertModal.type}
+        title={alertModal.title}
+        message={alertModal.message}
       />
     </div>
   );

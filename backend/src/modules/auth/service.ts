@@ -160,6 +160,7 @@ export class AuthService {
       },
       include: {
         role: true,
+        staffPermission: true,
       },
     });
 
@@ -179,6 +180,23 @@ export class AuthService {
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatch) {
       throw new AppError(401, 'Tài khoản hoặc mật khẩu không chính xác.', 'INVALID_CREDENTIALS');
+    }
+
+    // 2.1 Kiểm tra phân quyền truy cập phân hệ theo Vai trò
+    if (user.role.code !== RoleCode.patient) {
+      const perm = user.staffPermission;
+      if (user.role.code === RoleCode.receptionist && perm && !perm.admission) {
+        throw new AppError(403, 'Tài khoản Lễ tân của bạn chưa được cấp quyền Đón tiếp. Vui lòng liên hệ Quản lý.', 'PERMISSION_DENIED');
+      }
+      if (user.role.code === RoleCode.dentist && perm && !perm.clinical) {
+        throw new AppError(403, 'Tài khoản Bác sĩ của bạn chưa được cấp quyền Khám lâm sàng. Vui lòng liên hệ Quản lý.', 'PERMISSION_DENIED');
+      }
+      if (user.role.code === RoleCode.cashier && perm && !perm.checkout) {
+        throw new AppError(403, 'Tài khoản Thu ngân của bạn chưa được cấp quyền Tính tiền. Vui lòng liên hệ Quản lý.', 'PERMISSION_DENIED');
+      }
+      if (user.role.code === RoleCode.manager && perm && !perm.settings) {
+        throw new AppError(403, 'Tài khoản Quản lý của bạn chưa được cấp quyền Cấu hình hệ thống. Vui lòng liên hệ Quản lý.', 'PERMISSION_DENIED');
+      }
     }
 
     // 3. Tìm các ID liên kết DentistId hoặc PatientId nếu có

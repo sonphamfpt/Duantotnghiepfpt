@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, ToothState, InvoiceItem, DoctorShift, ShiftChangeNotification } from '../types/clinic';
+import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, ToothState, InvoiceItem, DoctorShift, ShiftChangeNotification, ServiceReviewItem } from '../types/clinic';
 import { INITIAL_LOGS } from '../services/mockData';
 import { socket } from '../services/socketClient';
 
@@ -11,6 +11,7 @@ import {
   invoiceApi,
   medicalRecordApi,
   shiftApi,
+  reviewApi,
 } from '../services/api';
 
 interface ClinicContextType {
@@ -34,14 +35,14 @@ interface ClinicContextType {
     treatmentType?: 'independent' | 'plan_init' | 'plan_session',
     selectedPlanId?: string,
     files?: { id: string; type: 'pdf' | 'image' | 'prescription'; title: string; size: string; url?: string }[]
-  ) => void;
+  ) => Promise<{ success: boolean; error?: string }>;
   processPayment: (invoiceId: string, paymentMethod: Invoice['paymentMethod'], payAmount?: number) => void;
   addService: (service: Omit<Service, 'id' | 'isActive'>) => void;
   updateServicePrice: (serviceId: string, newPrice: number) => void;
   toggleServiceActive: (serviceId: string) => void;
   addPatient: (patient: Omit<Patient, 'id' | 'points' | 'tier' | 'balance' | 'age'> & { dateOfBirth?: string }) => Promise<Patient>;
   rechargeWallet: (patientId: string, amount: number) => void;
-  updatePatientDetails: (patientId: string, details: Partial<Pick<Patient, 'criticalAllergy' | 'condition' | 'name' | 'phone' | 'age' | 'gender'>>) => void;
+  updatePatientDetails: (patientId: string, details: Partial<Pick<Patient, 'criticalAllergy' | 'condition' | 'name' | 'phone' | 'gender' | 'address'>> & { dateOfBirth?: string }) => void;
   unlockPatient: (patientId: string) => void;
   lockPatient: (patientId: string) => void;
   rescheduleAppointment: (appointmentId: string, newTime: string, newDentistId?: string, newDentistName?: string) => void;
@@ -49,6 +50,7 @@ interface ClinicContextType {
   cancelAppointment: (appointmentId: string) => void;
   doctorShifts: DoctorShift[];
   shiftChangeNotifications: ShiftChangeNotification[];
+  reviews: ServiceReviewItem[];
   fetchPatientRecords: (patientId: string) => Promise<void>;
   swapShifts: (shiftId1: string, shiftId2: string, conflictAppointmentIds?: string[]) => Promise<void>;
   transferShift: (shiftId: string, targetDentistId: string, conflictAppointmentIds?: string[]) => Promise<void>;
@@ -57,6 +59,11 @@ interface ClinicContextType {
   deleteShift: (shiftId: string) => void;
   resolveShiftConflict_Update: (notifId: string, appointmentId: string) => Promise<void>;
   resolveShiftConflict_Cancel: (notifId: string, appointmentId: string) => Promise<void>;
+  addReview: (review: { patientId: string; appointmentId?: string; serviceId?: string; rating: number; comment: string }) => Promise<any>;
+  toggleReviewStatus: (reviewId: string, currentStatus: string) => Promise<void>;
+  reGenerateAIReply: (reviewId: string) => Promise<void>;
+  fetchPublicReviews: (serviceId?: string) => Promise<ServiceReviewItem[]>;
+  fetchManageReviews: (filters?: { sentiment?: string; rating?: number; status?: string }) => Promise<void>;
   refreshAllData: () => Promise<void>;
 }
 
@@ -73,11 +80,12 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
   const [doctorShifts, setDoctorShifts] = useState<DoctorShift[]>([]);
   const [shiftChangeNotifications, setShiftChangeNotifications] = useState<ShiftChangeNotification[]>([]);
+  const [reviews, setReviews] = useState<ServiceReviewItem[]>([]);
 
   // Đồng bộ hóa toàn bộ dữ liệu từ backend
   const refreshAllData = async () => {
     try {
-      const [resSvc, resDen, resPat, resApp, resQue, resInv, resShf, resNot, resLog] = await Promise.all([
+      const [resSvc, resDen, resPat, resApp, resQue, resInv, resShf, resNot, resLog, resRev] = await Promise.all([
         clinicApi.getServices(),
         clinicApi.getDentists(),
         clinicApi.getPatients(),
@@ -87,6 +95,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         shiftApi.getShifts(),
         shiftApi.getNotifications(),
         clinicApi.getLogs(),
+        reviewApi.getPublicReviews(),
       ]);
 
       if (resSvc.data) setServices(resSvc.data);
@@ -129,10 +138,71 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (resShf.data) setDoctorShifts(resShf.data);
       if (resNot.data) setShiftChangeNotifications(resNot.data);
       if (resLog.data) setLogs(resLog.data);
+      if (resRev.data) setReviews(resRev.data);
     } catch (err) {
       console.error('Lỗi khi đồng bộ dữ liệu từ backend:', err);
     }
   };
+
+  const addReview = async (reviewData: { patientId: string; appointmentId?: string; serviceId?: string; rating: number; comment: string }) => {
+    try {
+      const res = await reviewApi.createReview(reviewData);
+      if (res.success) {
+        addLog('RECEPTION', 'SUCCESS', `Bệnh nhân đã gửi đánh giá ${reviewData.rating} sao kèm phản hồi AI.`);
+        await refreshAllData();
+      }
+      return res;
+    } catch (err: any) {
+      console.error('Lỗi khi gửi đánh giá:', err);
+      throw err;
+    }
+  };
+
+  const toggleReviewStatus = async (reviewId: string, currentStatus: string) => {
+    try {
+      const nextStatus = currentStatus === 'Approved' ? 'Hidden' : 'Approved';
+      const res = await reviewApi.updateReviewStatus(reviewId, nextStatus as any);
+      if (res.success) {
+        addLog('SYSTEM', 'INFO', `Cập nhật trạng thái đánh giá ${reviewId} sang ${nextStatus}.`);
+        await fetchManageReviews();
+      }
+    } catch (err) {
+      console.error('Lỗi cập nhật trạng thái đánh giá:', err);
+    }
+  };
+
+  const reGenerateAIReply = async (reviewId: string) => {
+    try {
+      const res = await reviewApi.reGenerateAIReply(reviewId);
+      if (res.success) {
+        addLog('SYSTEM', 'SUCCESS', `AI đã sinh lại phản hồi mới cho bài đánh giá ${reviewId}.`);
+        await fetchManageReviews();
+      }
+    } catch (err) {
+      console.error('Lỗi tạo lại phản hồi AI:', err);
+    }
+  };
+
+  const fetchPublicReviews = async (serviceId?: string) => {
+    try {
+      const res = await reviewApi.getPublicReviews(serviceId);
+      if (res.data) setReviews(res.data);
+      return res.data || [];
+    } catch (err) {
+      console.error('Lỗi tải danh sách đánh giá công khai:', err);
+      return [];
+    }
+  };
+
+  const fetchManageReviews = async (filters?: { sentiment?: string; rating?: number; status?: string }) => {
+    try {
+      const res = await reviewApi.getManageReviews(filters);
+      if (res.data) setReviews(res.data);
+    } catch (err) {
+      console.error('Lỗi tải danh sách quản lý đánh giá:', err);
+    }
+  };
+
 
   useEffect(() => {
     // Tải dữ liệu ban đầu
@@ -153,6 +223,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     socket.on('shift:swap_requested', handleClinicEvent);
     socket.on('appointment:created', handleClinicEvent);
     socket.on('appointment:cancelled', handleClinicEvent);
+    socket.on('shift:changed', handleClinicEvent);
 
     // Polling fallback mỗi 30 giây (phòng ngừa khi WebSocket mất kết nối)
     const interval = setInterval(refreshAllData, 30000);
@@ -166,6 +237,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       socket.off('shift:swap_requested', handleClinicEvent);
       socket.off('appointment:created', handleClinicEvent);
       socket.off('appointment:cancelled', handleClinicEvent);
+      socket.off('shift:changed', handleClinicEvent);
       socket.disconnect();
       clearInterval(interval);
     };
@@ -222,7 +294,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const updatePatientDetails = async (
     patientId: string,
-    details: Partial<Pick<Patient, 'criticalAllergy' | 'condition' | 'name' | 'phone' | 'age' | 'gender'>>
+    details: Partial<Pick<Patient, 'criticalAllergy' | 'condition' | 'name' | 'phone' | 'gender' | 'address'>> & { dateOfBirth?: string }
   ) => {
     try {
       const response = await clinicApi.updatePatient(patientId, {
@@ -231,7 +303,8 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         criticalAllergy: details.criticalAllergy,
         condition: details.condition,
         gender: details.gender,
-        age: details.age,
+        dateOfBirth: details.dateOfBirth,
+        address: details.address,
       });
       if (response.success) {
         addLog('SYSTEM', 'INFO', `Cập nhật thông tin bệnh nhân (ID: ${patientId}) thành công.`);
@@ -289,8 +362,10 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const newAppt: Appointment = {
       ...apptData,
       id: tempId,
-      status: 'Confirmed'
+      status: 'Pending' as Appointment['status'],
     };
+
+    // Optimistic update: hiển thị ngay lập tức với trạng thái Pending
     setAppointments((prev) => [newAppt, ...prev]);
 
     (async () => {
@@ -298,9 +373,18 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const response = await appointmentApi.create(apptData);
         if (response.success) {
           addLog('RECEPTION', 'SUCCESS', `Đăng ký lịch hẹn thành công.`);
+          // Refresh để thay thế appointment tạm bằng dữ liệu thật từ server
           await refreshAllData();
+        } else {
+          // API trả về lỗi nghiệp vụ → rollback xóa appointment tạm
+          setAppointments((prev) => prev.filter((a) => a.id !== tempId));
+          addLog('RECEPTION', 'ERR', `Đăng ký lịch hẹn thất bại: ${response.message || 'Lỗi không xác định.'}`);
+          alert(response.message || 'Không thể đăng ký lịch hẹn. Vui lòng thử lại.');
         }
-      } catch (err) {
+      } catch (err: any) {
+        // Lỗi mạng / server → rollback xóa appointment tạm
+        setAppointments((prev) => prev.filter((a) => a.id !== tempId));
+        addLog('RECEPTION', 'ERR', `Lỗi khi lưu lịch hẹn: ${err?.message || 'Lỗi kết nối mạng.'}`);
         console.error('Lỗi khi lưu lịch hẹn qua API:', err);
       }
     })();
@@ -328,9 +412,11 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     treatmentType: 'independent' | 'plan_init' | 'plan_session' = 'independent',
     selectedPlanId?: string,
     _files?: { id: string; type: 'pdf' | 'image' | 'prescription'; title: string; size: string; url?: string }[]
-  ) => {
+  ): Promise<{ success: boolean; error?: string }> => {
     const queueItem = queue.find((q) => q.id === queueId);
-    if (!queueItem) return;
+    if (!queueItem) {
+      return { success: false, error: 'Không tìm thấy lượt khám tương ứng trong hàng chờ.' };
+    }
 
     try {
       const response = await medicalRecordApi.create({
@@ -346,9 +432,13 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (response.success) {
         addLog('DENTIST', 'SUCCESS', `Hoàn tất phiên điều trị.`);
         await refreshAllData();
+        return { success: true };
+      } else {
+        return { success: false, error: response.message || 'Không thể lưu bệnh án EMR.' };
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      return { success: false, error: err.message || 'Lỗi kết nối máy chủ.' };
     }
   };
 
@@ -562,6 +652,12 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         },
         resolveShiftConflict_Update,
         resolveShiftConflict_Cancel,
+        reviews,
+        addReview,
+        toggleReviewStatus,
+        reGenerateAIReply,
+        fetchPublicReviews,
+        fetchManageReviews,
         refreshAllData,
       }}
     >

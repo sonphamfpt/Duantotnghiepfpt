@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
-import { staffApi } from '../../../services/api';
+import { staffApi, clinicApi } from '../../../services/api';
+import { EditDoctorModal } from '../../../components/EditDoctorModal';
 
 interface StaffMember {
   id: string;
+  dentistId?: string;
   name: string;
   role: 'dentist' | 'receptionist' | 'cashier' | 'manager';
   roleName: string;
+  phone: string;
   email: string;
   avatar: string;
   status: 'Active' | 'Inactive';
@@ -20,7 +23,8 @@ interface StaffMember {
 
 interface CreatedAccountInfo {
   name: string;
-  email: string;
+  phone: string;
+  email?: string;
   password: string;
   roleName: string;
 }
@@ -29,13 +33,15 @@ export const ManagerRbac: React.FC = () => {
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
+  const [selectedDentistIdForEdit, setSelectedDentistIdForEdit] = useState<string | null>(null);
   const [createdAccount, setCreatedAccount] = useState<CreatedAccountInfo | null>(null);
-  const [emailError, setEmailError] = useState('');
-  const [copiedField, setCopiedField] = useState<'email' | 'password' | null>(null);
+  const [phoneError, setPhoneError] = useState('');
+  const [copiedField, setCopiedField] = useState<'phone' | 'email' | 'password' | null>(null);
 
   // Form states
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<'dentist' | 'receptionist' | 'cashier' | 'manager'>('dentist');
+  const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -65,7 +71,7 @@ export const ManagerRbac: React.FC = () => {
     setNewPassword(pwd);
   };
 
-  const handleCopy = (text: string, field: 'email' | 'password') => {
+  const handleCopy = (text: string, field: 'phone' | 'email' | 'password') => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedField(field);
       setTimeout(() => setCopiedField(null), 2000);
@@ -119,18 +125,16 @@ export const ManagerRbac: React.FC = () => {
 
   const handleAddStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setEmailError('');
+    setPhoneError('');
 
-    if (!newName.trim() || !newEmail.trim() || !newPassword.trim()) {
-      alert('Vui lòng điền đầy đủ thông tin bắt buộc!');
+    if (!newName.trim() || !newPhone.trim() || !newPassword.trim()) {
+      alert('Vui lòng điền họ tên, số điện thoại đăng nhập và mật khẩu!');
       return;
     }
 
-    const emailLower = newEmail.trim().toLowerCase();
-
-    // Validate email format
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
-      setEmailError('Định dạng email không hợp lệ.');
+    const cleanPhone = newPhone.trim();
+    if (!/^[0-9]{9,11}$/.test(cleanPhone)) {
+      setPhoneError('Số điện thoại phải bao gồm 9-11 chữ số.');
       return;
     }
 
@@ -138,7 +142,8 @@ export const ManagerRbac: React.FC = () => {
       const res = await staffApi.createStaff({
         name: newName.trim(),
         role: newRole,
-        email: emailLower,
+        phone: cleanPhone,
+        email: newEmail.trim().toLowerCase(),
         password: newPassword.trim(),
       });
 
@@ -155,22 +160,24 @@ export const ManagerRbac: React.FC = () => {
 
         setCreatedAccount({
           name: newName.trim(),
-          email: emailLower,
+          phone: cleanPhone,
+          email: newEmail.trim().toLowerCase(),
           password: newPassword.trim(),
           roleName: roleNames[newRole],
         });
 
         // Reset form
         setNewName('');
+        setNewPhone('');
         setNewEmail('');
         setNewPassword('');
         setNewRole('dentist');
-        setEmailError('');
+        setPhoneError('');
         setShowAddStaffModal(false);
       }
     } catch (err: any) {
       console.error(err);
-      setEmailError(err.message || 'Lỗi khi tạo tài khoản nhân sự.');
+      setPhoneError(err.message || 'Lỗi khi tạo tài khoản nhân sự.');
     }
   };
 
@@ -217,7 +224,7 @@ export const ManagerRbac: React.FC = () => {
               <tr>
                 <th className="px-6 py-3.5">Thành viên</th>
                 <th className="px-6 py-3.5">Vai trò</th>
-                <th className="px-6 py-3.5">Email đăng nhập</th>
+                <th className="px-6 py-3.5">SĐT & Email đăng nhập</th>
                 <th className="px-6 py-3.5 text-center">Trạng thái</th>
                 <th className="px-6 py-3.5 text-center">Đón tiếp</th>
                 <th className="px-6 py-3.5 text-center">Lâm sàng</th>
@@ -244,18 +251,25 @@ export const ManagerRbac: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="font-mono text-[10px] text-on-surface-variant bg-surface-container-low px-2 py-0.5 rounded border border-outline-variant">
-                      {member.email}
-                    </span>
+                    <div className="space-y-1">
+                      <span className="font-mono text-xs font-bold text-slate-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-flex items-center gap-1">
+                        <Icon name="phone font-bold" className="text-xs text-amber-700" />
+                        {member.phone || 'Chưa cập nhật'}
+                      </span>
+                      {member.email && (
+                        <span className="text-[10px] text-slate-500 font-mono block">
+                          {member.email}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button
                       onClick={() => handleToggleStatus(member.id)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
-                        member.status === 'Active'
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${member.status === 'Active'
                           ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                           : 'bg-red-100 text-red-800 border border-red-200'
-                      }`}
+                        }`}
                       title="Click để khoá/kích hoạt tài khoản"
                     >
                       {member.status === 'Active' ? 'HOẠT ĐỘNG' : 'TẠM KHOÁ'}
@@ -295,13 +309,25 @@ export const ManagerRbac: React.FC = () => {
                     />
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => alert(`Lịch sử truy cập của ${member.name} đã được lưu tại log file của Manager.`)}
-                      className="p-1 border border-outline text-on-surface-variant hover:text-purple-600 rounded transition-all cursor-pointer"
-                      title="Lịch sử đăng nhập"
-                    >
-                      <Icon name="history_edu" className="text-sm block" />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      {member.role === 'dentist' && member.dentistId && (
+                        <button
+                          onClick={() => setSelectedDentistIdForEdit(member.dentistId!)}
+                          className="px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-lg transition-all cursor-pointer text-[10px] font-extrabold flex items-center gap-1"
+                          title="Sửa thông tin học vấn, bằng cấp, kinh nghiệm bác sĩ"
+                        >
+                          <Icon name="edit_note" className="text-sm" />
+                          <span>Sửa Hồ Sơ ({member.dentistId})</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => alert(`Lịch sử truy cập của ${member.name} đã được lưu tại log file của Manager.`)}
+                        className="p-1 border border-outline text-on-surface-variant hover:text-purple-600 rounded transition-all cursor-pointer"
+                        title="Lịch sử đăng nhập"
+                      >
+                        <Icon name="history_edu" className="text-sm block" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -309,6 +335,18 @@ export const ManagerRbac: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* ── Edit Doctor Modal ── */}
+      {selectedDentistIdForEdit && (
+        <EditDoctorModal
+          isOpen={Boolean(selectedDentistIdForEdit)}
+          dentistId={selectedDentistIdForEdit}
+          onClose={() => setSelectedDentistIdForEdit(null)}
+          onSuccess={() => {
+            fetchStaffList();
+          }}
+        />
+      )}
 
       {/* ── Add Staff Modal ── */}
       {showAddStaffModal && (
@@ -320,7 +358,7 @@ export const ManagerRbac: React.FC = () => {
                 <Icon name="person_add" />
                 Khai Báo Nhân Sự Mới
               </h3>
-              <button onClick={() => { setShowAddStaffModal(false); setEmailError(''); }} className="text-on-primary hover:text-white cursor-pointer">
+              <button onClick={() => { setShowAddStaffModal(false); setPhoneError(''); }} className="text-on-primary hover:text-white cursor-pointer">
                 <Icon name="close" />
               </button>
             </div>
@@ -365,26 +403,39 @@ export const ManagerRbac: React.FC = () => {
                   Thông tin tài khoản đăng nhập
                 </p>
 
-                {/* Email */}
+                {/* Phone number */}
                 <div className="mb-3">
                   <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">
-                    Email đăng nhập *
+                    Số điện thoại đăng nhập *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="Ví dụ: 0909000010"
+                    value={newPhone}
+                    onChange={(e) => { setNewPhone(e.target.value); setPhoneError(''); }}
+                    className={`w-full bg-surface-container-low border rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-primary ${phoneError ? 'border-error bg-error-container/20' : 'border-outline-variant'
+                      }`}
+                  />
+                  {phoneError && (
+                    <p className="text-[10px] text-error font-semibold mt-1 flex items-center gap-1">
+                      <Icon name="error" className="text-sm" />{phoneError}
+                    </p>
+                  )}
+                </div>
+
+                {/* Email (Optional) */}
+                <div className="mb-3">
+                  <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">
+                    Email liên hệ (Tùy chọn)
                   </label>
                   <input
                     type="email"
-                    required
                     placeholder="Ví dụ: hang.nguyen@goodsmile.vn"
                     value={newEmail}
-                    onChange={(e) => { setNewEmail(e.target.value); setEmailError(''); }}
-                    className={`w-full bg-surface-container-low border rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-primary ${
-                      emailError ? 'border-error bg-error-container/20' : 'border-outline-variant'
-                    }`}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-primary"
                   />
-                  {emailError && (
-                    <p className="text-[10px] text-error font-semibold mt-1 flex items-center gap-1">
-                      <Icon name="error" className="text-sm" />{emailError}
-                    </p>
-                  )}
                 </div>
 
                 {/* Password */}
@@ -428,7 +479,7 @@ export const ManagerRbac: React.FC = () => {
               <div className="flex justify-end gap-3 pt-2 border-t border-outline-variant">
                 <button
                   type="button"
-                  onClick={() => { setShowAddStaffModal(false); setEmailError(''); }}
+                  onClick={() => { setShowAddStaffModal(false); setPhoneError(''); }}
                   className="px-4 py-2 border border-outline text-on-surface rounded-lg text-xs font-bold cursor-pointer hover:bg-surface-container transition-all"
                 >
                   Hủy bỏ
@@ -456,7 +507,7 @@ export const ManagerRbac: React.FC = () => {
                 <Icon name="check_circle" className="text-[36px]" />
               </div>
               <h3 className="font-headline-sm text-headline-sm">Tạo tài khoản thành công!</h3>
-              <p className="text-sm text-white/80 mt-1">Nhân sự có thể đăng nhập ngay</p>
+              <p className="text-sm text-white/80 mt-1">Nhân sự có thể đăng nhập ngay bằng SĐT</p>
             </div>
 
             <div className="p-6 space-y-4">
@@ -465,46 +516,47 @@ export const ManagerRbac: React.FC = () => {
                 <p className="text-[10px] uppercase font-extrabold text-on-surface-variant tracking-wider">Thông tin tài khoản</p>
 
                 <div>
-                  <p className="text-[10px] text-on-surface-variant mb-0.5">Họ tên</p>
+                  <p className="text-[10px] text-on-surface-variant mb-0.5">Họ tên nhân viên</p>
                   <p className="font-bold text-on-surface text-sm">{createdAccount.name}</p>
-                  <p className="text-[10px] text-on-surface-variant">{createdAccount.roleName}</p>
+                  <p className="text-[10px] text-on-surface-variant font-bold text-purple-700">{createdAccount.roleName}</p>
                 </div>
 
-                {/* Email row */}
+                {/* Phone row */}
                 <div>
-                  <p className="text-[10px] text-on-surface-variant mb-1">Email đăng nhập</p>
+                  <p className="text-[10px] font-bold uppercase text-amber-700 mb-1 flex items-center gap-1">
+                    <Icon name="phone" className="text-xs" />
+                    Số điện thoại đăng nhập *
+                  </p>
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 bg-white border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold text-on-surface truncate">
-                      {createdAccount.email}
+                    <code className="flex-1 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-mono font-extrabold text-amber-900 truncate">
+                      {createdAccount.phone}
                     </code>
                     <button
-                      onClick={() => handleCopy(createdAccount.email, 'email')}
-                      className={`p-2 rounded-lg border text-xs font-bold transition-all cursor-pointer flex-shrink-0 ${
-                        copiedField === 'email'
+                      onClick={() => handleCopy(createdAccount.phone, 'phone')}
+                      className={`p-2 rounded-lg border text-xs font-bold transition-all cursor-pointer flex-shrink-0 ${copiedField === 'phone'
                           ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
                           : 'border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary'
-                      }`}
-                      title="Sao chép email"
+                        }`}
+                      title="Sao chép SĐT"
                     >
-                      <Icon name={copiedField === 'email' ? 'check' : 'content_copy'} className="text-sm" />
+                      <Icon name={copiedField === 'phone' ? 'check' : 'content_copy'} className="text-sm" />
                     </button>
                   </div>
                 </div>
 
                 {/* Password row */}
                 <div>
-                  <p className="text-[10px] text-on-surface-variant mb-1">Mật khẩu</p>
+                  <p className="text-[10px] font-bold uppercase text-slate-600 mb-1">Mật khẩu *</p>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 bg-white border border-outline-variant rounded-lg px-3 py-2 text-xs font-mono font-bold text-on-surface truncate">
                       {createdAccount.password}
                     </code>
                     <button
                       onClick={() => handleCopy(createdAccount.password, 'password')}
-                      className={`p-2 rounded-lg border text-xs font-bold transition-all cursor-pointer flex-shrink-0 ${
-                        copiedField === 'password'
+                      className={`p-2 rounded-lg border text-xs font-bold transition-all cursor-pointer flex-shrink-0 ${copiedField === 'password'
                           ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
                           : 'border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary'
-                      }`}
+                        }`}
                       title="Sao chép mật khẩu"
                     >
                       <Icon name={copiedField === 'password' ? 'check' : 'content_copy'} className="text-sm" />

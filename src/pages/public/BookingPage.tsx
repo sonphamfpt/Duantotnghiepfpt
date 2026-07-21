@@ -4,11 +4,12 @@ import { useClinic } from '../../context/ClinicContext';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/Icon';
 import { OtpVerificationModal } from '../../components/OtpVerificationModal';
+import { AlertModal } from '../../components/AlertModal';
 import { appointmentApi, request } from '../../services/api';
 import { socket } from '../../services/socketClient';
 
 export const BookingPage: React.FC = () => {
-  const { services, dentists, appointments, addLog, patients, refreshAllData } = useClinic();
+  const { services, dentists, appointments, addLog, patients, refreshAllData, doctorShifts } = useClinic();
   const { role, user } = useAuth();
 
   const [patientName, setPatientName] = useState('');
@@ -27,17 +28,20 @@ export const BookingPage: React.FC = () => {
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [selectedDentistId, setSelectedDentistId] = useState('');
 
+  const formatDateInputValue = (value: Date): string => {
+    const year = value.getFullYear();
+    const month = (value.getMonth() + 1).toString().padStart(2, '0');
+    const day = value.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const todayObj = new Date();
-  const minDateStr = todayObj.toISOString().split('T')[0];
+  const minDateStr = formatDateInputValue(todayObj);
   const maxDateObj = new Date();
   maxDateObj.setDate(maxDateObj.getDate() + 7);
-  const maxDateStr = maxDateObj.toISOString().split('T')[0];
+  const maxDateStr = formatDateInputValue(maxDateObj);
 
-  const [date, setDate] = useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
-  });
+  const [date, setDate] = useState(minDateStr);
   const [timeSlot, setTimeSlot] = useState('09:00 AM');
   const [notes, setNotes] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
@@ -49,12 +53,19 @@ export const BookingPage: React.FC = () => {
   const [selectedTimeIso, setSelectedTimeIso] = useState('');
   const [slotRefreshTick, setSlotRefreshTick] = useState(0);
 
-  const formatDateInputValue = (value: Date): string => {
-    const year = value.getFullYear();
-    const month = (value.getMonth() + 1).toString().padStart(2, '0');
-    const day = value.getDate().toString().padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+  useEffect(() => {
+    if (selectedDentistId && date && doctorShifts) {
+      const isStillOnDuty = doctorShifts.some(
+        s => s.dentistId === selectedDentistId && s.date === date
+      );
+      if (!isStillOnDuty) {
+        setSelectedDentistId('');
+        setSelectedTimeIso('');
+      }
+    }
+  }, [date, doctorShifts, selectedDentistId]);
+
+  // Date input formatter moved above
 
   const formatSlotToTimeString = (isoString: string): string => {
     if (!isoString) return '';
@@ -67,6 +78,12 @@ export const BookingPage: React.FC = () => {
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [antiSpamError, setAntiSpamError] = useState('');
   const [sendingOtp, setSendingOtp] = useState(false);
+  const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string; type: 'error' | 'warning' | 'info' | 'success' }>({ open: false, title: '', message: '', type: 'error' });
+
+  const showAlert = (title: string, message: string, type: 'error' | 'warning' | 'info' | 'success' = 'error') => {
+    setAntiSpamError(message);
+    setAlertModal({ open: true, title, message, type });
+  };
 
   // ─── Validation errors per-field ───────────────────────────────────────────
   const [nameError, setNameError] = useState('');
@@ -94,29 +111,35 @@ export const BookingPage: React.FC = () => {
     return '';
   };
 
-  // Anti-spam: Rate limit
   const checkRateLimit = (phone: string): boolean => {
     const activeAppts = appointments.filter(
       a => a.patientPhone === phone.trim() &&
       a.status !== 'Completed' && a.status !== 'Cancelled'
     );
     if (activeAppts.length >= 3) {
-      setAntiSpamError('Số điện thoại này đã có 3 lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.');
+      showAlert(
+        'Quá giới hạn lịch hẹn',
+        'Số điện thoại này đã có 3 lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.',
+        'warning'
+      );
       return false;
     }
     return true;
   };
 
-  // Anti-spam: Duplicate detection
   const checkDuplicate = (phone: string, dateStr: string, time: string): boolean => {
-    const timeStr = `${dateStr} @ ${time}`;
+    const timeStr = `${formatLocalDateStr(dateStr)} @ ${time}`;
     const duplicate = appointments.find(
       a => a.patientPhone === phone.trim() &&
       a.time === timeStr &&
       a.status !== 'Cancelled'
     );
     if (duplicate) {
-      setAntiSpamError('Bạn đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.');
+      showAlert(
+        'Trùng lịch hẹn',
+        'Số điện thoại này đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.',
+        'warning'
+      );
       return false;
     }
     return true;
@@ -215,7 +238,11 @@ export const BookingPage: React.FC = () => {
         const cancelCount = appointments.filter(a => a.patientId === matchedPatient.id && a.status === 'Cancelled').length;
         const isLocked = (cancelCount >= 3 || matchedPatient.isLocked) && !matchedPatient.isUnlocked;
         if (isLocked) {
-          setAntiSpamError('Số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ phòng khám để biết thêm chi tiết.');
+          showAlert(
+            'Số điện thoại bị khóa',
+            'Số điện thoại này đã bị khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám. Vui lòng liên hệ phòng khám để biết thêm chi tiết.',
+            'error'
+          );
           return;
         }
       }
@@ -239,7 +266,11 @@ export const BookingPage: React.FC = () => {
       });
       setShowOtpModal(true);
     } catch (err: any) {
-      setAntiSpamError(err.message || 'Không thể kết nối đến máy chủ API để gửi OTP.');
+      showAlert(
+        'Gửi OTP thất bại',
+        err.message || 'Không thể kết nối đến máy chủ API để gửi OTP.',
+        'error'
+      );
       setSlotRefreshTick((prev) => prev + 1);
     } finally {
       setSendingOtp(false);
@@ -322,11 +353,8 @@ const formatLocalDateStr = (dateStr: string): string => {
       console.error('Lỗi khi lưu lịch hẹn:', err);
       const errMsg = err.message || 'Không thể kết nối đến máy chủ API.';
       setApiError(errMsg);
-      setAntiSpamError(errMsg);
+      showAlert('Đặt lịch không thành công', errMsg, 'error');
       setSlotRefreshTick((prev) => prev + 1);
-      setTimeout(() => {
-        document.getElementById('booking-error-banner')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 100);
     } finally {
       setSubmitting(false);
     }
@@ -575,8 +603,19 @@ const formatLocalDateStr = (dateStr: string): string => {
                           dentistError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
                         }`}
                       >
-                        <option value="">-- Chọn bác sĩ phụ trách --</option>
-                        {dentists.map(d => (
+                        <option value="">
+                          {(() => {
+                            const activeDentists = dentists.filter(d => 
+                              doctorShifts.some(s => s.dentistId === d.id && s.date === date)
+                            );
+                            return activeDentists.length === 0 
+                              ? "-- Không có bác sĩ trực ngày này --" 
+                              : "-- Chọn bác sĩ phụ trách --";
+                          })()}
+                        </option>
+                        {dentists.filter(d => 
+                          doctorShifts.some(s => s.dentistId === d.id && s.date === date)
+                        ).map(d => (
                           <option key={d.id} value={d.id}>
                             {d.name}
                           </option>
@@ -696,6 +735,14 @@ const formatLocalDateStr = (dateStr: string): string => {
         startTime={selectedTimeIso}
         serviceId={selectedServiceId}
         sendOnOpen={false}
+      />
+
+      <AlertModal
+        isOpen={alertModal.open}
+        onClose={() => setAlertModal(prev => ({ ...prev, open: false }))}
+        type={alertModal.type}
+        title={alertModal.title}
+        message={alertModal.message}
       />
     </div>
   );

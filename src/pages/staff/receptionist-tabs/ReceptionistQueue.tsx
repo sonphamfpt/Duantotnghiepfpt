@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { CheckInModal } from '../../../components/CheckInModal';
+import { useConfirm } from '../../../context/ConfirmContext';
 
 const STATUS_CONFIG = {
   Waiting:   { label: 'Đang chờ',  bg: 'bg-amber-50',              border: 'border-amber-300',      badge: 'bg-amber-100 text-amber-800',                        dot: 'bg-amber-500',  priority: 2 },
@@ -11,6 +12,7 @@ const STATUS_CONFIG = {
 
 export const ReceptionistQueue: React.FC = () => {
   const { queue, patients, dentists } = useClinic();
+  const { showAlert } = useConfirm();
 
   const [showCheckinModal, setShowCheckinModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'Waiting' | 'In Chair' | 'Completed'>('all');
@@ -230,7 +232,13 @@ export const ReceptionistQueue: React.FC = () => {
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5">
                         <button
-                          onClick={() => alert(`Chi tiết bệnh nhân: ${item.patientName}\nPhòng: ${item.room}\nBác sĩ: ${item.dentistName}${item.serviceName ? `\nDịch vụ: ${item.serviceName}` : ''}`)}
+                          onClick={async () => {
+                            await showAlert({
+                              title: 'Chi tiết lượt khám',
+                              message: `Bệnh nhân: ${item.patientName}\nPhòng: ${item.room}\nBác sĩ: ${item.dentistName}${item.serviceName ? `\nDịch vụ: ${item.serviceName}` : ''}`,
+                              type: 'info'
+                            });
+                          }}
                           className="px-2.5 py-1.5 bg-surface-container text-on-surface-variant rounded-lg text-xs font-bold hover:bg-surface-container-high transition-all cursor-pointer"
                           title="Xem chi tiết"
                         >
@@ -238,7 +246,13 @@ export const ReceptionistQueue: React.FC = () => {
                         </button>
                         {item.status === 'Waiting' && (
                           <button
-                            onClick={() => alert(`Đã thông báo gọi loa bệnh nhân: ${item.patientName}`)}
+                            onClick={async () => {
+                              await showAlert({
+                                title: 'Thông báo',
+                                message: `Đã thông báo gọi loa bệnh nhân: ${item.patientName}`,
+                                type: 'success'
+                              });
+                            }}
                             className="px-2.5 py-1.5 bg-primary-container text-on-primary-container rounded-lg text-xs font-bold hover:opacity-90 transition-all cursor-pointer"
                             title="Gọi loa thông báo"
                           >

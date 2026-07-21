@@ -451,6 +451,20 @@ export class AppointmentsService {
    * Lấy toàn bộ danh sách lịch hẹn để đồng bộ hóa cho Lễ tân
    */
   async getAllAppointments() {
+    // Tự động chuyển các lịch quá hạn 1 tiếng chưa check-in thành NoShow
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await prisma.appointment.updateMany({
+      where: {
+        status: 'Confirmed',
+        startTime: {
+          lt: oneHourAgo,
+        },
+      },
+      data: {
+        status: 'NoShow',
+      },
+    });
+
     const list = await prisma.appointment.findMany({
       include: {
         patient: { include: { user: true } },
@@ -483,14 +497,17 @@ export class AppointmentsService {
     };
 
     return list.map((appt) => {
-      let statusStr: 'Confirmed' | 'In-Progress' | 'Completed' | 'Cancelled' = 'Confirmed';
+      let statusStr: 'Confirmed' | 'In-Progress' | 'Completed' | 'Cancelled' | 'NoShow' = 'Confirmed';
       if (appt.status === 'InProgress') {
         statusStr = 'In-Progress';
       } else if (appt.status === 'Completed') {
         statusStr = 'Completed';
       } else if (appt.status === 'Cancelled') {
         statusStr = 'Cancelled';
+      } else if (appt.status === 'NoShow') {
+        statusStr = 'NoShow';
       }
+
 
       return {
         id: `A-${appt.appointmentId}`,

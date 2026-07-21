@@ -6,6 +6,7 @@ import { FaUsers, FaStar } from "react-icons/fa";
 import { MdMedicalServices, MdVerified } from "react-icons/md";
 import { RiAwardFill } from "react-icons/ri";
 import { Icon } from '../../components/Icon';
+import { useClinic } from '../../context/ClinicContext';
 
 // ── Promotional Banner Popup ──
 const PromoBanner: React.FC<{ onClose: () => void; onBookNow: () => void }> = ({ onClose, onBookNow }) => {
@@ -298,11 +299,24 @@ export const Home: React.FC = () => {
     { q: 'Tôi có thể xem lại hồ sơ bệnh án của mình không?', a: 'Có. Toàn bộ hồ sơ bệnh án, hình ảnh X-quang và đơn thuốc được lưu trữ bảo mật trên hệ thống EMR. Bạn có thể truy cập 24/7 qua cổng bệnh nhân tại website.' },
   ];
 
-  const reviews = [
-    { name: 'Nguyễn Thu Hà', role: 'Nhân viên văn phòng', rating: 5, comment: 'Lần đầu nhổ răng khôn mà không đau gì cả! Bác sĩ Hoàng Nam rất nhẹ nhàng và kiên nhẫn giải thích. Phòng chờ rộng, sạch, có wifi và cà phê miễn phí. Chắc chắn sẽ quay lại.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&h=80&q=80' },
-    { name: 'Trần Minh Tuấn', role: 'Kỹ sư phần mềm', rating: 5, comment: 'Đặt lịch online rất dễ, nhận được xác nhận qua Zalo ngay. Đến nơi được check-in nhanh chóng, không phải chờ lâu. Bác sĩ tư vấn tận tình về phác đồ niềng răng cho con.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&h=80&q=80' },
-    { name: 'Lê Phương Linh', role: 'Giáo viên', rating: 5, comment: 'Tẩy trắng răng xong kết quả rõ ngay! Được miễn phí khám ban đầu, báo giá rõ ràng trước khi làm. Nhân viên lễ tân thân thiện, cho mình uống nước chờ. Rất hài lòng!', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=80&h=80&q=80' },
+  const { reviews: dbReviews } = useClinic();
+
+  const staticReviews = [
+    { name: 'Nguyễn Thu Hà', role: 'Nhân viên văn phòng', rating: 5, comment: 'Lần đầu nhổ răng khôn mà không đau gì cả! Bác sĩ Hoàng Nam rất nhẹ nhàng và kiên nhẫn giải thích. Phòng chờ rộng, sạch, có wifi và cà phê miễn phí. Chắc chắn sẽ quay lại.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&h=80&q=80', aiReply: 'Cảm ơn Thu Hà đã tin tưởng GoodSmile! Đội ngũ bác sĩ luôn nỗ lực để mang lại trải nghiệm êm ái nhất cho bạn.' },
+    { name: 'Trần Minh Tuấn', role: 'Kỹ sư phần mềm', rating: 5, comment: 'Đặt lịch online rất dễ, nhận được xác nhận qua Zalo ngay. Đến nơi được check-in nhanh chóng, không phải chờ lâu. Bác sĩ tư vấn tận tình về phác đồ niềng răng cho con.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&h=80&q=80', aiReply: 'Rất vui vì quy trình trực tuyến và đón tiếp tại phòng khám làm gia đình anh hài lòng! GoodSmile chúc bé có hành trình niềng răng thuận lợi.' },
+    { name: 'Lê Phương Linh', role: 'Giáo viên', rating: 5, comment: 'Tẩy trắng răng xong kết quả rõ ngay! Được miễn phí khám ban đầu, báo giá rõ ràng trước khi làm. Nhân viên lễ tân thân thiện, cho mình uống nước chờ. Rất hài lòng!', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=80&h=80&q=80', aiReply: 'GoodSmile trân trọng cảm ơn cô Phương Linh! Chúc cô luôn giữ vững nụ cười rạng rỡ và tự tin mỗi ngày.' },
   ];
+
+  const displayReviews = dbReviews && dbReviews.length > 0
+    ? dbReviews.map(r => ({
+        name: r.patientName,
+        role: r.serviceName || 'Bệnh nhân GoodSmile',
+        rating: r.rating,
+        comment: r.comment,
+        aiReply: r.aiReply,
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&h=80&q=80',
+      }))
+    : staticReviews;
 
   const stats = [
     { icon: <FaUsers />, val: '12,500+', label: 'Bệnh nhân hài lòng' },
@@ -565,15 +579,28 @@ export const Home: React.FC = () => {
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {reviews.map((r, i) => (
-              <div key={i} className="bg-surface-container-low rounded-xl border border-outline-variant p-5 space-y-4 hover:shadow-md transition-all">
-                <div className="flex items-center gap-1">
-                  {[...Array(5)].map((_, i) => (
-                    <FaStar key={i} className="text-amber-400 text-[14px]" />
-                  ))}
+            {displayReviews.map((r, i) => (
+              <div key={i} className="bg-surface-container-low rounded-2xl border border-outline-variant p-6 space-y-4 hover:shadow-md transition-all flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-1">
+                    {[...Array(r.rating || 5)].map((_, starIdx) => (
+                      <FaStar key={starIdx} className="text-amber-400 text-[14px]" />
+                    ))}
+                  </div>
+                  <p className="text-sm text-on-surface-variant leading-relaxed">"{r.comment}"</p>
+                  
+                  {r.aiReply && (
+                    <div className="bg-primary/5 border border-primary/10 rounded-xl p-3 text-xs text-on-surface leading-relaxed mt-2 space-y-1">
+                      <div className="flex items-center gap-1 text-[11px] font-bold text-primary">
+                        <Icon name="smart_toy" className="text-sm" />
+                        <span>GoodSmile AI Phản hồi:</span>
+                      </div>
+                      <p className="italic text-slate-600">"{r.aiReply}"</p>
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm text-on-surface-variant leading-relaxed">"{r.comment}"</p>
-                <div className="flex items-center gap-3 pt-2 border-t border-outline-variant/30">
+
+                <div className="flex items-center gap-3 pt-3 border-t border-outline-variant/30 mt-2">
                   <img src={r.avatar} alt={r.name} className="w-9 h-9 rounded-full object-cover border border-outline-variant" />
                   <div>
                     <p className="font-bold text-xs text-on-surface">{r.name}</p>

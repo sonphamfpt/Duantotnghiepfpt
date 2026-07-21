@@ -1,15 +1,25 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { authApi } from '../services/api/authApi';
+import { socket } from '../services/socketClient';
 
 export type UserRole = 'patient' | 'receptionist' | 'dentist' | 'cashier' | 'manager';
+
+export interface UserPermissions {
+  admission: boolean;
+  clinical: boolean;
+  checkout: boolean;
+  settings: boolean;
+}
 
 interface UserProfile {
   name: string;
   roleName: string;
   avatar: string;
   id?: string;
+  rawUserId?: string;
   details?: string;
   phone?: string;
+  permissions?: UserPermissions;
 }
 
 interface AuthContextType {
@@ -83,11 +93,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setToken(storedToken);
           setUser({
             id: profileId,
+            rawUserId: userRes.userId.toString(),
             name: userRes.fullName,
             roleName: defaultProfile?.roleName || roleCode,
             avatar: defaultProfile?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80',
             details: defaultProfile?.details,
             phone: userRes.phone || undefined,
+            permissions: (userRes as any).permissions || undefined,
           });
           setIsAuthenticated(true);
         } else {
@@ -101,6 +113,63 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     checkAuth();
   }, []);
+
+  // ─── Real-Time Kickout & Permission Listener ────────────────────────────────
+  useEffect(() => {
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    const handleStatusChanged = (data: { userId: string; status: string }) => {
+      if (user && user.rawUserId && String(user.rawUserId) === String(data.userId)) {
+        if (data.status === 'Inactive') {
+          alert('⚠️ THÔNG BÁO TỪ HỆ THỐNG:\nTài khoản của bạn đã bị NGƯNG HOẠT ĐỘNG bởi Quản trị viên phòng khám.\nBạn sẽ được tự động đăng xuất khỏi hệ thống ngay lập tức.');
+          logout();
+          window.location.href = '/login';
+        }
+      }
+    };
+
+    const handlePermissionChanged = (data: { userId: string; permissions: UserPermissions }) => {
+      if (user && user.rawUserId && String(user.rawUserId) === String(data.userId)) {
+        console.log('⚡ [Real-time RBAC] Phân quyền tài khoản đã thay đổi:', data.permissions);
+        setUser((prev) => (prev ? { ...prev, permissions: data.permissions } : prev));
+
+        // Kiểm tra xem vai trò chuyên môn hiện tại có bị tước quyền chính không
+        const currentRole = role;
+        const p = data.permissions;
+        let isRevoked = false;
+        let moduleName = '';
+
+        if (currentRole === 'receptionist' && !p.admission) {
+          isRevoked = true;
+          moduleName = 'Đón tiếp (Lễ tân)';
+        } else if (currentRole === 'dentist' && !p.clinical) {
+          isRevoked = true;
+          moduleName = 'Khám lâm sàng (Bác sĩ)';
+        } else if (currentRole === 'cashier' && !p.checkout) {
+          isRevoked = true;
+          moduleName = 'Tính tiền (Thu ngân)';
+        } else if (currentRole === 'manager' && !p.settings) {
+          isRevoked = true;
+          moduleName = 'Cấu hình hệ thống (Quản lý)';
+        }
+
+        if (isRevoked) {
+          alert(`⚠️ THÔNG BÁO TỪ HỆ THỐNG:\nQuyền truy cập phân hệ ${moduleName} của bạn đã bị Quản trị viên thu hồi.\nBạn sẽ được tự động đăng xuất khỏi hệ thống ngay lập tức.`);
+          logout();
+          window.location.href = '/login';
+        }
+      }
+    };
+
+    socket.on('staff:status_changed', handleStatusChanged);
+    socket.on('staff:permission_changed', handlePermissionChanged);
+    return () => {
+      socket.off('staff:status_changed', handleStatusChanged);
+      socket.off('staff:permission_changed', handlePermissionChanged);
+    };
+  }, [user]);
 
   const loginWithCredentials = async (phone: string, password: string): Promise<{ success: boolean; role?: UserRole; error?: string }> => {
     try {
@@ -126,11 +195,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setRole(roleCode);
       setUser({
         id: profileId,
+        rawUserId: userRes.userId.toString(),
         name: userRes.fullName,
         roleName: defaultProfile?.roleName || roleCode,
         avatar: defaultProfile?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80',
         details: defaultProfile?.details,
         phone: userRes.phone || undefined,
+        permissions: (userRes as any).permissions || undefined,
       });
       setIsAuthenticated(true);
 

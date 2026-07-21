@@ -1,4 +1,5 @@
 import { log } from 'console';
+import { redis } from './config/redis';
 
 const BASE_URL = 'http://localhost:5000/api';
 
@@ -21,11 +22,43 @@ async function runShiftTests() {
     }
   }
 
+  // Helper to obtain OTP token automatically from local Redis
+  async function getOtpToken(phone: string): Promise<string> {
+    const sendRes = await fetch(`${BASE_URL}/auth/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    });
+    if (!sendRes.ok) {
+      const sendData = await sendRes.json();
+      throw new Error(`Send OTP failed: ${JSON.stringify(sendData)}`);
+    }
+
+    const code = await redis.get(`otp:${phone}`);
+    if (!code) {
+      throw new Error(`OTP not found in Redis for phone ${phone}`);
+    }
+
+    const verifyRes = await fetch(`${BASE_URL}/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, code }),
+    });
+    const verifyData: any = await verifyRes.json();
+    if (!verifyRes.ok || !verifyData.data?.otpToken) {
+      throw new Error(`Verify OTP failed: ${JSON.stringify(verifyData)}`);
+    }
+
+    return verifyData.data.otpToken;
+  }
+
   // Bước 1: Đăng ký một bệnh nhân test
   const testPhone = `097${Math.floor(1000000 + Math.random() * 9000000)}`;
   let patientId = '';
+  let patientToken = '';
 
   try {
+    const otpToken = await getOtpToken(testPhone);
     const res = await fetch(`${BASE_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -33,11 +66,13 @@ async function runShiftTests() {
         fullName: 'Bệnh Nhân Test Ca Trực',
         phone: testPhone,
         password: 'password123',
+        otpToken,
       }),
     });
     const data: any = await res.json();
     if (res.status === 201 && data.data) {
       patientId = data.data.user.patientId;
+      patientToken = data.data.token;
       report(`TC-01: Đăng ký bệnh nhân test thành công (ID: ${patientId})`, true);
     } else {
       report('TC-01: Đăng ký bệnh nhân test thất bại', false, JSON.stringify(data));
@@ -49,8 +84,9 @@ async function runShiftTests() {
   }
 
   // Bước 2: Thiết lập ca trực cho ngày mai
+  const randomOffset = Math.floor(5 + Math.random() * 20); // Tránh trùng lặp giữa các lần chạy
   const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 2); // Cộng thêm 2 ngày cho chắc chắn trống lịch
+  tomorrow.setDate(tomorrow.getDate() + randomOffset);
   const dateStr = tomorrow.toISOString().split('T')[0];
 
   let shiftIdA = '';
@@ -99,9 +135,14 @@ async function runShiftTests() {
   // Bước 3: Tạo lịch hẹn với Dentist A vào sáng ngày mai (Khung giờ Morning: 09:00 AM)
   let appointmentId = '';
   try {
+    const otpToken = await getOtpToken(testPhone);
     const res = await fetch(`${BASE_URL}/appointments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${patientToken}`,
+        'x-otp-token': otpToken
+      },
       body: JSON.stringify({
         patientId: patientId,
         dentistId: '1',
@@ -214,9 +255,10 @@ async function runShiftTests() {
   }
 
   // Bước 8: Chuyển giao ca trực (Transfer) ca chiều (Afternoon) của Bác sĩ 2 sang Bác sĩ 1
-  // Sử dụng ngày cách xa (ngày mai + 10) để tránh trùng lịch ca trực đã seed sẵn của Bác sĩ 1
+  // Sử dụng ngày cách xa (ngày mai + 30 + random) để tránh trùng lịch ca trực đã seed sẵn của Bác sĩ 1
+  const randomOffset2 = Math.floor(30 + Math.random() * 50);
   const farFuture = new Date();
-  farFuture.setDate(farFuture.getDate() + 10);
+  farFuture.setDate(farFuture.getDate() + randomOffset2);
   const dateStr2 = farFuture.toISOString().split('T')[0];
 
   let shiftIdC = '';
@@ -236,9 +278,14 @@ async function runShiftTests() {
     shiftIdC = dataShiftC.data.shiftId;
 
     // Tạo lịch hẹn trùng ca chiều với Bác sĩ 2 (Khung giờ Afternoon: 03:00 PM local = 08:00 AM UTC)
+    const otpToken2 = await getOtpToken(testPhone);
     const resAppt2 = await fetch(`${BASE_URL}/appointments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${patientToken}`,
+        'x-otp-token': otpToken2
+      },
       body: JSON.stringify({
         patientId: patientId,
         dentistId: '2',
@@ -321,9 +368,157 @@ async function runShiftTests() {
     report('TC-10: Xác nhận trạng thái lịch hẹn hủy thất bại', false, err.message);
   }
 
+  // Bước 11: Kiểm thử tính năng xóa ca trực trống (TC-11)
+  let testShiftId = '';
+  try {
+    const resCreate = await fetch(`${BASE_URL}/shifts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dentistId: '1',
+        workDate: dateStr,
+        shiftType: 'Afternoon',
+        roomId: 1,
+      }),
+    });
+    const dataCreate: any = await resCreate.json();
+    testShiftId = dataCreate.data.shiftId;
+
+    const resDelete = await fetch(`${BASE_URL}/shifts/${testShiftId}`, {
+      method: 'DELETE',
+    });
+    const dataDelete: any = await resDelete.json();
+
+    if (resDelete.status === 200 && dataDelete.success === true) {
+      report('TC-11: Xóa ca trực trống thành công', true);
+    } else {
+      report('TC-11: Xóa ca trực trống thất bại', false, JSON.stringify(dataDelete));
+    }
+  } catch (err: any) {
+    report('TC-11: Xóa ca trực trống thất bại', false, err.message);
+  }
+
+  // Bước 12: Kiểm thử chặn xóa ca trực có lịch hẹn (TC-12)
+  try {
+    // 12.1 Tạo ca trực mới
+    const resCreate = await fetch(`${BASE_URL}/shifts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dentistId: '1',
+        workDate: dateStr,
+        shiftType: 'Afternoon',
+        roomId: 1,
+      }),
+    });
+    const dataCreate: any = await resCreate.json();
+    const activeShiftId = dataCreate.data.shiftId;
+
+    // 12.2 Đặt lịch hẹn vào ca trực đó (Khung giờ Afternoon: 03:00 PM local = 08:00 AM UTC)
+    const otpTokenActive = await getOtpToken(testPhone);
+    const resAppt = await fetch(`${BASE_URL}/appointments`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${patientToken}`,
+        'x-otp-token': otpTokenActive
+      },
+      body: JSON.stringify({
+        patientId: patientId,
+        dentistId: '1',
+        serviceId: '1',
+        roomId: 1,
+        startTime: `${dateStr}T08:00:00.000Z`,
+      }),
+    });
+    const dataAppt: any = await resAppt.json();
+    const activeApptId = dataAppt.data.appointmentId;
+
+    // 12.3 Thử xóa ca trực
+    const resDelete = await fetch(`${BASE_URL}/shifts/${activeShiftId}`, {
+      method: 'DELETE',
+    });
+    const dataDelete: any = await resDelete.json();
+
+    if (resDelete.status === 400 && dataDelete.error?.code === 'SHIFT_HAS_APPOINTMENTS') {
+      report('TC-12: Chặn xóa ca trực có lịch hẹn thành công (Trả về HTTP 400 + SHIFT_HAS_APPOINTMENTS)', true);
+    } else {
+      report('TC-12: Chặn xóa ca trực có lịch hẹn thất bại', false, `HTTP Status: ${resDelete.status}, Data: ${JSON.stringify(dataDelete)}`);
+    }
+
+    // Dọn dẹp: Hủy lịch hẹn vừa tạo để tránh ảnh hưởng dữ liệu
+    await fetch(`${BASE_URL}/appointments/${activeApptId}/cancel`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cancelReason: 'Dọn dẹp kiểm thử' }),
+    });
+
+    // Dọn dẹp: Xóa ca trực sau khi đã hủy lịch hẹn
+    await fetch(`${BASE_URL}/shifts/${activeShiftId}`, {
+      method: 'DELETE',
+    });
+
+  } catch (err: any) {
+    report('TC-12: Chặn xóa ca trực có lịch hẹn thất bại', false, err.message);
+  }
+
+  // Bước 13: Kiểm thử đồng thời (Concurrency - TC-13)
+  try {
+    // 13.1 Tạo ca trực mới
+    const resCreate = await fetch(`${BASE_URL}/shifts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dentistId: '1',
+        workDate: dateStr,
+        shiftType: 'Afternoon',
+        roomId: 1,
+      }),
+    });
+    const dataCreate: any = await resCreate.json();
+    const tempShiftId = dataCreate.data.shiftId;
+
+    // 13.2 Xóa ca trực trước (mô phỏng Admin xóa ca trực)
+    const resDelete = await fetch(`${BASE_URL}/shifts/${tempShiftId}`, {
+      method: 'DELETE',
+    });
+
+    // 13.3 Bệnh nhân cố đặt lịch vào ca trực đã xóa
+    const otpTokenTemp = await getOtpToken(testPhone);
+    const resAppt = await fetch(`${BASE_URL}/appointments`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${patientToken}`,
+        'x-otp-token': otpTokenTemp
+      },
+      body: JSON.stringify({
+        patientId: patientId,
+        dentistId: '1',
+        serviceId: '1',
+        roomId: 1,
+        startTime: `${dateStr}T08:00:00.000Z`,
+      }),
+    });
+    const dataAppt: any = await resAppt.json();
+
+    if (resAppt.status === 409 && dataAppt.error?.code === 'SLOT_NOT_AVAILABLE') {
+      report('TC-13: Kiểm thử đồng thời thành công (Chặn đặt lịch vào ca trực đã xóa, trả về HTTP 409 + SLOT_NOT_AVAILABLE)', true);
+    } else {
+      report('TC-13: Kiểm thử đồng thời thất bại', false, `HTTP Status: ${resAppt.status}, Data: ${JSON.stringify(dataAppt)}`);
+    }
+
+  } catch (err: any) {
+    report('TC-13: Kiểm thử đồng thời thất bại', false, err.message);
+  }
+
   log('\n========================================================');
   log(`📊 TỔNG KẾT THỬ NGHIỆM CA TRỰC: THÀNH CÔNG: ${successCount} | THẤT BẠI: ${failCount}`);
   log('========================================================');
+  
+  await redis.quit();
+  process.exit(failCount > 0 ? 1 : 0);
 }
 
 runShiftTests();
+

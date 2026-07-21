@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../middlewares/errorHandler';
 
@@ -5,7 +6,7 @@ import { AppError } from '../../middlewares/errorHandler';
  * Quét tự động các lịch hẹn bị xung đột trùng với khung ca trực được hoán đổi/chuyển giao
  */
 async function detectAndCreateConflicts(
-  tx: any,
+  tx: Prisma.TransactionClient,
   shift: { workDate: Date; startTime: Date; endTime: Date; shiftType: string },
   originalDentistId: bigint,
   newDentistId: bigint
@@ -53,7 +54,7 @@ async function detectAndCreateConflicts(
 
   // Tạo liên kết các cuộc hẹn bị ảnh hưởng
   await tx.shiftChangeAffectedItem.createMany({
-    data: affectedAppointments.map((appt: any) => ({
+    data: affectedAppointments.map((appt) => ({
       notifId: notif.notifId,
       appointmentId: appt.appointmentId,
       resolved: false,
@@ -351,5 +352,78 @@ export async function resolveConflictItem(
     }
 
     return { success: true };
+  });
+}
+
+/**
+ * Xóa một ca trực của bác sĩ (Kiểm tra nếu có lịch hẹn đã được đặt sẽ chặn xóa)
+ */
+export async function deleteShift(shiftId: bigint) {
+  const shift = await prisma.dentistShift.findUnique({
+    where: { shiftId },
+  });
+
+  if (!shift) {
+    throw new AppError(404, 'Không tìm thấy ca trực cần xóa.', 'SHIFT_NOT_FOUND');
+  }
+
+  const year = shift.workDate.getUTCFullYear();
+  const month = shift.workDate.getUTCMonth();
+  const day = shift.workDate.getUTCDate();
+
+  const startHours = shift.startTime.getUTCHours();
+  const startMinutes = shift.startTime.getUTCMinutes();
+
+  const endHours = shift.endTime.getUTCHours();
+  const endMinutes = shift.endTime.getUTCMinutes();
+
+  const VIETNAM_OFFSET_HOURS = 7;
+  const shiftStartUtc = new Date(Date.UTC(year, month, day, startHours - VIETNAM_OFFSET_HOURS, startMinutes));
+  const shiftEndUtc = new Date(Date.UTC(year, month, day, endHours - VIETNAM_OFFSET_HOURS, endMinutes));
+
+  const activeAppointmentsCount = await prisma.appointment.count({
+    where: {
+      dentistId: shift.dentistId,
+      status: { in: ['Confirmed', 'InProgress'] },
+      startTime: { lt: shiftEndUtc },
+      endTime: { gt: shiftStartUtc },
+    },
+  });
+
+  if (activeAppointmentsCount > 0) {
+    throw new AppError(
+      400,
+      'Không thể xóa ca trực vì đã có lịch hẹn được đặt trong ca trực này. Vui lòng hoán đổi ca trực, chuyển ca trực hoặc xử lý các lịch hẹn trước.',
+      'SHIFT_HAS_APPOINTMENTS'
+    );
+  }
+
+  await prisma.dentistShift.delete({
+    where: { shiftId },
+  });
+
+  await prisma.systemLog.create({
+    data: {
+      module: 'SYSTEM',
+      logType: 'WARN',
+      message: `Đã xóa ca trực ID ${shiftId} của bác sĩ ID ${shift.dentistId} vào ngày ${shift.workDate.toISOString().split('T')[0]}.`,
+    },
+  });
+
+  return { success: true, message: 'Xóa ca trực thành công.' };
+}
+
+/**
+ * Cập nhật phòng trực cho một ca (manager)
+ */
+export async function updateShiftRoom(shiftId: bigint, roomId: number) {
+  const shift = await prisma.dentistShift.findUnique({ where: { shiftId } });
+  if (!shift) {
+    throw new AppError(404, 'Không tìm thấy ca trực.', 'SHIFT_NOT_FOUND');
+  }
+
+  return await prisma.dentistShift.update({
+    where: { shiftId },
+    data: { roomId },
   });
 }

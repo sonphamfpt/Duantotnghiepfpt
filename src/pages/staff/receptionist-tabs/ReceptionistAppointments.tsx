@@ -3,6 +3,7 @@ import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { BookingModal } from '../../../components/BookingModal';
 import { RescheduleModal } from '../../../components/RescheduleModal';
+import { useConfirm } from '../../../context/ConfirmContext';
 
 const APPT_STATUS: Record<string, { label: string; badge: string; icon: string }> = {
   Confirmed:   { label: 'Đã xác nhận',  badge: 'bg-secondary-container text-on-secondary-container', icon: 'check_circle' },
@@ -73,6 +74,7 @@ const checkIfLate = (apptTime: string): { isLate: boolean; minsLate: number } =>
 
 export const ReceptionistAppointments: React.FC = () => {
   const { appointments, dentists, queue, cancelAppointment, checkInPatient, rescheduleAppointment } = useClinic();
+  const { showConfirm, showAlert } = useConfirm();
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [filterDentist, setFilterDentist] = useState('all');
   const [filterStatus, setFilterStatus] = useState('pending');
@@ -493,9 +495,21 @@ export const ReceptionistAppointments: React.FC = () => {
                         {appt.status !== 'Completed' && appt.status !== 'Cancelled' && (
                           <button
                             id={`btn-cancel-${appt.id}`}
-                            onClick={() => {
-                              if (window.confirm(`Hủy lịch hẹn của ${appt.patientName}?`)) {
+                            onClick={async () => {
+                              const isConfirmed = await showConfirm({
+                                title: 'Xác nhận hủy lịch',
+                                message: `Bạn có chắc chắn muốn hủy lịch hẹn của bệnh nhân ${appt.patientName}? Hành động này không thể hoàn tác.`,
+                                type: 'error',
+                                confirmLabel: 'Hủy lịch',
+                                cancelLabel: 'Quay lại'
+                              });
+                              if (isConfirmed) {
                                 cancelAppointment(appt.id);
+                                await showAlert({
+                                  title: 'Thành công',
+                                  message: 'Đã hủy lịch hẹn thành công.',
+                                  type: 'success'
+                                });
                               }
                             }}
                             className="px-2.5 py-1.5 border border-error text-error rounded-lg text-xs font-bold hover:bg-error-container cursor-pointer transition-all"

@@ -13,15 +13,22 @@ export const RescheduleModal: React.FC<RescheduleModalProps> = ({
   onClose,
   appointmentId
 }) => {
-  const { dentists, appointments, rescheduleAppointment } = useClinic();
+  const { dentists, appointments, rescheduleAppointment, doctorShifts } = useClinic();
   
   const [selectedDentistId, setSelectedDentistId] = useState('');
   
+  const formatDateInputValue = (value: Date): string => {
+    const year = value.getFullYear();
+    const month = (value.getMonth() + 1).toString().padStart(2, '0');
+    const day = value.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const todayObj = new Date();
-  const minDateStr = todayObj.toISOString().split('T')[0];
+  const minDateStr = formatDateInputValue(todayObj);
   const maxDateObj = new Date();
   maxDateObj.setDate(maxDateObj.getDate() + 14); // Allow rescheduling up to 2 weeks
-  const maxDateStr = maxDateObj.toISOString().split('T')[0];
+  const maxDateStr = formatDateInputValue(maxDateObj);
 
   const [date, setDate] = useState(minDateStr);
   const [timeSlot, setTimeSlot] = useState('');
@@ -74,15 +81,29 @@ export const RescheduleModal: React.FC<RescheduleModalProps> = ({
     }
   }, [appointment, isOpen, minDateStr, isGlobalMode]);
 
+  useEffect(() => {
+    if (selectedDentistId && date) {
+      const isStillOnDuty = doctorShifts.some(
+        s => s.dentistId === selectedDentistId && s.date === date
+      );
+      if (!isStillOnDuty) {
+        setSelectedDentistId('');
+        setTimeSlot('');
+      }
+    }
+  }, [date, doctorShifts, selectedDentistId]);
+
   if (!isOpen) return null;
+
+  const formatLocalDateStr = (dateStr: string): string => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
+  };
 
   // Anti-spam: Duplicate detection — same phone + same date + same time
   const checkDuplicate = (phone: string, dateStr: string, time: string): boolean => {
-    // We only format the date string to a recognizable format
-    // BookingModal uses custom format, but we'll adapt.
-    // Assuming dateStr is YYYY-MM-DD from input, we could convert it to dd/MM/yyyy for the time format if we want consistency,
-    // but the system handles any string anyway. We will use the format: YYYY-MM-DD @ HH:MM AM
-    const timeStr = `${dateStr} @ ${time}`;
+    const timeStr = `${formatLocalDateStr(dateStr)} @ ${time}`;
     const duplicate = appointments.find(
       a => a.patientPhone === phone.trim() && 
       a.time === timeStr &&
@@ -253,41 +274,53 @@ export const RescheduleModal: React.FC<RescheduleModalProps> = ({
                   Bác sĩ điều trị mới *
                 </label>
                 <div className="flex flex-col gap-2.5">
-                  {dentists.map(dentist => (
-                    <button
-                      key={dentist.id}
-                      type="button"
-                      onClick={() => setSelectedDentistId(dentist.id)}
-                      className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer relative overflow-hidden flex items-center gap-3 ${
-                        selectedDentistId === dentist.id
-                          ? 'border-primary bg-primary-container/10 shadow-sm'
-                          : 'border-outline-variant hover:border-primary/40 bg-white'
-                      }`}
-                    >
-                      {selectedDentistId === dentist.id && (
-                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary rounded-l-xl" />
-                      )}
-                      
-                      <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant overflow-hidden">
-                        <Icon name="person" className="text-on-surface-variant text-xl" />
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-on-surface">{dentist.name}</p>
-                        <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-1">
-                          <Icon name="meeting_room" className="text-[14px]" /> {dentist.room}
+                  {(() => {
+                    const activeDentists = dentists.filter(dentist => 
+                      doctorShifts.some(s => s.dentistId === dentist.id && s.date === date)
+                    );
+                    if (activeDentists.length === 0) {
+                      return (
+                        <p className="text-xs text-on-surface-variant italic py-4 text-center bg-slate-50 rounded-xl border border-dashed border-outline-variant">
+                          Không có bác sĩ nào trực vào ngày này. Vui lòng chọn ngày khác.
                         </p>
-                      </div>
-                      
-                      <div className="shrink-0">
-                        {selectedDentistId === dentist.id ? (
-                          <Icon name="check_circle" className="text-primary text-xl" />
-                        ) : (
-                          <Icon name="radio_button_unchecked" className="text-outline-variant text-xl" />
+                      );
+                    }
+                    return activeDentists.map(dentist => (
+                      <button
+                        key={dentist.id}
+                        type="button"
+                        onClick={() => setSelectedDentistId(dentist.id)}
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer relative overflow-hidden flex items-center gap-3 ${
+                          selectedDentistId === dentist.id
+                            ? 'border-primary bg-primary-container/10 shadow-sm'
+                            : 'border-outline-variant hover:border-primary/40 bg-white'
+                        }`}
+                      >
+                        {selectedDentistId === dentist.id && (
+                          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary rounded-l-xl" />
                         )}
-                      </div>
-                    </button>
-                  ))}
+                        
+                        <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant overflow-hidden">
+                          <Icon name="person" className="text-on-surface-variant text-xl" />
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-on-surface">{dentist.name}</p>
+                          <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-1">
+                            <Icon name="meeting_room" className="text-[14px]" /> {dentist.room}
+                          </p>
+                        </div>
+                        
+                        <div className="shrink-0">
+                          {selectedDentistId === dentist.id ? (
+                            <Icon name="check_circle" className="text-primary text-xl" />
+                          ) : (
+                            <Icon name="radio_button_unchecked" className="text-outline-variant text-xl" />
+                          )}
+                        </div>
+                      </button>
+                    ));
+                  })()}
                 </div>
               </div>
 

@@ -1,12 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Icon } from './Icon';
 
+// ==========================================
+// Gemini API config
+// ==========================================
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+const SYSTEM_PROMPT = `Bạn là trợ lý AI nha khoa của phòng khám GoodSmile.
+Hãy tư vấn về sức khỏe răng miệng, dịch vụ nha khoa (niềng răng, tẩy trắng, cấy implant, trám răng, lấy cao răng...) một cách thân thiện và dễ hiểu bằng tiếng Việt.
+Câu trả lời ngắn gọn, tối đa 3-4 câu. Nếu câu hỏi không liên quan nha khoa, hãy từ chối lịch sự.`;
+
+interface Message {
+  sender: 'bot' | 'user';
+  text: string;
+}
+
+interface GeminiContent {
+  role: string;
+  parts: { text: string }[];
+}
+
 export const AIChatbot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Array<{ sender: 'bot' | 'user'; text: string }>>([
-    { sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI nha khoa. Tôi có thể giúp gì cho sức khỏe răng miệng của bạn hôm nay?' },
-    { sender: 'user', text: 'Tôi cảm thấy hơi ê buốt khi uống nước lạnh.' },
-    { sender: 'bot', text: 'Ê buốt khi dùng đồ lạnh có thể là dấu hiệu của nhạy cảm ngà răng hoặc sâu răng nhẹ. Bạn nên đặt lịch kiểm tra sớm nhé!' }
+  const [messages, setMessages] = useState<Message[]>([
+    { sender: 'bot', text: 'Chào bạn! Tôi là trợ lý AI nha khoa GoodSmile. Tôi có thể giúp gì cho sức khỏe răng miệng của bạn hôm nay?' },
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -20,32 +38,58 @@ export const AIChatbot: React.FC = () => {
     scrollToBottom();
   }, [messages, isTyping, isOpen]);
 
-  const handleSendChat = (e: React.FormEvent) => {
+  const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || isTyping) return;
 
-    const userText = inputText;
+    const userText = inputText.trim();
     setMessages(prev => [...prev, { sender: 'user', text: userText }]);
     setInputText('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      let reply = 'Cảm ơn thông tin của bạn. Sắp tới chúng tôi sẽ nâng cấp AI tích hợp LLM thật (Gemini/ChatGPT) để trả lời chi tiết hơn. Tạm thời bạn có thể liên hệ số hotline để được tư vấn nhé!';
-      const query = userText.toLowerCase();
+    try {
+      // Chuyển lịch sử sang định dạng Gemini
+      const history: GeminiContent[] = messages.map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.text }],
+      }));
 
-      if (query.includes('ê buốt') || query.includes('đau răng') || query.includes('buốt')) {
-        reply = 'Tình trạng ê buốt răng khi uống đồ lạnh có thể do mòn men răng, tụt nướu hoặc sâu răng. Bạn nên dùng kem đánh răng chống ê buốt chuyên dụng và tránh đồ quá lạnh/quá nóng.';
-      } else if (query.includes('niềng') || query.includes('chỉnh nha') || query.includes('mắc cài')) {
-        reply = 'Chào bạn, GoodSmile hỗ trợ niềng răng mắc cài kim loại, sứ và niềng răng trong suốt Invisalign trả góp 0%. Khám tư vấn hoàn toàn miễn phí!';
-      } else if (query.includes('implant') || query.includes('mất răng')) {
-        reply = 'Cấy ghép Implant là phương pháp phục hình răng đã mất tối ưu nhất hiện nay. GoodSmile sử dụng trụ nhập khẩu Châu Âu chính hãng được bảo hành trọn đời.';
-      } else if (query.includes('lấy cao') || query.includes('vệ sinh')) {
-        reply = 'Lấy cao răng là quy trình nhanh chóng (chỉ khoảng 30 phút), giúp ngăn ngừa viêm nướu, hôi miệng và rụng răng sớm. Chi phí niêm yết tại GoodSmile là ₫300,000.';
+      const body = {
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [
+          ...history,
+          { role: 'user', parts: [{ text: userText }] },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 512,
+        },
+      };
+
+      const res = await fetch(GEMINI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err?.error?.message || `Lỗi ${res.status}`);
       }
 
+      const data = await res.json();
+      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text
+        ?? 'Xin lỗi, tôi không nhận được phản hồi. Vui lòng thử lại.';
+
       setMessages(prev => [...prev, { sender: 'bot', text: reply }]);
+    } catch (err: any) {
+      setMessages(prev => [
+        ...prev,
+        { sender: 'bot', text: `⚠️ Lỗi kết nối AI: ${err.message}. Vui lòng thử lại.` },
+      ]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -74,7 +118,7 @@ export const AIChatbot: React.FC = () => {
               <h3 className="font-bold text-base leading-tight">AI Trợ Lý GoodSmile</h3>
               <p className="text-[11px] text-primary-100 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
-                Sẵn sàng hỗ trợ
+                Hỗ trợ bởi Gemini AI
               </p>
             </div>
           </div>
@@ -121,11 +165,12 @@ export const AIChatbot: React.FC = () => {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               placeholder="Nhập câu hỏi..."
-              className="flex-1 bg-surface-container border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 px-4 py-2.5 outline-none"
+              disabled={isTyping}
+              className="flex-1 bg-surface-container border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 px-4 py-2.5 outline-none disabled:opacity-60"
             />
             <button
               type="submit"
-              disabled={!inputText.trim()}
+              disabled={!inputText.trim() || isTyping}
               className="w-10 h-10 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary-600 disabled:opacity-50 disabled:hover:bg-primary transition-all cursor-pointer shrink-0"
             >
               <Icon name="send" className="text-[18px] ml-1" />

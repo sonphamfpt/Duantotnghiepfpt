@@ -7,3 +7,6 @@ export * from './invoiceApi';
 export * from './medicalRecordApi';
 export * from './shiftApi';
 export * from './staffApi';
+export * from './reviewApi';
+export * from './chatApi';
+

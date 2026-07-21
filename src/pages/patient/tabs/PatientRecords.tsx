@@ -133,12 +133,14 @@ export const PatientRecords: React.FC = () => {
 
   const currentPatient = patients.find(p => p.id === patientId) || {
     id: patientId,
-    name: user?.name || 'Trần Nguyễn Minh',
-    phone: '0901 234 567',
+    name: user?.name || 'Bệnh nhân',
+    phone: user?.phone || '',
     age: 28,
     gender: 'Nam',
     criticalAllergy: 'Không',
-    condition: 'Bình thường'
+    condition: 'Bình thường',
+    address: undefined,
+    dateOfBirth: undefined,
   };
 
   const patientRecords = medicalRecords.filter(r => r.patientId === patientId);
@@ -230,6 +232,13 @@ export const PatientRecords: React.FC = () => {
   const [printVisit, setPrintVisit] = useState<any>(null); // For printing visit record
   const [viewEMRRecord, setViewEMRRecord] = useState<any | null>(null); // For EMR A4 replica detail view
   const [searchQuery, setSearchQuery] = useState('');
+
+  const getEMRDetail = (notes: string | undefined, key: string, fallback: string = '') => {
+    if (!notes || !notes.includes('|')) return fallback;
+    const part = notes.split('|').find(p => p.trim().startsWith(key + ':'));
+    if (!part) return fallback;
+    return part.replace(key + ':', '').trim();
+  };
 
   const filteredVisits = VISITS.filter(visit =>
     visit.doctor.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -870,67 +879,77 @@ export const PatientRecords: React.FC = () => {
                     </h4>
                     
                     {/* Mini Tooth map */}
-                    <div className="p-3 border border-slate-100 rounded-lg bg-slate-50/50 space-y-4">
-                      {/* Upper */}
-                      <div className="flex justify-center items-center gap-1 select-none">
-                        {/* Q1 */}
-                        <div className="flex gap-0.5 justify-end pr-2 border-r border-slate-300">
-                          {[18, 17, 16, 15, 14, 13, 12, 11].map(tooth => {
-                            const match = viewEMRRecord.teethMap?.find((t: any) => t.toothNumber === tooth);
-                            const cond = match?.condition || 'healthy';
-                            return (
-                              <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
-                                <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
-                              </div>
-                            );
-                          })}
+                    {(() => {
+                      const hasChildTeeth = viewEMRRecord.teethMap?.some((t: any) => t.toothNumber >= 50);
+                      const upperRightTeeth = hasChildTeeth ? [55, 54, 53, 52, 51] : [18, 17, 16, 15, 14, 13, 12, 11];
+                      const upperLeftTeeth = hasChildTeeth ? [61, 62, 63, 64, 65] : [21, 22, 23, 24, 25, 26, 27, 28];
+                      const lowerRightTeeth = hasChildTeeth ? [85, 84, 83, 82, 81] : [48, 47, 46, 45, 44, 43, 42, 41];
+                      const lowerLeftTeeth = hasChildTeeth ? [71, 72, 73, 74, 75] : [31, 32, 33, 34, 35, 36, 37, 38];
+
+                      return (
+                        <div className="p-3 border border-slate-100 rounded-lg bg-slate-50/50 space-y-4">
+                          {/* Upper */}
+                          <div className="flex justify-center items-center gap-1 select-none">
+                            {/* Q1 */}
+                            <div className="flex gap-0.5 justify-end pr-2 border-r border-slate-300">
+                              {upperRightTeeth.map(tooth => {
+                                const match = viewEMRRecord.teethMap?.find((t: any) => t.toothNumber === tooth);
+                                const cond = match?.condition || 'healthy';
+                                return (
+                                  <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
+                                    <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {/* Q2 */}
+                            <div className="flex gap-0.5 justify-start pl-2">
+                              {upperLeftTeeth.map(tooth => {
+                                const match = viewEMRRecord.teethMap?.find((t: any) => t.toothNumber === tooth);
+                                const cond = match?.condition || 'healthy';
+                                return (
+                                  <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
+                                    <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          
+                          <div className="border-t border-dashed border-slate-200 my-1 text-center relative">
+                            <span className="bg-white px-2 py-0.5 text-[8px] text-slate-400 font-bold border border-slate-200 rounded-full absolute -top-2.5 left-1/2 -translate-x-1/2">ĐƯỜNG GIỮA HÀM</span>
+                          </div>
+                          
+                          {/* Lower */}
+                          <div className="flex justify-center items-center gap-1 select-none pt-1">
+                            {/* Q4 */}
+                            <div className="flex gap-0.5 justify-end pr-2 border-r border-slate-300">
+                              {lowerRightTeeth.map(tooth => {
+                                const match = viewEMRRecord.teethMap?.find((t: any) => t.toothNumber === tooth);
+                                const cond = match?.condition || 'healthy';
+                                return (
+                                  <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
+                                    <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {/* Q3 */}
+                            <div className="flex gap-0.5 justify-start pl-2">
+                              {lowerLeftTeeth.map(tooth => {
+                                const match = viewEMRRecord.teethMap?.find((t: any) => t.toothNumber === tooth);
+                                const cond = match?.condition || 'healthy';
+                                return (
+                                  <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
+                                    <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
                         </div>
-                        {/* Q2 */}
-                        <div className="flex gap-0.5 justify-start pl-2">
-                          {[21, 22, 23, 24, 25, 26, 27, 28].map(tooth => {
-                            const match = viewEMRRecord.teethMap?.find((t: any) => t.toothNumber === tooth);
-                            const cond = match?.condition || 'healthy';
-                            return (
-                              <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
-                                <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      
-                      <div className="border-t border-dashed border-slate-200 my-1 text-center relative">
-                        <span className="bg-white px-2 py-0.5 text-[8px] text-slate-400 font-bold border border-slate-200 rounded-full absolute -top-2.5 left-1/2 -translate-x-1/2">ĐƯỜNG GIỮA HÀM</span>
-                      </div>
-                      
-                      {/* Lower */}
-                      <div className="flex justify-center items-center gap-1 select-none pt-1">
-                        {/* Q4 */}
-                        <div className="flex gap-0.5 justify-end pr-2 border-r border-slate-300">
-                          {[48, 47, 46, 45, 44, 43, 42, 41].map(tooth => {
-                            const match = viewEMRRecord.teethMap?.find((t: any) => t.toothNumber === tooth);
-                            const cond = match?.condition || 'healthy';
-                            return (
-                              <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
-                                <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {/* Q3 */}
-                        <div className="flex gap-0.5 justify-start pl-2">
-                          {[31, 32, 33, 34, 35, 36, 37, 38].map(tooth => {
-                            const match = viewEMRRecord.teethMap?.find((t: any) => t.toothNumber === tooth);
-                            const cond = match?.condition || 'healthy';
-                            return (
-                              <div key={tooth} title={`Răng ${tooth}: ${match?.treatment || CONDITION_LABELS[cond]?.label || 'Bình thường'}`}>
-                                <ToothSvg number={tooth} condition={cond} isSelected={false} width="18" height="28" textSize="text-[8px]" />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     {/* Detailed tooth conditions table */}
                     <div className="mt-3 space-y-1 max-h-[120px] overflow-y-auto custom-scrollbar">
@@ -1015,10 +1034,16 @@ export const PatientRecords: React.FC = () => {
                   <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-xs text-slate-700">
                     <p className="col-span-2"><strong>Họ và tên bệnh nhân:</strong> {currentPatient.name}</p>
                     <p><strong>Mã bệnh nhân:</strong> {currentPatient.id}</p>
-                    <p><strong>Tuổi / Giới tính:</strong> {currentPatient.age} tuổi / {currentPatient.gender}</p>
+                    <p><strong>Ngày sinh:</strong> {(() => {
+                      const dobVal = getEMRDetail(viewEMRRecord.notes, 'Ngày sinh');
+                      if (!dobVal) return currentPatient.dateOfBirth ? new Date(currentPatient.dateOfBirth).toLocaleDateString('vi-VN') : 'Chưa nhập';
+                      return new Date(dobVal).toLocaleDateString('vi-VN');
+                    })()}</p>
+                    <p><strong>Giới tính:</strong> {getEMRDetail(viewEMRRecord.notes, 'Giới tính') || currentPatient.gender || 'Chưa nhập'}</p>
                     <p><strong>Số điện thoại:</strong> {currentPatient.phone}</p>
-                    <p><strong>Bệnh lý toàn thân:</strong> {currentPatient.condition || 'Bình thường'}</p>
-                    <p className="col-span-2"><strong>Dị ứng:</strong> <span className={currentPatient.criticalAllergy !== 'Không' ? 'text-error font-bold' : ''}>{currentPatient.criticalAllergy}</span></p>
+                    <p><strong>Bệnh lý toàn thân:</strong> {getEMRDetail(viewEMRRecord.notes, 'Bệnh lý nền') || currentPatient.condition || 'Bình thường'}</p>
+                    <p className="col-span-2"><strong>Địa chỉ:</strong> {getEMRDetail(viewEMRRecord.notes, 'Địa chỉ') || currentPatient.address || 'Chưa nhập'}</p>
+                    <p className="col-span-2"><strong>Dị ứng:</strong> <span className={(getEMRDetail(viewEMRRecord.notes, 'Dị ứng') || currentPatient.criticalAllergy) !== 'Không' ? 'text-error font-bold' : ''}>{getEMRDetail(viewEMRRecord.notes, 'Dị ứng') || currentPatient.criticalAllergy}</span></p>
                   </div>
                 </div>
 

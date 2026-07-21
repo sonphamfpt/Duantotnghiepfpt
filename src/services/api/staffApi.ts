@@ -2,9 +2,11 @@ import { request } from './apiClient';
 
 export interface StaffMember {
   id: string;
+  dentistId?: string;
   name: string;
   role: 'dentist' | 'receptionist' | 'cashier' | 'manager';
   roleName: string;
+  phone: string;
   email: string;
   avatar: string;
   status: 'Active' | 'Inactive';
@@ -19,8 +21,8 @@ export interface StaffMember {
 export const staffApi = {
   getStaff: () => request<StaffMember[]>('/staff'),
   
-  createStaff: (data: { name: string; role: string; email: string; password?: string }) => 
-    request<{ id: string; name: string; role: string; email: string }>('/staff', {
+  createStaff: (data: { name: string; role: string; phone: string; email?: string; password?: string }) => 
+    request<{ id: string; name: string; role: string; phone: string; email?: string }>('/staff', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

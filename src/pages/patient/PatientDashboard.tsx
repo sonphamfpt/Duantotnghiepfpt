@@ -15,14 +15,14 @@ import { PatientBilling } from './tabs/PatientBilling';
 
 // ─── Home Tab (Dashboard Overview) ────────────────────────────────────────────
 const PatientHome: React.FC = () => {
-  const { patients, medicalRecords, invoices, appointments } = useClinic();
+  const { patients, medicalRecords, invoices, appointments, queue } = useClinic();
   const { user } = useAuth();
 
   const patientId = user?.id || 'P-8821';
   const patient = patients.find(p => p.id === patientId) || {
     id: patientId,
-    name: user?.name || 'Trần Nguyễn Minh',
-    phone: user?.phone || '0901 234 567',
+    name: user?.name || 'Bệnh nhân',
+    phone: user?.phone || '',
     age: 28,
     gender: 'Nam',
     criticalAllergy: 'Không',
@@ -77,8 +77,35 @@ const PatientHome: React.FC = () => {
     return [];
   }, [latestRecordWithPrescription]);
 
-  // Removed handlePayInvoice and handleRecharge
+  const myAppointments = appointments.filter(a => (a.patientId === patientId || a.patientPhone === patient.phone));
+  const upcomingAppointments = myAppointments.filter(a => a.status === 'Confirmed' || a.status === 'In-Progress');
+  
+  // Xác định tiến độ điều trị hiện tại (Quy trình khám)
+  const isCheckedIn = queue.some(q => q.patientId === patientId && q.status !== 'Completed');
+  let currentStep = 0;
+  
+  if (myAppointments.length > 0) {
+    const latestAppointment = [...myAppointments].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())[0];
+    currentStep = 1; // Đã đặt lịch
+    
+    if (latestAppointment.status === 'In-Progress' || isCheckedIn) {
+      currentStep = 2; // Đã check-in / Đang chờ
+    } else if (latestAppointment.status === 'Completed') {
+      currentStep = 3; // Đã khám xong
+      
+      const hasPendingInvoice = pendingInvoices.length > 0;
+      if (!hasPendingInvoice) {
+        currentStep = 4; // Đã thanh toán
+      }
+    }
+  }
 
+  const workflowSteps = [
+    { label: 'Đặt lịch', done: currentStep >= 1, active: currentStep === 1 },
+    { label: 'Check-in', done: currentStep >= 2, active: currentStep === 2 },
+    { label: 'Khám bệnh', done: currentStep >= 3, active: currentStep === 3 },
+    { label: 'Thanh toán', done: currentStep >= 4, active: currentStep === 4 },
+  ];
   return (
     <div className="p-stack-lg grid grid-cols-12 gap-gutter">
       {/* Left Column: Primary Actions & Records */}
@@ -89,7 +116,7 @@ const PatientHome: React.FC = () => {
           <div className="relative z-10 space-y-4 max-w-lg">
             <h3 className="font-headline-lg text-headline-lg text-white">Bạn đã sẵn sàng cho buổi kiểm tra định kỳ?</h3>
             <p className="text-body-lg font-body-lg opacity-90 text-white/90">
-              Lần lấy cao răng gần nhất của bạn là 6 tháng trước. Hãy duy trì nụ cười rạng rỡ với buổi tư vấn chuyên nghiệp.
+              Hãy duy trì nụ cười rạng rỡ với buổi tư vấn chuyên nghiệp thường xuyên định kỳ.
             </p>
             <button
               onClick={() => setIsBookingOpen(true)}
@@ -107,21 +134,19 @@ const PatientHome: React.FC = () => {
         {/* Treatment Progress Timeline */}
         <div className="bg-white rounded-xl border border-outline-variant p-6 role-accent-patient">
           <div className="flex justify-between items-center mb-6">
-            <h4 className="font-headline-sm text-headline-sm">Tiến độ điều trị chỉnh nha</h4>
+            <h4 className="font-headline-sm text-headline-sm">Quy trình khám bệnh</h4>
             <span className="px-3 py-1 bg-secondary-container text-on-secondary-container text-label-md font-bold rounded-full">
-              Đang thực hiện
+              {currentStep === 4 ? 'Hoàn thành' : (currentStep > 0 ? 'Đang thực hiện' : 'Chưa bắt đầu')}
             </span>
           </div>
           <div className="flex items-center justify-between px-4 py-4 relative">
             <div className="absolute top-1/2 left-0 w-full h-1 bg-surface-container transform -translate-y-1/2 -z-0"></div>
-            <div className="absolute top-1/2 left-0 w-3/4 h-1 bg-secondary transform -translate-y-1/2 -z-0"></div>
+            <div 
+              className="absolute top-1/2 left-0 h-1 bg-secondary transform -translate-y-1/2 -z-0 transition-all duration-500"
+              style={{ width: currentStep > 0 ? `${((currentStep - 1) / (workflowSteps.length - 1)) * 100}%` : '0%' }}
+            ></div>
 
-            {[
-              { label: 'Tư vấn khám', done: true },
-              { label: 'Lấy dấu hàm', done: true },
-              { label: 'Đeo khay niềng', active: true },
-              { label: 'Hoàn tất', done: false },
-            ].map((milestone, i) => (
+            {workflowSteps.map((milestone, i) => (
               <div key={i} className="z-10 flex flex-col items-center">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-md ${
                   milestone.done ? 'bg-secondary text-on-secondary' :
@@ -270,13 +295,25 @@ const PatientHome: React.FC = () => {
                 </div>
               </div>
             )}
-            <div className="flex items-start gap-3 p-3 bg-surface-container rounded-xl border border-outline-variant/40">
-              <Icon name="event" className="text-primary mt-0.5" />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-black text-on-surface">Lịch hẹn tái khám chỉnh nha</p>
-                <p className="text-[11px] text-on-surface-variant mt-0.5 font-medium">Khám ngày mai lúc 09:00 AM — Bác sĩ Nguyễn Hương</p>
+            {upcomingAppointments.length > 0 ? (
+              upcomingAppointments.map((appt) => (
+                <div key={appt.id} className="flex items-start gap-3 p-3 bg-surface-container rounded-xl border border-outline-variant/40">
+                  <Icon name="event" className="text-primary mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-black text-on-surface">Lịch hẹn: {appt.serviceName}</p>
+                    <p className="text-[11px] text-on-surface-variant mt-0.5 font-medium">Thời gian: {appt.time} — {appt.dentistName}</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="flex items-start gap-3 p-3 bg-surface-container rounded-xl border border-outline-variant/40">
+                <Icon name="event_busy" className="text-outline mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black text-on-surface-variant">Không có lịch hẹn sắp tới</p>
+                  <p className="text-[11px] text-on-surface-variant/70 mt-0.5 font-medium">Hãy đặt lịch khám định kỳ để bảo vệ sức khỏe răng miệng.</p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </section>
       </div>

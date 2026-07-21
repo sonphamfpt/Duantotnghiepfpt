@@ -84,6 +84,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Lịch làm việc bác sĩ',   icon: 'calendar_month',     path: '/dashboard/manager?tab=schedule' },
           { label: 'Nhân sự & Phân quyền',   icon: 'groups',             path: '/dashboard/manager?tab=rbac' },
           { label: 'Cấu hình giá dịch vụ',   icon: 'settings',           path: '/dashboard/manager?tab=settings' },
+          { label: 'Đánh giá & AI Phản hồi', icon: 'rate_review',        path: '/dashboard/manager?tab=reviews' },
         ];
       default:
         return [];
@@ -217,6 +218,45 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#fcfdfe]">
+          {/* Real-Time Permission Guard Banner */}
+          {role === 'receptionist' && user?.permissions && !user.permissions.admission && (
+            <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between animate-in slide-in-from-top-2 shadow-sm">
+              <div className="flex items-center gap-3">
+                <Icon name="warning" className="text-amber-600 text-xl shrink-0" />
+                <div>
+                  <h4 className="font-bold text-amber-900 text-xs uppercase tracking-wide">⚠️ Quyền Đón Tiếp Đã Bị Quản Lý Tạm Rút (Real-Time)</h4>
+                  <p className="text-amber-800 text-[11px] mt-0.5">Quản trị viên vừa rút quyền Đón tiếp (admission) của tài khoản này. Bạn không thể thực hiện check-in hoặc đón tiếp bệnh nhân mới.</p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 bg-amber-200/70 text-amber-900 text-[10px] font-mono font-extrabold rounded-lg shrink-0">RBAC Enforced</span>
+            </div>
+          )}
+
+          {role === 'dentist' && user?.permissions && !user.permissions.clinical && (
+            <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between animate-in slide-in-from-top-2 shadow-sm">
+              <div className="flex items-center gap-3">
+                <Icon name="warning" className="text-amber-600 text-xl shrink-0" />
+                <div>
+                  <h4 className="font-bold text-amber-900 text-xs uppercase tracking-wide">⚠️ Quyền Khám Lâm Sàng Đã Bị Quản Lý Tạm Rút (Real-Time)</h4>
+                  <p className="text-amber-800 text-[11px] mt-0.5">Quản trị viên vừa rút quyền Lâm sàng (clinical) của tài khoản này. Vui lòng liên hệ Quản lý để mở lại quyền khám.</p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 bg-amber-200/70 text-amber-900 text-[10px] font-mono font-extrabold rounded-lg shrink-0">RBAC Enforced</span>
+            </div>
+          )}
+
+          {role === 'cashier' && user?.permissions && !user.permissions.checkout && (
+            <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between animate-in slide-in-from-top-2 shadow-sm">
+              <div className="flex items-center gap-3">
+                <Icon name="warning" className="text-amber-600 text-xl shrink-0" />
+                <div>
+                  <h4 className="font-bold text-amber-900 text-xs uppercase tracking-wide">⚠️ Quyền Tính Tiền Thu Ngân Đã Bị Quản Lý Tạm Rút (Real-Time)</h4>
+                  <p className="text-amber-800 text-[11px] mt-0.5">Quản trị viên vừa rút quyền Tính tiền (checkout) của tài khoản này. Bạn không thể thực hiện thu tiền hóa đơn.</p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 bg-amber-200/70 text-amber-900 text-[10px] font-mono font-extrabold rounded-lg shrink-0">RBAC Enforced</span>
+            </div>
+          )}
           {children}
         </main>
       </div>
