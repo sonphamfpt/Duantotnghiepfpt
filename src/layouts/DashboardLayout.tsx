@@ -145,6 +145,13 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
         {/* Sidebar Footer */}
         <div className="px-2 py-3 border-t border-outline-variant space-y-0.5">
+          <button
+            onClick={() => navigate('/')}
+            className="w-full text-left text-on-surface-variant hover:bg-surface-container-high rounded-lg px-3 py-2.5 flex items-center gap-3 transition-all"
+          >
+            <Icon name="home" className="text-[20px] text-primary" />
+            <span className="text-xs font-semibold">Trang chủ phòng khám</span>
+          </button>
           {role === 'patient' && (
             <button
               onClick={() => navigate('/patient?tab=ai')}
@@ -177,6 +184,14 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
         {/* Top Header */}
         <header className="h-14 bg-surface border-b border-outline-variant flex justify-between items-center px-6 shrink-0">
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/')}
+              className="px-3.5 py-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-primary rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-outline-variant/60 cursor-pointer shadow-sm active:scale-95"
+              title="Quay lại Trang chủ GoodSmile"
+            >
+              <Icon name="home" className="text-[18px] text-primary" />
+              <span className="hidden sm:inline">Trang chủ</span>
+            </button>
             <div className="text-sm font-semibold text-on-surface-variant hidden sm:block">
               {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
             </div>
