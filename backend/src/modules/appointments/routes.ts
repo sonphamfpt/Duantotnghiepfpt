@@ -29,8 +29,13 @@ router.post(
   appointmentsController.createAppointment
 );
 
-// PATCH /api/appointments/:id/cancel
+// PATCH & PUT /api/appointments/:id/cancel
 router.patch(
+  '/:id/cancel',
+  validateRequest(cancelAppointmentSchema),
+  appointmentsController.cancelAppointment
+);
+router.put(
   '/:id/cancel',
   validateRequest(cancelAppointmentSchema),
   appointmentsController.cancelAppointment

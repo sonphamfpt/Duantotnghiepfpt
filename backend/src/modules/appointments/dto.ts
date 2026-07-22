@@ -43,10 +43,8 @@ export const cancelAppointmentSchema = z.object({
     id: z.string().regex(/^\d+$/, "ID lịch hẹn phải là một số nguyên dương"),
   }),
   body: z.object({
-    cancelReason: z.string({
-      required_error: "Lý do hủy lịch (cancelReason) là bắt buộc",
-    }).min(5, "Lý do hủy lịch phải có ít nhất 5 ký tự").max(200, "Lý do hủy tối đa 200 ký tự"),
-  }),
+    cancelReason: z.string().min(2, "Lý do hủy lịch phải có ít nhất 2 ký tự").max(200, "Lý do hủy tối đa 200 ký tự").optional().default("Hủy bởi nhân viên tiếp đón"),
+  }).optional().default({ cancelReason: "Hủy bởi nhân viên tiếp đón" }),
 });
 
 export type GetAvailableSlotsInput = z.infer<typeof getAvailableSlotsSchema>;

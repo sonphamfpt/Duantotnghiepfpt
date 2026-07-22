@@ -3,6 +3,7 @@ import { redis } from '../../config/redis';
 import { AppError } from '../../middlewares/errorHandler';
 import { calculateAvailableSlots } from '../../utils/slotCalculator';
 import { Prisma } from '@prisma/client';
+import { socketManager } from '../../config/socket';
 
 async function resolveServiceId(id: string): Promise<bigint> {
   const cleanId = id.replace('S-', '');
@@ -451,19 +452,47 @@ export class AppointmentsService {
    * Lấy toàn bộ danh sách lịch hẹn để đồng bộ hóa cho Lễ tân
    */
   async getAllAppointments() {
-    // Tự động chuyển các lịch quá hạn 1 tiếng chưa check-in thành NoShow
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    await prisma.appointment.updateMany({
+    // Tự động chuyển các lịch quá hạn 15 phút chưa check-in thành Cancelled (Tự động hủy)
+    const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000);
+    const overdueAppointments = await prisma.appointment.findMany({
       where: {
         status: 'Confirmed',
         startTime: {
-          lt: oneHourAgo,
+          lt: fifteenMinsAgo,
         },
       },
-      data: {
-        status: 'NoShow',
+      select: {
+        appointmentId: true,
+        patientId: true,
       },
     });
+
+    let countCancelled = 0;
+    if (overdueAppointments.length > 0) {
+      for (const appt of overdueAppointments) {
+        const inQueue = await prisma.queueTicket.findFirst({
+          where: {
+            patientId: appt.patientId,
+            status: { notIn: ['Completed', 'Cancelled'] },
+          },
+        });
+        if (!inQueue) {
+          await prisma.appointment.update({
+            where: { appointmentId: appt.appointmentId },
+            data: {
+              status: 'Cancelled',
+              cancelledAt: new Date(),
+              cancelReason: 'Tự động hủy do trễ quá 15 phút chưa check-in',
+            },
+          });
+          countCancelled++;
+        }
+      }
+    }
+
+    if (countCancelled > 0) {
+      socketManager.emit('appointment:cancelled', { count: countCancelled, reason: 'auto_cancelled_15m_late' });
+    }
 
     const list = await prisma.appointment.findMany({
       include: {

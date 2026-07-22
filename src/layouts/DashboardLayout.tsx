@@ -100,10 +100,13 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       if (location.pathname !== itemPathname) return false;
       const itemParams = new URLSearchParams(itemSearch);
       const currentParams = new URLSearchParams(location.search);
-      for (const [key, value] of itemParams.entries()) {
-        if (currentParams.get(key) !== value) return false;
-      }
-      return true;
+      let isMatch = true;
+      itemParams.forEach((value, key) => {
+        if (currentParams.get(key) !== value) {
+          isMatch = false;
+        }
+      });
+      return isMatch;
     }
     return location.pathname === item.path && (location.search === '' || !location.search.includes('tab='));
   };

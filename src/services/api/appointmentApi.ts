@@ -115,10 +115,11 @@ export const appointmentApi = {
   /**
    * Hủy lịch hẹn
    */
-  cancel: (appointmentId: string) => {
+  cancel: (appointmentId: string, cancelReason: string = 'Hủy bởi nhân viên tiếp đón') => {
     const dbId = appointmentId.split('-')[1] || appointmentId;
     return request<any>(`/appointments/${dbId}/cancel`, {
       method: 'PUT',
+      body: JSON.stringify({ cancelReason }),
     });
   },
 };

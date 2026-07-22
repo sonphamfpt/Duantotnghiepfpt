@@ -243,6 +243,71 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
   }, []);
 
+  // ── Tự động kiểm tra & hủy lịch hẹn chưa check-in quá 15 phút (Realtime 15s) ──
+  useEffect(() => {
+    if (!appointments || appointments.length === 0) return;
+
+    const checkOverdueRealtime = () => {
+      const now = new Date();
+      const padZero = (n: number) => n.toString().padStart(2, '0');
+      const todayStr = `${padZero(now.getDate())}/${padZero(now.getMonth() + 1)}/${now.getFullYear()}`;
+
+      appointments.forEach((a) => {
+        if (a.status !== 'Confirmed') return;
+
+        // Bỏ qua nếu bệnh nhân đã được check-in vào hàng chờ
+        const isAlreadyInQueue = queue.some((q) => q.patientId === a.patientId && q.status !== 'Completed');
+        if (isAlreadyInQueue) return;
+
+        // Parse thời gian
+        const datePart = a.time.includes('@') ? a.time.split('@')[0].trim() : todayStr;
+        const timePart = a.time.includes('@') ? a.time.split('@')[1].trim() : a.time;
+
+        const match = timePart.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+        if (!match) return;
+
+        let hours = parseInt(match[1]);
+        const mins = parseInt(match[2]);
+        const ampm = match[3];
+        if (ampm) {
+          if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+          if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+        }
+
+        let apptDateObj: Date;
+        if (datePart.includes('/')) {
+          const parts = datePart.split('/');
+          if (parts.length === 3) {
+            apptDateObj = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), hours, mins, 0, 0);
+          } else {
+            apptDateObj = new Date();
+            apptDateObj.setHours(hours, mins, 0, 0);
+          }
+        } else {
+          apptDateObj = new Date();
+          apptDateObj.setHours(hours, mins, 0, 0);
+        }
+
+        const diffMs = now.getTime() - apptDateObj.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+
+        // Nếu trễ >= 15 phút chưa check-in -> Tự động hủy
+        if (diffMins >= 15) {
+          setAppointments((prev) =>
+            prev.map((item) => (item.id === a.id ? { ...item, status: 'Cancelled' as const } : item))
+          );
+          addLog('SYSTEM', 'WARN', `Lịch hẹn ${a.id} của ${a.patientName} bị tự động hủy do trễ 15 phút chưa check-in.`);
+          appointmentApi.cancel(a.id, 'Tự động hủy do trễ quá 15 phút chưa check-in').catch(() => {});
+        }
+      });
+    };
+
+    checkOverdueRealtime();
+    const intervalId = setInterval(checkOverdueRealtime, 15000); // kiểm tra mỗi 15 giây real-time
+
+    return () => clearInterval(intervalId);
+  }, [appointments, queue]);
+
   const fetchPatientRecords = async (patientId: string) => {
     try {
       const response = await medicalRecordApi.getByPatient(patientId);
@@ -569,17 +634,22 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  const cancelAppointment = async (appointmentId: string) => {
+  const cancelAppointment = async (appointmentId: string, reason: string = 'Hủy bởi lễ tân phòng khám') => {
     try {
-      const response = await appointmentApi.cancel(appointmentId);
-      if (response.success) {
+      const response = await appointmentApi.cancel(appointmentId, reason);
+      if (response.success || response.data) {
         setAppointments((prev) =>
           prev.map((a) => (a.id === appointmentId ? { ...a, status: 'Cancelled' as const } : a))
         );
-        addLog('RECEPTION', 'WARN', `Hủy lịch hẹn ${appointmentId} thành công.`);
+        addLog('RECEPTION', 'WARN', `Hủy lịch hẹn ${appointmentId} thành công. Lý do: ${reason}`);
+        await refreshAllData();
+        return true;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Lỗi khi hủy lịch hẹn:', err);
+      addLog('RECEPTION', 'ERR', `Lỗi khi hủy lịch hẹn ${appointmentId}: ${err?.message || 'Không thể kết nối API.'}`);
+      alert(err.message || 'Không thể hủy lịch hẹn.');
+      return false;
     }
   };
   return (

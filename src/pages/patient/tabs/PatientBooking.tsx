@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Icon } from '../../../components/Icon';
 import { OtpVerificationModal } from '../../../components/OtpVerificationModal';
 import { AlertModal } from '../../../components/AlertModal';
@@ -6,24 +6,12 @@ import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
 import { appointmentApi } from '../../../services/api';
 
-type Step = 1 | 2 | 3 | 4;
-
-
-const mapFrontendToBackendId = (id: string): string => {
-  const numPart = id.split('-')[1];
-  return numPart ? parseInt(numPart, 10).toString() : id;
-};
-
-const formatSlotTime = (isoString: string): string => {
+const formatSlotToTimeString = (isoString: string): string => {
+  if (!isoString) return '';
   const dateObj = new Date(isoString);
   const hours = dateObj.getHours().toString().padStart(2, '0');
   const minutes = dateObj.getMinutes().toString().padStart(2, '0');
   return `${hours}:${minutes}`;
-};
-
-const isMorningSlot = (isoString: string): boolean => {
-  const dateObj = new Date(isoString);
-  return dateObj.getHours() < 12;
 };
 
 const formatLocalDateStr = (dateStr: string): string => {
@@ -36,29 +24,6 @@ export const PatientBooking: React.FC = () => {
   const { services, dentists, patients, appointments, addLog, refreshAllData, doctorShifts } = useClinic();
   const { user } = useAuth();
 
-  const [step, setStep] = useState<Step>(1);
-  const [selectedService, setSelectedService] = useState('');
-  const [bookedApptId, setBookedApptId] = useState('');
-  const [selectedDentist, setSelectedDentist] = useState('');
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState(''); // Lưu chuỗi ISO đầy đủ từ Backend
-  const [note, setNote] = useState('');
-  const [isBooked, setIsBooked] = useState(false);
-
-  // States gọi API
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
-  const [loadingSlots, setLoadingSlots] = useState(false);
-  const [slotsError, setSlotsError] = useState('');
-  const [submittingAppt, setSubmittingAppt] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-  const [showOtpModal, setShowOtpModal] = useState(false);
-  const [slotRefreshTick, setSlotRefreshTick] = useState(0);
-  const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string; type: 'error' | 'warning' | 'info' | 'success' }>({ open: false, title: '', message: '', type: 'error' });
-
-  const showAlert = (title: string, message: string, type: 'error' | 'warning' | 'info' | 'success' = 'error') => {
-    setAlertModal({ open: true, title, message, type });
-  };
-
   const formatDateInputValue = (value: Date): string => {
     const year = value.getFullYear();
     const month = (value.getMonth() + 1).toString().padStart(2, '0');
@@ -66,11 +31,68 @@ export const PatientBooking: React.FC = () => {
     return `${year}-${month}-${day}`;
   };
 
-  const patientName = user?.name || 'Bệnh nhân';
-  const patientPhone = user?.phone || '';
-  const patientId = user?.id || '';
+  const todayObj = new Date();
+  const minDateStr = formatDateInputValue(todayObj);
+  const maxDateObj = new Date();
+  maxDateObj.setDate(maxDateObj.getDate() + 14);
+  const maxDateStr = formatDateInputValue(maxDateObj);
 
-  const matchedPatient = patients.find(p => p.id === patientId);
+  const [patientName, setPatientName] = useState(user?.name || '');
+  const [patientPhone, setPatientPhone] = useState(user?.phone || '');
+  const [selectedServiceId, setSelectedServiceId] = useState('');
+  const [selectedDentistId, setSelectedDentistId] = useState('');
+  const [date, setDate] = useState(minDateStr);
+  const [selectedTimeIso, setSelectedTimeIso] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const [isBooked, setIsBooked] = useState(false);
+  const [bookedApptId, setBookedApptId] = useState('');
+  const [createdAppointment, setCreatedAppointment] = useState<any>(null);
+
+  // API Slot states
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotsError, setSlotsError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [slotRefreshTick, setSlotRefreshTick] = useState(0);
+  const [antiSpamError, setAntiSpamError] = useState('');
+
+  // Per-field validation errors matching BookingPage.tsx
+  const [nameError, setNameError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [serviceError, setServiceError] = useState('');
+  const [dentistError, setDentistError] = useState('');
+  const [timeError, setTimeError] = useState('');
+
+  const [alertModal, setAlertModal] = useState<{ open: boolean; title: string; message: string; type: 'error' | 'warning' | 'info' | 'success' }>({ open: false, title: '', message: '', type: 'error' });
+
+  const showAlert = (title: string, message: string, type: 'error' | 'warning' | 'info' | 'success' = 'error') => {
+    setAntiSpamError(message);
+    setAlertModal({ open: true, title, message, type });
+  };
+
+  const PHONE_VN_REGEX = /^(0[3|5|7|8|9])[0-9]{8}$/;
+
+  const validatePhone = (phone: string): string => {
+    const clean = phone.replace(/\s|-/g, '');
+    if (!clean) return 'Vui lòng nhập số điện thoại.';
+    if (!/^[0-9]+$/.test(clean)) return 'Số điện thoại chỉ được chứa các chữ số (0-9).';
+    if (clean.length !== 10) return 'Số điện thoại phải đủ 10 chữ số.';
+    if (!PHONE_VN_REGEX.test(clean)) return 'Số điện thoại không hợp lệ. Phải bắt đầu bằng 03x, 05x, 07x, 08x, hoặc 09x.';
+    return '';
+  };
+
+  const validateName = (name: string): string => {
+    const trimmed = name.trim();
+    if (!trimmed) return 'Vui lòng nhập họ và tên.';
+    if (trimmed.length < 3) return 'Họ và tên phải có ít nhất 3 ký tự.';
+    if (/[0-9!@#$%^&*()_+\-=\[\]{};\':"|,.<>\/?\\]/.test(trimmed)) return 'Họ và tên không được chứa ký tự đặc biệt hoặc chữ số.';
+    return '';
+  };
+
+  const patientId = user?.id || '';
+  const matchedPatient = patients.find(p => p.id === patientId || p.phone === patientPhone.trim());
   const cancelCount = matchedPatient 
     ? appointments.filter(a => a.patientId === matchedPatient.id && a.status === 'Cancelled').length 
     : 0;
@@ -78,125 +100,75 @@ export const PatientBooking: React.FC = () => {
     ? (matchedPatient.isLocked || cancelCount >= 3) && !matchedPatient.isUnlocked 
     : false;
 
+  // Auto-sync patient name & phone if logged in
   useEffect(() => {
-    if (selectedDentist && selectedDate) {
+    if (user?.name && !patientName) setPatientName(user.name);
+    if (user?.phone && !patientPhone) setPatientPhone(user.phone);
+  }, [user, patientName, patientPhone]);
+
+  // Check doctor shifts on date change
+  useEffect(() => {
+    if (selectedDentistId && date) {
       const isStillOnDuty = doctorShifts.some(
-        s => s.dentistId === selectedDentist && s.date === selectedDate
+        s => s.dentistId === selectedDentistId && s.date === date
       );
       if (!isStillOnDuty) {
-        setSelectedDentist('');
-        setSelectedTime('');
+        setSelectedDentistId('');
+        setSelectedTimeIso('');
       }
     }
-  }, [selectedDate, doctorShifts, selectedDentist]);
+  }, [date, doctorShifts, selectedDentistId]);
 
-  // Tự động load danh sách slot khám trống từ API
-  useEffect(() => {
-    const fetchSlots = async () => {
-      if (!selectedDentist || !selectedService || !selectedDate) {
-        setAvailableSlots([]);
-        setSelectedTime('');
-        return;
-      }
-
-      setLoadingSlots(true);
-      setSlotsError('');
-
-      try {
-        const response = await appointmentApi.getAvailableSlots(selectedDentist, selectedDate, selectedService);
-        const slots = response.data || [];
-        setAvailableSlots(slots);
-        setSelectedTime((prev) => slots.includes(prev) ? prev : '');
-      } catch (err: any) {
-        console.error('Lỗi khi lấy slot khám:', err);
-        setSlotsError(err.message || 'Lỗi kết nối máy chủ API.');
-        setAvailableSlots([]);
-        setSelectedTime('');
-      } finally {
-        setLoadingSlots(false);
-      }
-    };
-
-    fetchSlots();
-  }, [selectedDentist, selectedService, selectedDate, slotRefreshTick]);
-
-  useEffect(() => {
-    if (!selectedDentist || !selectedService || selectedDate !== formatDateInputValue(new Date())) return;
-
-    const timer = window.setInterval(() => {
-      setSlotRefreshTick((prev) => prev + 1);
-    }, 60000);
-
-    return () => window.clearInterval(timer);
-  }, [selectedDate, selectedDentist, selectedService]);
-
-  // Build next 14 days for date picker, starting from today
-  const today = new Date();
-  const dateOptions: { label: string; value: string; dayName: string }[] = [];
-  for (let i = 0; i <= 14; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-    dateOptions.push({
-      label: i === 0 ? `Hôm nay, ${d.getDate()}/${d.getMonth() + 1}` : `${d.getDate()}/${d.getMonth() + 1}`,
-      value: formatDateInputValue(d),
-      dayName: dayNames[d.getDay()],
-    });
-  }
-
-  const serviceSel = services.find(s => s.id === selectedService);
-  const dentistSel = dentists.find(d => d.id === selectedDentist);
-
-  const createAppointment = async (otpToken: string) => {
-    if (!serviceSel || !dentistSel || !selectedDate || !selectedTime) {
-      setSubmitError('Vui lòng hoàn thành đầy đủ các bước chọn dịch vụ, bác sĩ, ngày và khung giờ hẹn khám.');
+  // Fetch slots
+  const fetchAvailableSlots = useCallback(async () => {
+    if (!selectedDentistId || !selectedServiceId || !date) {
+      setAvailableSlots([]);
+      setSelectedTimeIso('');
       return;
     }
 
-    setSubmittingAppt(true);
-    setSubmitError('');
+    setLoadingSlots(true);
+    setSlotsError('');
 
     try {
-      const response = await appointmentApi.createAppointment({
-        patientId,
-        dentistId: selectedDentist,
-        serviceId: selectedService,
-        startTime: selectedTime,
-        bookingChannel: 'Online',
-        patientNotes: note || undefined,
-        otpToken,
-      });
+      const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
+      const slots = response.data || [];
 
-      const bookedAppt = response.data;
-
-      setBookedApptId(bookedAppt.appointmentId.toString());
-      addLog('SYSTEM', 'SUCCESS', `Bệnh nhân ${patientName} đặt lịch trực tuyến thành công.`);
-      await refreshAllData();
-      setIsBooked(true);
-      setStep(4);
+      if (slots.length > 0) {
+        setAvailableSlots(slots);
+        setSelectedTimeIso((prev) => slots.includes(prev) ? prev : (slots[0] || ''));
+      } else {
+        setSlotsError('Không có khung giờ trống. Vui lòng chọn bác sĩ hoặc ngày khác.');
+        setAvailableSlots([]);
+        setSelectedTimeIso('');
+      }
     } catch (err: any) {
-      console.error('Lỗi khi đặt lịch khám:', err);
-      const errMsg = err.message || 'Lỗi kết nối máy chủ API.';
-      setSubmitError(errMsg);
-      showAlert('Đặt lịch không thành công', errMsg, 'error');
+      console.error('Lỗi khi lấy slot khám:', err);
+      setSlotsError(err.message || 'Lỗi kết nối máy chủ API.');
+      setAvailableSlots([]);
+      setSelectedTimeIso('');
     } finally {
-      setSubmittingAppt(false);
+      setLoadingSlots(false);
     }
-  };
+  }, [selectedDentistId, selectedServiceId, date]);
 
-  const checkRateLimit = (_phone: string): boolean => {
-    // Dùng patientId để so sánh chính xác, tránh lỗi format phone
-    // Chỉ đếm status Pending và Confirmed (đang chờ thực sự)
+  useEffect(() => {
+    fetchAvailableSlots();
+  }, [fetchAvailableSlots, slotRefreshTick]);
+
+  const checkRateLimit = (phone: string): boolean => {
     const activeAppts = matchedPatient
       ? appointments.filter(
           a => a.patientId === matchedPatient.id &&
           (a.status === 'Pending' || a.status === 'Confirmed')
         )
-      : [];
+      : appointments.filter(
+          a => a.patientPhone === phone.trim() &&
+          a.status !== 'Completed' && a.status !== 'Cancelled'
+        );
     if (activeAppts.length >= 3) {
       const msg = `Bạn đã có ${activeAppts.length} lịch hẹn đang chờ. Vui lòng hoàn thành hoặc hủy lịch cũ trước khi đặt thêm.`;
-      setSubmitError(msg);
-      showAlert('Giới hạn lịch hẹn', msg, 'warning');
+      showAlert('Quá giới hạn lịch hẹn', msg, 'warning');
       return false;
     }
     return true;
@@ -204,7 +176,7 @@ export const PatientBooking: React.FC = () => {
 
   const checkDuplicate = (phone: string, dateStr: string, timeIso: string): boolean => {
     const formattedDate = formatLocalDateStr(dateStr);
-    const formattedTime = formatSlotTime(timeIso);
+    const formattedTime = formatSlotToTimeString(timeIso);
     const timeStr = `${formattedDate} @ ${formattedTime}`;
     const duplicate = appointments.find(
       a => a.patientPhone === phone.trim() &&
@@ -213,502 +185,548 @@ export const PatientBooking: React.FC = () => {
     );
     if (duplicate) {
       const msg = 'Bạn đã có lịch hẹn vào khung giờ này rồi. Vui lòng chọn thời gian khác.';
-      setSubmitError(msg);
       showAlert('Trùng lịch hẹn', msg, 'warning');
       return false;
     }
     return true;
   };
 
-  const handleConfirm = async () => {
-    if (!serviceSel || !dentistSel || !selectedDate || !selectedTime) {
-      setSubmitError('Vui lòng hoàn thành đầy đủ các bước chọn dịch vụ, bác sĩ, ngày và khung giờ hẹn khám.');
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAntiSpamError('');
+
+    const nErr = validateName(patientName);
+    const pErr = validatePhone(patientPhone);
+    const sErr = !selectedServiceId ? 'Vui lòng chọn dịch vụ điều trị.' : '';
+    const dErr = !selectedDentistId ? 'Vui lòng chọn bác sĩ thăm khám.' : '';
+    const tErr = !selectedTimeIso ? 'Vui lòng chọn khung giờ hẹn khám.' : '';
+
+    setNameError(nErr);
+    setPhoneError(pErr);
+    setServiceError(sErr);
+    setDentistError(dErr);
+    setTimeError(tErr);
+
+    if (nErr || pErr || sErr || dErr || tErr) return;
+
+    if (isLocked) {
+      setAntiSpamError('Tài khoản của bạn đã bị tạm khóa do vi phạm chính sách hủy lịch quá 3 lần. Vui lòng liên hệ phòng khám.');
       return;
     }
 
     if (!checkRateLimit(patientPhone)) return;
-    if (!checkDuplicate(patientPhone, selectedDate, selectedTime)) return;
+    if (!checkDuplicate(patientPhone, date, selectedTimeIso)) return;
 
-    setSubmitError('');
-    setSubmittingAppt(true);
-
+    setSubmitting(true);
     try {
-      const latestSlots = await appointmentApi.ensureSlotAvailable(selectedDentist, selectedDate, selectedService, selectedTime);
+      const latestSlots = await appointmentApi.ensureSlotAvailable(selectedDentistId, date, selectedServiceId, selectedTimeIso);
       setAvailableSlots(latestSlots);
-      setSelectedTime((prev) => latestSlots.includes(prev) ? prev : '');
+      setSelectedTimeIso((prev) => latestSlots.includes(prev) ? prev : '');
       setShowOtpModal(true);
     } catch (err: any) {
-      setSubmitError(err.message || 'Khung giờ đã chọn không còn khả dụng. Vui lòng chọn lại.');
+      setAntiSpamError(err.message || 'Khung giờ đã chọn không còn khả dụng. Vui lòng chọn lại.');
       setSlotRefreshTick((prev) => prev + 1);
     } finally {
-      setSubmittingAppt(false);
+      setSubmitting(false);
+    }
+  };
+
+  const createAppointment = async (otpToken?: string) => {
+    const service = services.find(s => s.id === selectedServiceId);
+    const dentist = dentists.find(d => d.id === selectedDentistId);
+    if (!service || !dentist) return;
+
+    setSubmitting(true);
+    setAntiSpamError('');
+
+    try {
+      const response = await appointmentApi.createAppointment({
+        dentistId: selectedDentistId,
+        serviceId: selectedServiceId,
+        startTime: selectedTimeIso,
+        bookingChannel: 'Online',
+        patientNotes: notes || undefined,
+        ...(user?.id ? { patientId: user.id } : { patientName: patientName.trim(), patientPhone: patientPhone.trim() }),
+        otpToken,
+      });
+
+      const bookedApp = response.data;
+
+      const localApp = {
+        id: `A-${bookedApp.appointmentId}`,
+        patientId: user?.id || `P-${bookedApp.patientId || ''}`,
+        patientName: patientName,
+        patientPhone: patientPhone,
+        serviceName: service.name,
+        dentistId: dentist.id,
+        dentistName: dentist.name,
+        time: `${formatLocalDateStr(date)} @ ${selectedTimeIso ? formatSlotToTimeString(selectedTimeIso) : ''}`,
+        status: 'Confirmed' as const,
+      };
+
+      addLog('SYSTEM', 'SUCCESS', `Bệnh nhân ${patientName} (SĐT: ${patientPhone}) đặt lịch hẹn khám thành công.`);
+
+      setBookedApptId(bookedApp.appointmentId.toString());
+      setCreatedAppointment(localApp);
+      setIsBooked(true);
+      await refreshAllData();
+    } catch (err: any) {
+      console.error('Lỗi khi tạo lịch hẹn:', err);
+      const errMsg = err.message || 'Không thể tạo lịch hẹn.';
+      setAntiSpamError(errMsg);
+      showAlert('Đặt lịch không thành công', errMsg, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleOtpVerified = (otpToken: string) => {
     setShowOtpModal(false);
-    void createAppointment(otpToken);
+    createAppointment(otpToken);
   };
 
   const handleReset = () => {
-    setStep(1);
-    setSelectedService('');
-    setSelectedDentist('');
-    setSelectedDate('');
-    setSelectedTime('');
-    setNote('');
     setIsBooked(false);
+    setSelectedServiceId('');
+    setSelectedDentistId('');
+    setSelectedTimeIso('');
+    setNotes('');
     setBookedApptId('');
-    setSubmitError('');
+    setCreatedAppointment(null);
+    setAntiSpamError('');
   };
 
-  const steps = [
-    { num: 1, label: 'Chọn dịch vụ' },
-    { num: 2, label: 'Chọn ngày khám' },
-    { num: 3, label: 'Chọn bác sĩ & giờ' },
-    { num: 4, label: 'Xác nhận' },
-  ];
+  const selectedService = services.find(s => s.id === selectedServiceId);
+  const morningSlots = availableSlots.filter(slot => new Date(slot).getHours() < 12);
+  const afternoonSlots = availableSlots.filter(slot => {
+    const h = new Date(slot).getHours();
+    return h >= 12 && h < 17;
+  });
+  const eveningSlots = availableSlots.filter(slot => new Date(slot).getHours() >= 17);
 
   return (
-    <div className="p-stack-lg max-w-4xl mx-auto">
-      {/* Page Header */}
-      <div className="mb-8">
-        <h2 className="font-headline-md text-headline-md text-on-surface">Đặt lịch khám mới</h2>
-        <p className="text-body-md text-on-surface-variant mt-1">Hoàn thành 4 bước đơn giản để đặt lịch khám tại GoodSmile</p>
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-[#00478d] to-[#005eb8] p-6 rounded-2xl text-white shadow-md flex items-center justify-between">
+        <div>
+          <span className="text-xs uppercase font-bold tracking-widest bg-white/10 px-3 py-1 rounded-full border border-white/20">
+            Cổng Thông Tin Bệnh Nhân
+          </span>
+          <h2 className="text-2xl md:text-3xl font-extrabold mt-2">Đặt Lịch Khám Mới</h2>
+          <p className="text-sm opacity-85 mt-1">Đăng ký lịch khám trực tuyến nhanh chóng trong 1 bước duy nhất</p>
+        </div>
+        <div className="hidden sm:flex items-center justify-center w-16 h-16 rounded-2xl bg-white/10 border border-white/20 shrink-0">
+          <Icon name="calendar_add_on" className="text-3xl text-white" />
+        </div>
       </div>
 
-      {/* Step Progress Bar */}
-      <div className="flex items-center mb-10 px-2">
-        {steps.map((s, idx) => (
-          <React.Fragment key={s.num}>
-            <div className="flex flex-col items-center gap-1">
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ${
-                  step > s.num
-                    ? 'bg-secondary text-on-secondary shadow-md'
-                    : step === s.num
-                    ? 'bg-primary text-on-primary shadow-lg ring-4 ring-primary/20'
-                    : 'bg-surface-container text-on-surface-variant border border-outline-variant'
-                }`}
-              >
-                {step > s.num ? (
-                  <Icon name="check" className="text-[18px]" />
-                ) : (
-                  s.num
-                )}
-              </div>
-              <span className={`text-[11px] font-bold whitespace-nowrap ${step === s.num ? 'text-primary' : 'text-on-surface-variant'}`}>
-                {s.label}
-              </span>
-            </div>
-            {idx < steps.length - 1 && (
-              <div className={`flex-1 h-1 mx-2 rounded-full transition-all duration-500 ${step > s.num ? 'bg-secondary' : 'bg-outline-variant'}`} />
-            )}
-          </React.Fragment>
-        ))}
-      </div>
+      {isBooked && createdAppointment ? (
+        /* SUCCESS SCREEN */
+        <div className="bg-white border-2 border-emerald-500 rounded-2xl p-8 md:p-10 text-center shadow-lg animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-5">
+            <Icon name="check_circle" className="text-[48px]" />
+          </div>
+          <h3 className="text-2xl md:text-3xl font-extrabold text-[#0f172a]">Đặt Lịch Hẹn Thành Công!</h3>
+          <p className="text-emerald-700 font-bold text-sm mt-1">
+            Mã lịch hẹn của bạn là: {createdAppointment.id}
+          </p>
 
-      {/* Step 1: Chọn dịch vụ */}
-      {step === 1 && (
-        <div className="space-y-4 animate-fade-in">
-          {isLocked ? (
-            <div className="bg-error-container/10 border border-error/20 text-on-error-container rounded-2xl p-8 text-center space-y-4 max-w-lg mx-auto my-8">
-              <div className="w-16 h-16 bg-error text-on-error rounded-full flex items-center justify-center mx-auto shadow-md">
-                <Icon name="block" className="text-3xl text-white" />
-              </div>
-              <h3 className="font-headline-sm text-headline-sm text-on-surface">Tài khoản của bạn đã bị khóa đặt lịch</h3>
-              <p className="text-sm text-on-surface-variant leading-relaxed">
-                Số điện thoại của bạn đã bị tạm khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám quá 3 lần. Vui lòng liên hệ trực tiếp với phòng khám để được hỗ trợ mở khóa.
-              </p>
+          <div className="bg-slate-50 border border-slate-200 p-6 text-left space-y-3 max-w-md mx-auto my-6 text-sm rounded-xl">
+            <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+              <span className="text-slate-500 font-medium">Bệnh nhân:</span>
+              <span className="text-slate-900 font-bold">{createdAppointment.patientName}</span>
             </div>
-          ) : (
-            <>
-              <h3 className="font-headline-sm text-headline-sm text-on-surface mb-2">Bạn muốn khám dịch vụ gì?</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {services.filter(s => s.isActive).map((svc) => (
-                  <button
-                    key={svc.id}
-                    onClick={() => setSelectedService(svc.id)}
-                    className={`text-left p-5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
-                      selectedService === svc.id
-                        ? 'border-primary bg-primary-container shadow-md'
-                        : 'border-outline-variant bg-white hover:border-primary/40 hover:bg-surface-container-low'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start gap-3">
-                      <div className="flex-1">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${selectedService === svc.id ? 'bg-primary text-on-primary' : 'bg-secondary-container text-on-secondary-container'}`}>
-                          <Icon name="dentistry" className="text-[20px]" />
-                        </div>
-                        <p className={`font-bold text-body-md ${selectedService === svc.id ? 'text-on-primary-container' : 'text-on-surface'}`}>{svc.name}</p>
-                        <p className={`text-xs mt-1 ${selectedService === svc.id ? 'text-on-primary-container/70' : 'text-on-surface-variant'}`}>
-                          ⏱ {svc.durationMin} phút
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-bold text-label-md ${selectedService === svc.id ? 'text-primary' : 'text-secondary'}`}>
-                          ₫{svc.price.toLocaleString()}
-                        </p>
-                        {selectedService === svc.id && (
-                          <Icon name="check_circle" className="text-primary text-[20px]" />
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <div className="flex justify-end pt-4">
-                <button
-                  disabled={!selectedService}
-                  onClick={() => setStep(2)}
-                  className="px-8 py-3 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  Tiếp theo
-                  <Icon name="arrow_forward" />
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+            <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+              <span className="text-slate-500 font-medium">Số điện thoại:</span>
+              <span className="text-slate-900 font-bold">{createdAppointment.patientPhone}</span>
+            </div>
+            <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+              <span className="text-slate-500 font-medium">Dịch vụ điều trị:</span>
+              <span className="text-slate-900 font-bold">{createdAppointment.serviceName}</span>
+            </div>
+            <div className="flex justify-between border-b border-dashed border-slate-200 pb-2">
+              <span className="text-slate-500 font-medium">Bác sĩ phụ trách:</span>
+              <span className="text-slate-900 font-bold">{createdAppointment.dentistName}</span>
+            </div>
+            <div className="flex justify-between pt-1">
+              <span className="text-slate-500 font-medium">Thời gian hẹn:</span>
+              <span className="text-[#005eb8] font-bold">{createdAppointment.time}</span>
+            </div>
+          </div>
 
-      {/* Step 2: Chọn ngày khám */}
-      {step === 2 && (
-        <div className="space-y-6 animate-fade-in">
-          <h3 className="font-headline-sm text-headline-sm text-on-surface mb-2">Chọn ngày khám</h3>
+          {/* QR Code Box */}
+          <div className="p-4 border-2 border-dashed border-[#005eb8]/40 bg-blue-50/30 rounded-xl inline-block mb-6">
+            <p className="text-xs font-bold text-[#005eb8] mb-2 uppercase">Mã QR Check-in của bạn</p>
+            <div className="bg-white p-2 rounded-lg shadow-sm w-fit mx-auto border border-slate-200">
+              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${createdAppointment.id}`} alt="QR Code" className="w-32 h-32" />
+            </div>
+            <p className="text-[11px] text-slate-500 mt-2 font-medium">Đưa mã QR này cho lễ tân khi bạn đến phòng khám</p>
+          </div>
+
           <div>
-            <div className="grid grid-cols-7 gap-2">
-              {dateOptions.map((d) => (
-                <button
-                  key={d.value}
-                  onClick={() => { setSelectedDate(d.value); setSelectedTime(''); setSelectedDentist(''); }}
-                  className={`flex flex-col items-center px-2 py-3 rounded-xl border-2 transition-all cursor-pointer ${
-                    selectedDate === d.value
-                      ? 'border-primary bg-primary text-on-primary shadow-md'
-                      : 'border-outline-variant bg-white hover:border-primary/40 text-on-surface'
-                  }`}
-                >
-                  <span className="text-[11px] font-bold opacity-70">{d.dayName}</span>
-                  <span className="text-body-lg font-bold">{d.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-between pt-4">
-            <button onClick={() => setStep(1)} className="px-6 py-3 border border-outline text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer flex items-center gap-2">
-              <Icon name="arrow_back" />
-              Quay lại
-            </button>
-            <button
-              disabled={!selectedDate}
-              onClick={() => setStep(3)}
-              className="px-8 py-3 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-            >
-              Tiếp theo
-              <Icon name="arrow_forward" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Chọn bác sĩ & giờ */}
-      {step === 3 && (
-        <div className="space-y-6 animate-fade-in">
-          <div>
-            <h3 className="font-headline-sm text-headline-sm text-on-surface mb-3">Chọn bác sĩ điều trị</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {(() => {
-                const activeDentists = dentists.filter(doc =>
-                  doctorShifts.some(shift => shift.dentistId === doc.id && shift.date === selectedDate)
-                );
-                if (activeDentists.length === 0) {
-                  return (
-                    <div className="col-span-full bg-surface-container-low border border-outline-variant rounded-xl p-6 text-center text-on-surface-variant text-sm">
-                      Không có bác sĩ nào trực vào ngày này. Vui lòng quay lại bước trước chọn ngày khác.
-                    </div>
-                  );
-                }
-                return activeDentists.map((doc) => (
-                  <button
-                    key={doc.id}
-                    onClick={() => { setSelectedDentist(doc.id); setSelectedTime(''); }}
-                    className={`text-left p-5 rounded-xl border-2 transition-all duration-200 cursor-pointer flex items-center gap-4 ${
-                      selectedDentist === doc.id
-                        ? 'border-primary bg-primary-container shadow-md'
-                        : 'border-outline-variant bg-white hover:border-primary/40 hover:bg-surface-container-low'
-                    }`}
-                  >
-                    <img src={doc.avatar} alt={doc.name} className={`w-16 h-16 rounded-full object-cover border-2 ${selectedDentist === doc.id ? 'border-primary' : 'border-outline-variant'}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-bold ${selectedDentist === doc.id ? 'text-on-primary-container' : 'text-on-surface'}`}>{doc.name}</p>
-                      <p className={`text-xs mt-0.5 ${selectedDentist === doc.id ? 'text-on-primary-container/70' : 'text-on-surface-variant'}`}>{doc.role}</p>
-                      <div className={`mt-2 inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${selectedDentist === doc.id ? 'bg-primary/20 text-primary' : 'bg-surface-container text-on-surface-variant'}`}>
-                        <Icon name="meeting_room" className="text-[12px]" />
-                        {doc.room}
-                      </div>
-                    </div>
-                    {selectedDentist === doc.id && (
-                      <Icon name="check_circle" className="text-primary text-[24px]" />
-                    )}
-                  </button>
-                ));
-              })()}
-            </div>
-          </div>
-
-          {/* Time picker */}
-          {selectedDentist && (
-            <div>
-              <p className="text-label-md font-bold text-on-surface-variant uppercase tracking-wider mb-3">Chọn khung giờ khám</p>
-              
-              {loadingSlots && (
-                <div className="flex items-center gap-2 text-primary py-4">
-                  <Icon name="progress_activity" className="animate-spin text-xl" />
-                  <span className="text-sm font-semibold">Đang tải danh sách khung giờ trống...</span>
-                </div>
-              )}
-
-              {slotsError && (
-                <div className="text-error text-sm py-2">
-                  ⚠️ {slotsError}
-                </div>
-              )}
-
-              {!loadingSlots && !slotsError && availableSlots.length === 0 && (
-                <div className="bg-surface-container-low border border-outline-variant rounded-xl p-4 text-center text-on-surface-variant text-sm">
-                  Không còn khung giờ khám nào trống cho bác sĩ này vào ngày đã chọn. Vui lòng chọn bác sĩ hoặc ngày khác.
-                </div>
-              )}
-
-              {!loadingSlots && !slotsError && availableSlots.length > 0 && (
-                <div className="space-y-4">
-                  {/* Morning Slots */}
-                  {availableSlots.some(isMorningSlot) && (
-                    <div>
-                      <p className="text-xs font-bold text-on-surface-variant mb-2 flex items-center gap-1">
-                        <Icon name="light_mode" className="text-[16px]" /> Buổi sáng
-                      </p>
-                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-                        {availableSlots.filter(isMorningSlot).map((slot) => {
-                          const displayTime = formatSlotTime(slot);
-                          return (
-                            <button
-                              key={slot}
-                              onClick={() => setSelectedTime(slot)}
-                              className={`py-2 px-2 rounded-lg border text-center text-xs font-bold transition-all cursor-pointer ${
-                                selectedTime === slot
-                                  ? 'border-primary bg-primary text-on-primary shadow-md'
-                                  : 'border-outline-variant bg-white hover:border-primary/50 text-on-surface'
-                              }`}
-                            >
-                              {displayTime}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Afternoon Slots */}
-                  {availableSlots.some(slot => !isMorningSlot(slot)) && (
-                    <div>
-                      <p className="text-xs font-bold text-on-surface-variant mb-2 flex items-center gap-1">
-                        <Icon name="wb_twilight" className="text-[16px]" /> Buổi chiều
-                      </p>
-                      <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-                        {availableSlots.filter(slot => !isMorningSlot(slot)).map((slot) => {
-                          const displayTime = formatSlotTime(slot);
-                          return (
-                            <button
-                              key={slot}
-                              onClick={() => setSelectedTime(slot)}
-                              className={`py-2 px-2 rounded-lg border text-center text-xs font-bold transition-all cursor-pointer ${
-                                selectedTime === slot
-                                  ? 'border-primary bg-primary text-on-primary shadow-md'
-                                  : 'border-outline-variant bg-white hover:border-primary/50 text-on-surface'
-                              }`}
-                            >
-                              {displayTime}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Note Input */}
-          {selectedDentist && selectedTime && (
-            <div className="pt-2 animate-fade-in">
-              <label className="block text-label-md font-bold text-on-surface-variant uppercase tracking-wider mb-2">Ghi chú triệu chứng (Không bắt buộc)</label>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Ví dụ: Răng bên phải hàm dưới bị ê buốt khi uống nước lạnh từ 2 tuần nay..."
-                rows={3}
-                className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-body-md focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none resize-none"
-              />
-            </div>
-          )}
-
-          <div className="flex justify-between pt-4">
-            <button onClick={() => setStep(2)} className="px-6 py-3 border border-outline text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer flex items-center gap-2">
-              <Icon name="arrow_back" />
-              Quay lại
-            </button>
-            <button
-              disabled={!selectedDentist || !selectedTime}
-              onClick={() => {
-                if (!checkRateLimit(patientPhone)) return;
-                if (!checkDuplicate(patientPhone, selectedDate, selectedTime)) return;
-                setStep(4);
-                setSubmitError('');
-              }}
-              className="px-8 py-3 bg-primary text-on-primary rounded-xl font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-            >
-              Tiếp theo
-              <Icon name="arrow_forward" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 4: Xác nhận hoặc Thành công */}
-      {step === 4 && !isBooked && (
-        <div className="space-y-6 animate-fade-in">
-          <h3 className="font-headline-sm text-headline-sm text-on-surface mb-2">Xác nhận thông tin lịch hẹn</h3>
-
-          <div className="bg-white rounded-2xl border border-outline-variant overflow-hidden shadow-sm">
-            {/* Summary header */}
-            <div className="bg-primary p-6 text-on-primary">
-              <div className="flex items-center gap-3">
-                <Icon name="event_available" className="text-3xl" />
-                <div>
-                  <p className="font-bold text-headline-sm">Lịch hẹn sắp xếp</p>
-                  <p className="text-sm opacity-80">Vui lòng kiểm tra kỹ trước khi xác nhận</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {[
-                { icon: 'person', label: 'Bệnh nhân', value: patientName },
-                { icon: 'dentistry', label: 'Dịch vụ', value: serviceSel?.name || '' },
-                { icon: 'schedule', label: 'Thời lượng dự kiến', value: `${serviceSel?.durationMin} phút` },
-                { icon: 'stethoscope', label: 'Bác sĩ phụ trách', value: dentistSel?.name || '' },
-                { icon: 'meeting_room', label: 'Phòng khám', value: dentistSel?.room || '' },
-                { icon: 'calendar_today', label: 'Ngày khám', value: selectedDate ? new Date(selectedDate).toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '' },
-                { icon: 'access_time', label: 'Giờ khám', value: selectedTime },
-                { icon: 'payments', label: 'Chi phí ước tính', value: `₫${serviceSel?.price.toLocaleString()}` },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center gap-4 py-3 border-b border-outline-variant/50 last:border-0">
-                  <div className="w-9 h-9 bg-secondary-container rounded-lg flex items-center justify-center text-on-secondary-container shrink-0">
-                    <Icon name={item.icon} className="text-[18px]" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs text-on-surface-variant">{item.label}</p>
-                    <p className="font-bold text-on-surface">{item.value}</p>
-                  </div>
-                </div>
-              ))}
-              {note && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-3">
-                  <Icon name="sticky_note_2" className="text-amber-600 text-[20px] shrink-0" />
-                  <p className="text-sm text-amber-800">{note}</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-surface-container-low rounded-xl p-4 flex gap-3 border border-outline-variant">
-            <Icon name="info" className="text-secondary shrink-0" />
-            <p className="text-xs text-on-surface-variant">
-              Bạn sẽ nhận SMS xác nhận lịch hẹn trong vòng 5 phút. Vui lòng đến trước 10 phút và mang theo CCCD/Thẻ thành viên nếu có.
-            </p>
-          </div>
-
-          {submitError && (
-            <div className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-4 flex gap-3 text-sm">
-              <Icon name="error" className="shrink-0 text-red-600" />
-              <div>
-                <p className="font-bold">Lỗi đặt lịch</p>
-                <p>{submitError}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-between pt-2">
-            <button onClick={() => setStep(3)} className="px-6 py-3 border border-outline text-on-surface rounded-xl font-bold hover:bg-surface-container transition-all cursor-pointer flex items-center gap-2">
-              <Icon name="arrow_back" />
-              Sửa thông tin
-            </button>
-            <button
-              disabled={submittingAppt}
-              onClick={handleConfirm}
-              className="px-8 py-3 bg-secondary text-on-secondary rounded-xl font-bold disabled:opacity-40 hover:opacity-90 active:scale-95 transition-all flex items-center gap-2 cursor-pointer shadow-md"
-            >
-              {submittingAppt ? (
-                <Icon name="progress_activity" className="animate-spin text-[18px]" />
-              ) : (
-                <Icon name="check_circle" />
-              )}
-              {submittingAppt ? 'Đang gửi...' : 'Xác nhận đặt lịch'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Success screen */}
-      {step === 4 && isBooked && (
-        <div className="text-center py-8 space-y-4 animate-fade-in bg-white rounded-2xl border border-outline-variant shadow-sm max-w-xl mx-auto mt-4 p-6">
-          <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mx-auto shadow-md">
-            <Icon name="check_circle" className="text-4xl text-on-secondary" />
-          </div>
-          <div>
-            <h3 className="font-headline-sm text-headline-sm text-on-surface">Đặt lịch thành công!</h3>
-            <p className="text-sm text-on-surface-variant mt-1 max-w-sm mx-auto">
-              Lịch hẹn của bạn với <strong>{dentistSel?.name}</strong> lúc <strong>{selectedTime ? formatSlotTime(selectedTime) : ''}</strong> ({formatLocalDateStr(selectedDate)}) đã được xác nhận.
-            </p>
-          </div>
-          
-          <div className="mt-4 p-4 border-2 border-dashed border-primary/40 rounded-xl inline-block bg-primary/5">
-            <p className="text-xs font-bold text-primary mb-2 uppercase">Mã QR Check-in của bạn</p>
-            <div className="bg-white p-2 rounded-lg shadow-sm w-fit mx-auto border border-outline-variant">
-              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${bookedApptId}`} alt="QR Code" className="w-32 h-32" />
-            </div>
-            <p className="text-[10px] text-on-surface-variant mt-2 font-medium">Lưu lại mã này hoặc đưa cho lễ tân khi đến khám</p>
-          </div>
-          <div className="bg-surface-container-low rounded-xl p-4 inline-block text-left w-full border border-outline-variant">
-            <p className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">Thông tin tóm tắt</p>
-            <div className="space-y-1.5 text-sm text-on-surface">
-              <p className="flex items-center gap-2"><Icon name="dentistry" className="text-[16px] text-primary" /> {serviceSel?.name}</p>
-              <p className="flex items-center gap-2"><Icon name="stethoscope" className="text-[16px] text-primary" /> {dentistSel?.name} — {dentistSel?.room}</p>
-              <p className="flex items-center gap-2"><Icon name="event" className="text-[16px] text-primary" /> {formatLocalDateStr(selectedDate)} lúc {selectedTime ? formatSlotTime(selectedTime) : ''}</p>
-            </div>
-          </div>
-          <div className="pt-2">
             <button
               onClick={handleReset}
-              className="px-6 py-2.5 bg-primary text-on-primary rounded-xl text-sm font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-2"
+              className="px-8 py-3 bg-[#005eb8] text-white rounded-xl font-bold hover:bg-[#004a94] transition-all cursor-pointer inline-flex items-center gap-2"
             >
-              <Icon name="add_circle" className="text-[18px]" />
+              <Icon name="add_circle" className="text-[20px]" />
               Đặt lịch hẹn khác
             </button>
           </div>
         </div>
+      ) : (
+        /* 1-STEP UNIFIED FORM */
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
+          {/* Header inside form */}
+          <div className="pb-4 border-b border-slate-200 mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Icon name="edit_calendar" className="text-[#005eb8] text-2xl" />
+              <h3 className="text-xl font-extrabold text-[#0f172a]">Điền Thông Tin Đăng Ký Lịch Hẹn</h3>
+            </div>
+            <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full flex items-center gap-1">
+              <Icon name="verified_user" className="text-[14px]" /> Xác thực OTP an toàn
+            </span>
+          </div>
+
+          {/* Account Locked Alert */}
+          {isLocked && (
+            <div className="mb-6 bg-red-50 border-2 border-red-200 rounded-xl p-4 flex gap-3 text-red-800 text-sm">
+              <Icon name="block" className="text-2xl text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-extrabold text-base">Tài khoản của bạn đã bị khóa đặt lịch</p>
+                <p className="mt-1 leading-relaxed">
+                  Số điện thoại này đã bị tạm khóa do vi phạm chính sách hủy lịch hẹn hoặc không đến khám quá 3 lần. Vui lòng liên hệ trực tiếp phòng khám qua Hotline <strong>0982.135.606</strong> để mở khóa.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Row 1: Patient Name & Phone */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Họ và tên bệnh nhân *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={patientName}
+                  onChange={(e) => { setPatientName(e.target.value); setNameError(''); }}
+                  onBlur={(e) => setNameError(validateName(e.target.value))}
+                  placeholder="Ví dụ: Nguyễn Văn A"
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${
+                    nameError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                  }`}
+                />
+                {nameError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{nameError}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Số điện thoại liên hệ *
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={patientPhone}
+                  onChange={(e) => { setPatientPhone(e.target.value); setPhoneError(''); setAntiSpamError(''); }}
+                  onBlur={(e) => setPhoneError(validatePhone(e.target.value))}
+                  placeholder="Ví dụ: 0912345678"
+                  maxLength={11}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${
+                    phoneError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                  }`}
+                />
+                {phoneError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{phoneError}</p>}
+              </div>
+            </div>
+
+            {/* Row 2: Service & Doctor */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Dịch vụ nha khoa điều trị *
+                </label>
+                <select
+                  required
+                  value={selectedServiceId}
+                  onChange={(e) => { setSelectedServiceId(e.target.value); setServiceError(''); setAntiSpamError(''); }}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer ${
+                    serviceError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                  }`}
+                >
+                  <option value="">-- Chọn dịch vụ điều trị --</option>
+                  {services.filter(s => s.isActive).map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — {s.durationMin} phút (₫{s.price.toLocaleString('vi-VN')})
+                    </option>
+                  ))}
+                </select>
+                {serviceError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{serviceError}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Bác sĩ thăm khám *
+                </label>
+                <select
+                  required
+                  value={selectedDentistId}
+                  onChange={(e) => { setSelectedDentistId(e.target.value); setDentistError(''); setAntiSpamError(''); }}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer ${
+                    dentistError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                  }`}
+                >
+                  <option value="">
+                    {(() => {
+                      const activeDentists = dentists.filter(d => 
+                        doctorShifts.some(s => s.dentistId === d.id && s.date === date)
+                      );
+                      return activeDentists.length === 0 
+                        ? "-- Không có bác sĩ trực ngày này --" 
+                        : "-- Chọn bác sĩ phụ trách --";
+                    })()}
+                  </option>
+                  {dentists.filter(d => 
+                    doctorShifts.some(s => s.dentistId === d.id && s.date === date)
+                  ).map(d => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.room})
+                    </option>
+                  ))}
+                </select>
+                {dentistError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{dentistError}</p>}
+              </div>
+            </div>
+
+            {/* Row 3: Date & Time slot */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Ngày hẹn khám *
+                </label>
+                <input
+                  type="date"
+                  required
+                  min={minDateStr}
+                  max={maxDateStr}
+                  value={date}
+                  onChange={(e) => { setDate(e.target.value); setAntiSpamError(''); }}
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Khung giờ hẹn * {selectedService && <span className="normal-case text-[#005eb8] font-semibold">({selectedService.durationMin} phút/ca)</span>}
+                </label>
+
+                {!selectedDentistId || !selectedServiceId ? (
+                  <div className="w-full bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-500 italic">
+                    Vui lòng chọn dịch vụ và bác sĩ để xem giờ trống
+                  </div>
+                ) : loadingSlots ? (
+                  <div className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-primary font-bold flex items-center gap-2">
+                    <Icon name="progress_activity" className="animate-spin text-base" />
+                    Đang tải khung giờ trống...
+                  </div>
+                ) : slotsError || availableSlots.length === 0 ? (
+                  <div className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-xs text-amber-800 font-medium">
+                    {slotsError || 'Không có khung giờ khả dụng. Vui lòng chọn bác sĩ hoặc ngày khác.'}
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      required
+                      value={selectedTimeIso}
+                      onChange={(e) => { setSelectedTimeIso(e.target.value); setTimeError(''); setAntiSpamError(''); }}
+                      className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm font-bold text-[#005eb8] outline-none transition-all cursor-pointer ${
+                        timeError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                      }`}
+                    >
+                      <option value="">-- Chọn khung giờ trống --</option>
+                      {availableSlots.map(slotIso => (
+                        <option key={slotIso} value={slotIso}>
+                          {formatSlotToTimeString(slotIso)}
+                        </option>
+                      ))}
+                    </select>
+                    {timeError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{timeError}</p>}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Time Slot Picker grouped by Morning / Afternoon / Evening */}
+            {selectedDentistId && selectedServiceId && availableSlots.length > 0 && !loadingSlots && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <label className="block text-xs font-extrabold uppercase tracking-wider text-[#0f172a] flex items-center gap-2">
+                    <Icon name="schedule" className="text-[#005eb8] text-base" />
+                    Chọn Nhanh Khung Giờ Khám (Theo Buổi Sáng / Chiều / Tối)
+                  </label>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Tổng số: <strong className="text-[#005eb8]">{availableSlots.length}</strong> khung giờ trống
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Buổi Sáng */}
+                  {morningSlots.length > 0 && (
+                    <div className="bg-amber-50/40 border border-amber-200/80 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900 uppercase tracking-wide">
+                        <span className="text-base">☀️</span>
+                        <span>Buổi Sáng</span>
+                        <span className="text-[11px] text-amber-700 font-normal normal-case">(08:00 – 12:00)</span>
+                        <span className="ml-auto text-[10px] bg-amber-100/80 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                          {morningSlots.length} giờ
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                        {morningSlots.map(slot => {
+                          const isSelected = selectedTimeIso === slot;
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => { setSelectedTimeIso(slot); setTimeError(''); setAntiSpamError(''); }}
+                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                isSelected
+                                  ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                              }`}
+                            >
+                              {isSelected && <Icon name="check" className="text-[13px]" />}
+                              {formatSlotToTimeString(slot)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Buổi Chiều */}
+                  {afternoonSlots.length > 0 && (
+                    <div className="bg-sky-50/40 border border-sky-200/80 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-extrabold text-sky-900 uppercase tracking-wide">
+                        <span className="text-base">🌤️</span>
+                        <span>Buổi Chiều</span>
+                        <span className="text-[11px] text-sky-700 font-normal normal-case">(12:00 – 17:00)</span>
+                        <span className="ml-auto text-[10px] bg-sky-100/80 text-sky-900 px-2 py-0.5 rounded-full font-bold">
+                          {afternoonSlots.length} giờ
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                        {afternoonSlots.map(slot => {
+                          const isSelected = selectedTimeIso === slot;
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => { setSelectedTimeIso(slot); setTimeError(''); setAntiSpamError(''); }}
+                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                isSelected
+                                  ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                              }`}
+                            >
+                              {isSelected && <Icon name="check" className="text-[13px]" />}
+                              {formatSlotToTimeString(slot)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Buổi Tối */}
+                  {eveningSlots.length > 0 && (
+                    <div className="bg-indigo-50/40 border border-indigo-200/80 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-extrabold text-indigo-950 uppercase tracking-wide">
+                        <span className="text-base">🌙</span>
+                        <span>Buổi Tối</span>
+                        <span className="text-[11px] text-indigo-700 font-normal normal-case">(17:00 – 20:30)</span>
+                        <span className="ml-auto text-[10px] bg-indigo-100/80 text-indigo-950 px-2 py-0.5 rounded-full font-bold">
+                          {eveningSlots.length} giờ
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                        {eveningSlots.map(slot => {
+                          const isSelected = selectedTimeIso === slot;
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => { setSelectedTimeIso(slot); setTimeError(''); setAntiSpamError(''); }}
+                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                isSelected
+                                  ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                              }`}
+                            >
+                              {isSelected && <Icon name="check" className="text-[13px]" />}
+                              {formatSlotToTimeString(slot)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Notes / Symptom */}
+            <div>
+              <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                Ghi chú triệu chứng hoặc nhu cầu đặc biệt (Không bắt buộc)
+              </label>
+              <textarea
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Mô tả qua tình trạng răng miệng hiện tại (VD: ê buốt khi uống nước lạnh, niềng răng tháo lắp...)"
+                className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded-xl px-4 py-2.5 text-sm outline-none transition-all resize-none"
+              ></textarea>
+            </div>
+
+            {/* Anti-spam error */}
+            {antiSpamError && (
+              <div className="flex items-start gap-3 text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm animate-in fade-in">
+                <Icon name="gpp_bad" className="text-[20px] shrink-0 mt-0.5" />
+                <span className="font-medium">{antiSpamError}</span>
+              </div>
+            )}
+
+            {/* Submit button */}
+            <div className="pt-4 border-t border-slate-200 flex justify-between items-center">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                <Icon name="lock" className="text-[14px] text-[#005eb8]" />
+                <span>Bảo mật OTP 6 chữ số</span>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting || isLocked}
+                className="px-8 py-3 bg-[#005eb8] hover:bg-[#004a94] text-white rounded-xl font-bold text-sm shadow hover:shadow-md active:scale-95 disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                {submitting ? <Icon name="progress_activity" className="animate-spin text-base" /> : <Icon name="verified_user" className="text-base" />}
+                {submitting ? 'Đang gửi...' : 'Xác Nhận & Gửi OTP'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
+      {/* OTP Verification Modal */}
       <OtpVerificationModal
         isOpen={showOtpModal}
         onClose={() => setShowOtpModal(false)}
         onVerified={handleOtpVerified}
-          phoneNumber={patientPhone}
-          dentistId={selectedDentist}
-          startTime={selectedTime}
-          serviceId={selectedService}
+        phoneNumber={patientPhone}
+        dentistId={selectedDentistId}
+        startTime={selectedTimeIso}
+        serviceId={selectedServiceId}
       />
 
       <AlertModal
