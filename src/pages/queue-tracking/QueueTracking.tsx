@@ -3,11 +3,22 @@ import { Icon } from '../../components/Icon';
 import { useNavigate } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { BrandLogo } from '../../components/BrandLogo';
+import { useAuth } from '../../context/AuthContext';
 import { socket } from '../../services/socketClient';
 
 export const QueueTracking: React.FC = () => {
   const { queue, refreshAllData } = useClinic();
   const navigate = useNavigate();
+  const { isAuthenticated, role } = useAuth();
+
+  const handleGoBack = () => {
+    if (isAuthenticated) {
+      const dest = role === 'patient' ? '/patient' : `/dashboard/${role}`;
+      navigate(dest);
+    } else {
+      navigate('/');
+    }
+  };
 
   // State thông báo khi có bệnh nhân mới check-in (flash animation)
   const [newCheckinAlert, setNewCheckinAlert] = useState<string | null>(null);
@@ -91,10 +102,11 @@ export const QueueTracking: React.FC = () => {
             </span>
           </div>
           <button
-            onClick={() => navigate('/')}
-            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs font-bold transition-all cursor-pointer text-slate-300"
+            onClick={handleGoBack}
+            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs font-bold transition-all cursor-pointer text-slate-300 flex items-center gap-1.5"
           >
-            Quay lại cổng
+            <Icon name="arrow_back" className="text-[14px]" />
+            {isAuthenticated ? 'Quay lại bàn làm việc' : 'Quay lại cổng'}
           </button>
         </div>
       </header>

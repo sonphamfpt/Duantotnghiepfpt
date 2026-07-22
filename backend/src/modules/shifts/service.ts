@@ -168,6 +168,49 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
       throw new AppError(404, 'SHIFT_NOT_FOUND', 'Một trong hai ca trực không tồn tại.');
     }
 
+    // Kiểm tra quy chế: Phải gửi yêu cầu trước ít nhất 12 tiếng
+    const nowMs = Date.now();
+    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+
+    const start1Hour = shift1.shiftType === 'Afternoon' ? 14 : 8;
+    const start1Ms = new Date(shift1.workDate.getFullYear(), shift1.workDate.getMonth(), shift1.workDate.getDate(), start1Hour, 0, 0).getTime();
+    if (start1Ms - nowMs < TWELVE_HOURS_MS) {
+      throw new AppError(400, 'SWAP_TOO_LATE', 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để thực hiện hoán đổi.');
+    }
+
+    const start2Hour = shift2.shiftType === 'Afternoon' ? 14 : 8;
+    const start2Ms = new Date(shift2.workDate.getFullYear(), shift2.workDate.getMonth(), shift2.workDate.getDate(), start2Hour, 0, 0).getTime();
+    if (start2Ms - nowMs < TWELVE_HOURS_MS) {
+      throw new AppError(400, 'SWAP_TOO_LATE', 'Ca trực muốn hoán đổi phải còn ít nhất 12 tiếng mới tới giờ bắt đầu.');
+    }
+
+    // Kiểm tra xung đột trùng ngày trực: Bác sĩ 1 không được có ca trực khác vào ngày của ca 2 (nếu khác ngày)
+    if (shift1.workDate.toISOString().slice(0, 10) !== shift2.workDate.toISOString().slice(0, 10)) {
+      const existingShiftDoc1OnDate2 = await tx.dentistShift.findFirst({
+        where: {
+          dentistId: shift1.dentistId,
+          workDate: shift2.workDate,
+          isActive: true,
+          shiftId: { notIn: [shiftId1, shiftId2] },
+        },
+      });
+      if (existingShiftDoc1OnDate2) {
+        throw new AppError(400, 'SWAP_CONFLICT_DOCTOR_1', `Bác sĩ ${shift1.dentist.user.fullName} đã có ca trực vào ngày ${shift2.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`);
+      }
+
+      const existingShiftDoc2OnDate1 = await tx.dentistShift.findFirst({
+        where: {
+          dentistId: shift2.dentistId,
+          workDate: shift1.workDate,
+          isActive: true,
+          shiftId: { notIn: [shiftId1, shiftId2] },
+        },
+      });
+      if (existingShiftDoc2OnDate1) {
+        throw new AppError(400, 'SWAP_CONFLICT_DOCTOR_2', `Bác sĩ ${shift2.dentist.user.fullName} đã có ca trực vào ngày ${shift1.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`);
+      }
+    }
+
     // 1. Phát hiện và tạo các thông báo xung đột lịch hẹn
     await detectAndCreateConflicts(tx, shift1, shift1.dentistId, shift2.dentistId);
     await detectAndCreateConflicts(tx, shift2, shift2.dentistId, shift1.dentistId);
@@ -224,6 +267,27 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
     }
     if (!targetDentist) {
       throw new AppError(404, 'DENTIST_NOT_FOUND', 'Bác sĩ nhận ca trực không tồn tại.');
+    }
+
+    // Kiểm tra quy chế: Phải gửi yêu cầu trước ít nhất 12 tiếng
+    const nowMs = Date.now();
+    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+    const startHour = shift.shiftType === 'Afternoon' ? 14 : 8;
+    const startMs = new Date(shift.workDate.getFullYear(), shift.workDate.getMonth(), shift.workDate.getDate(), startHour, 0, 0).getTime();
+    if (startMs - nowMs < TWELVE_HOURS_MS) {
+      throw new AppError(400, 'TRANSFER_TOO_LATE', 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để nhờ trực thay.');
+    }
+
+    // Kiểm tra xung đột: Bác sĩ nhận ca chưa có ca trực nào vào ngày đó
+    const existingShiftTarget = await tx.dentistShift.findFirst({
+      where: {
+        dentistId: targetDentistId,
+        workDate: shift.workDate,
+        isActive: true,
+      },
+    });
+    if (existingShiftTarget) {
+      throw new AppError(400, 'TARGET_DENTIST_HAS_SHIFT', `Bác sĩ ${targetDentist.user.fullName} đã có ca trực vào ngày ${shift.workDate.toISOString().slice(0, 10)}. Không thể nhờ trực thay.`);
     }
 
     // 1. Quét tìm và lưu trữ thông tin lịch hẹn bị ảnh hưởng

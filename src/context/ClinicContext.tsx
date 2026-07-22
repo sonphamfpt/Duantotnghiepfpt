@@ -432,6 +432,9 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (response.success) {
         addLog('DENTIST', 'SUCCESS', `Hoàn tất phiên điều trị.`);
         await refreshAllData();
+        if (queueItem?.patientId) {
+          await fetchPatientRecords(queueItem.patientId);
+        }
         return { success: true };
       } else {
         return { success: false, error: response.message || 'Không thể lưu bệnh án EMR.' };
