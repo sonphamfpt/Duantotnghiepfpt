@@ -364,6 +364,20 @@ export class AppointmentsService {
         await redis.del(...keys);
       }
 
+      // Ghi log đặt lịch thành công
+      try {
+        const patientLabel = newAppointment.patient?.fullName || `BN-${dbPatientId}`;
+        await prisma.systemLog.create({
+          data: {
+            module: 'RECEPTION',
+            logType: 'SUCCESS',
+            message: `Đặt lịch hẹn thành công cho ${patientLabel} - Dịch vụ: ${newAppointment.service?.name || 'N/A'} (${bookingChannel}).`,
+          },
+        });
+      } catch (logErr) {
+        console.error('[LOG_ERR] Ghi log đặt lịch thất bại:', logErr);
+      }
+
       return newAppointment;
     } catch (error: any) {
       // Bắt lỗi vi phạm ràng buộc EXCLUDE (DB ném lỗi trùng lịch)
@@ -426,6 +440,7 @@ export class AppointmentsService {
     });
 
     // Nếu hủy lịch từ 3 lần trở lên trong 30 ngày, tự động khóa tài khoản
+    let autoLocked = false;
     if (cancelCount >= 3) {
       await prisma.patient.update({
         where: { patientId: appointment.patientId },
@@ -434,6 +449,7 @@ export class AppointmentsService {
           lockedReason: `Tự động khóa do hủy lịch hẹn ${cancelCount} lần trong vòng 30 ngày.`,
         },
       });
+      autoLocked = true;
     }
 
     // Xóa cache slots của bác sĩ trong ngày bị hủy
@@ -442,6 +458,35 @@ export class AppointmentsService {
     const keys = await redis.keys(cachePattern);
     if (keys.length > 0) {
       await redis.del(...keys);
+    }
+
+    // Ghi log hủy lịch
+    try {
+      const patientInfo = await prisma.patient.findUnique({
+        where: { patientId: appointment.patientId },
+        select: { fullName: true, phone: true },
+      });
+      const patientLabel = patientInfo?.fullName || `BN-${appointment.patientId}`;
+
+      await prisma.systemLog.create({
+        data: {
+          module: 'RECEPTION',
+          logType: 'WARN',
+          message: `Hủy lịch hẹn #A-${id} của bệnh nhân ${patientLabel}. Lý do: ${cancelReason}. Tổng lần hủy (30 ngày): ${cancelCount}.`,
+        },
+      });
+
+      if (autoLocked) {
+        await prisma.systemLog.create({
+          data: {
+            module: 'SYSTEM',
+            logType: 'WARN',
+            message: `Tự động khóa tài khoản bệnh nhân ${patientLabel} (${patientInfo?.phone || ''}) do hủy lịch ${cancelCount} lần trong 30 ngày.`,
+          },
+        });
+      }
+    } catch (logErr) {
+      console.error('[LOG_ERR] Ghi log hủy lịch thất bại:', logErr);
     }
 
     return updatedAppointment;
@@ -465,6 +510,54 @@ export class AppointmentsService {
       },
     });
 
+<<<<<<< HEAD
+=======
+    let countCancelled = 0;
+    if (overdueAppointments.length > 0) {
+      for (const appt of overdueAppointments) {
+        const inQueue = await prisma.queueTicket.findFirst({
+          where: {
+            patientId: appt.patientId,
+            status: { notIn: ['Completed'] },
+          },
+        });
+        if (!inQueue) {
+          const updated = await prisma.appointment.update({
+            where: { appointmentId: appt.appointmentId },
+            data: {
+              status: 'Cancelled',
+              cancelledAt: new Date(),
+              cancelReason: 'Tự động hủy do trễ quá 15 phút chưa check-in',
+            },
+          });
+
+          // Ghi log riêng cho từng lịch bị tự động hủy
+          try {
+            const patientInfo = await prisma.patient.findUnique({
+              where: { patientId: appt.patientId },
+              select: { fullName: true },
+            });
+            await prisma.systemLog.create({
+              data: {
+                module: 'SYSTEM',
+                logType: 'WARN',
+                message: `Tự động hủy lịch hẹn #A-${appt.appointmentId} của bệnh nhân ${patientInfo?.fullName || `BN-${appt.patientId}`} do trễ quá 15 phút chưa check-in.`,
+              },
+            });
+          } catch (logErr) {
+            console.error('[LOG_ERR] Ghi log tự động hủy thất bại:', logErr);
+          }
+
+          countCancelled++;
+        }
+      }
+    }
+
+    if (countCancelled > 0) {
+      socketManager.emit('appointment:cancelled', { count: countCancelled, reason: 'auto_cancelled_15m_late' });
+    }
+
+>>>>>>> 6bb08f5 (Recover receptionist changes)
     const list = await prisma.appointment.findMany({
       include: {
         patient: { include: { user: true } },
@@ -519,6 +612,7 @@ export class AppointmentsService {
         dentistName: appt.dentist?.user?.fullName || 'Bác sĩ',
         time: formatDate(appt.startTime),
         status: statusStr,
+        cancelReason: appt.cancelReason || undefined,
       };
     });
   }

@@ -159,7 +159,7 @@ export const ReceptionistAppointments: React.FC = () => {
   });
 
   const handleCheckin = (appt: typeof appointments[0]) => {
-    checkInPatient(appt.patientId, appt.dentistId, undefined, appt.serviceName);
+    checkInPatient(appt.patientId, appt.dentistId, undefined, appt.serviceName, appt.id);
   };
 
   const totalAppts = appointments.length;
@@ -382,8 +382,13 @@ export const ReceptionistAppointments: React.FC = () => {
           }}
           className="px-3 py-2 bg-white border border-outline-variant rounded-xl text-xs focus:outline-none cursor-pointer"
         >
+<<<<<<< HEAD
           <option value="all"> Tất cả lịch hẹn (Mặc định)</option>
           <option value="pending">Chưa tiếp đón</option>
+=======
+          <option value="all">Tất cả lịch hẹn (Mặc định)</option>
+          <option value="all">Chưa tiếp đón</option>
+>>>>>>> 6bb08f5 (Recover receptionist changes)
           {Object.entries(APPT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
 

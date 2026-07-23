@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 
@@ -9,22 +9,49 @@ export const CashierReport: React.FC = () => {
   const initialCash = 15200000; // 15.2M VND starter fund
   const todayDateStr = new Date().toDateString();
 
-  // Filter invoices paid in today's shift
+  // Shift start time state (dùng để reset doanh thu ca mới sau khi chốt ca)
+  const [shiftStartTime, setShiftStartTime] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('goodsmile_shift_start_time');
+      return saved ? Number(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Reset shiftStartTime nếu đã sang ngày mới
+  useEffect(() => {
+    if (shiftStartTime) {
+      const shiftDate = new Date(shiftStartTime).toDateString();
+      if (shiftDate !== todayDateStr) {
+        setShiftStartTime(null);
+        localStorage.removeItem('goodsmile_shift_start_time');
+      }
+    }
+  }, [todayDateStr, shiftStartTime]);
+
+  // Filter invoices paid in current active shift
   const todayInvoices = useMemo(() => {
     return invoices.filter((inv) => {
       const isPaid = inv.status === 'Paid' || inv.status === 'Partially Paid';
       const paymentDates = (inv.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
       const invoiceDate = paymentDates.length > 0 ? new Date(Math.max(...paymentDates)) : new Date(inv.createdAt);
-      return isPaid && invoiceDate.toDateString() === todayDateStr;
+      const isToday = isPaid && invoiceDate.toDateString() === todayDateStr;
+      if (!isToday) return false;
+      if (shiftStartTime) {
+        return invoiceDate.getTime() >= shiftStartTime;
+      }
+      return true;
     });
-  }, [invoices, todayDateStr]);
+  }, [invoices, todayDateStr, shiftStartTime]);
 
-  // Calculate shift income per payment method
+  // Calculate shift income per payment method for current active shift
   const cashIncome = useMemo(() => {
     return invoices.reduce((sum, inv) => {
       const paymentDates = (inv.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
       const invoiceDate = paymentDates.length > 0 ? new Date(Math.max(...paymentDates)) : new Date(inv.createdAt);
       if (invoiceDate.toDateString() !== todayDateStr) return sum;
+      if (shiftStartTime && invoiceDate.getTime() < shiftStartTime) return sum;
 
       if (inv.payments && inv.payments.length > 0) {
         return sum + inv.payments.filter(p => p.method === 'Cash').reduce((s, p) => s + p.amount, 0);
@@ -34,13 +61,14 @@ export const CashierReport: React.FC = () => {
       }
       return sum;
     }, 0);
-  }, [invoices, todayDateStr]);
+  }, [invoices, todayDateStr, shiftStartTime]);
 
   const nonCashIncome = useMemo(() => {
     return invoices.reduce((sum, inv) => {
       const paymentDates = (inv.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
       const invoiceDate = paymentDates.length > 0 ? new Date(Math.max(...paymentDates)) : new Date(inv.createdAt);
       if (invoiceDate.toDateString() !== todayDateStr) return sum;
+      if (shiftStartTime && invoiceDate.getTime() < shiftStartTime) return sum;
 
       if (inv.payments && inv.payments.length > 0) {
         return sum + inv.payments.filter(p => p.method !== 'Cash').reduce((s, p) => s + p.amount, 0);
@@ -50,14 +78,12 @@ export const CashierReport: React.FC = () => {
       }
       return sum;
     }, 0);
-  }, [invoices, todayDateStr]);
+  }, [invoices, todayDateStr, shiftStartTime]);
 
   const totalCollected = cashIncome + nonCashIncome;
   const expectedPhysicalCash = initialCash + cashIncome;
 
   // Form states
-  const [useBillCounter, setUseBillCounter] = useState(true);
-  const [actualCashInput, setActualCashInput] = useState('');
   const [reportNotes, setReportNotes] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
 
@@ -81,10 +107,7 @@ export const CashierReport: React.FC = () => {
     );
   }, [billCounts]);
 
-  const actualCash = useMemo(() => {
-    if (useBillCounter) return calculatedBillSum;
-    return parseFloat(actualCashInput) || 0;
-  }, [useBillCounter, calculatedBillSum, actualCashInput]);
+  const actualCash = calculatedBillSum;
 
   const discrepancy = actualCash - expectedPhysicalCash;
 
@@ -93,13 +116,44 @@ export const CashierReport: React.FC = () => {
     setBillCounts(prev => ({ ...prev, [denom]: qty }));
   };
 
+  // Helper to format past date (DD/MM) relative to current time
+  const getFormattedPastDate = (daysAgo: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+  };
+
+  const [closingHistory, setClosingHistory] = useState([
+    { date: `${getFormattedPastDate(1)} - Ca Chiều`, time: '20:10', status: 'Khớp quỹ (0đ)', isError: false, warning: false },
+    { date: `${getFormattedPastDate(1)} - Ca Sáng`, time: '12:05', status: 'Khớp quỹ (0đ)', isError: false, warning: false },
+    { date: `${getFormattedPastDate(2)} - Ca Sáng`, time: '12:01', status: 'Thừa +20,000đ (Bệnh nhân quên lấy tiền thối)', isError: true, warning: true },
+    { date: `${getFormattedPastDate(3)} - Ca Chiều`, time: '20:05', status: 'Khớp quỹ (0đ)', isError: false, warning: false },
+  ]);
+
   const handleShiftClose = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!useBillCounter && !actualCashInput) {
-      alert('Vui lòng nhập số tiền mặt thực tế kiểm đếm!');
-      return;
-    }
 
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const dateStr = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}`;
+    const currentShift = now.getHours() < 13 ? 'Ca Sáng' : 'Ca Chiều';
+    const statusText = discrepancy === 0
+      ? 'Khớp quỹ (0đ)'
+      : discrepancy > 0
+      ? `Thừa +${discrepancy.toLocaleString()}đ`
+      : `Hụt -${Math.abs(discrepancy).toLocaleString()}đ`;
+
+    const newLog = {
+      date: `${dateStr} - ${currentShift}`,
+      time: timeStr,
+      status: statusText,
+      isError: discrepancy !== 0,
+      warning: discrepancy > 0,
+    };
+
+    setClosingHistory(prev => [newLog, ...prev]);
     setIsSubmitted(true);
     alert('Báo cáo ca trực đã được chốt và khóa sổ thành công!');
   };
@@ -177,24 +231,6 @@ export const CashierReport: React.FC = () => {
                 <Icon name="calculate" className="text-amber-600 text-lg" />
                 Kiểm Kê Tiền Mặt Ngăn Kéo Thực Tế
               </h3>
-              
-              {/* Toggle Input Mode */}
-              <div className="flex bg-slate-100 p-1 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setUseBillCounter(true)}
-                  className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${useBillCounter ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                >
-                  Đếm theo Mệnh giá
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUseBillCounter(false)}
-                  className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${!useBillCounter ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                >
-                  Nhập số tổng thủ công
-                </button>
-              </div>
             </div>
 
             {isSubmitted ? (
@@ -215,8 +251,12 @@ export const CashierReport: React.FC = () => {
                 <div className="pt-2">
                   <button
                     onClick={() => {
+                      const nowTime = Date.now();
+                      setShiftStartTime(nowTime);
+                      try {
+                        localStorage.setItem('goodsmile_shift_start_time', nowTime.toString());
+                      } catch (_) {}
                       setIsSubmitted(false);
-                      setActualCashInput('');
                       setReportNotes('');
                       setBillCounts({ 500000: 0, 200000: 0, 100000: 0, 50000: 0, 20000: 0, 10000: 0, 5000: 0, 2000: 0, 1000: 0 });
                     }}
@@ -230,58 +270,36 @@ export const CashierReport: React.FC = () => {
               <form onSubmit={handleShiftClose} className="space-y-5">
                 
                 {/* Mode 1: Denominations Bill Counter Grid */}
-                {useBillCounter && (
-                  <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-200/60 space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                      {[500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000].map((denom) => {
-                        const count = billCounts[denom] || 0;
-                        const subTotal = denom * count;
-                        return (
-                          <div key={denom} className="bg-white border border-slate-200 p-3 rounded-xl flex items-center justify-between shadow-sm">
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-slate-700 font-data-mono">₫{denom.toLocaleString()}</p>
-                              <p className="text-[10px] text-slate-400 font-bold mt-0.5 font-data-mono">
-                                = ₫{subTotal.toLocaleString()}
-                              </p>
-                            </div>
-                            <input
-                              type="number"
-                              min={0}
-                              placeholder="0"
-                              value={count === 0 ? '' : count}
-                              onChange={(e) => handleBillCountChange(denom, e.target.value)}
-                              className="w-16 px-2.5 py-1.5 text-center bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-data-mono"
-                            />
+                <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-200/60 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {[500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000].map((denom) => {
+                      const count = billCounts[denom] || 0;
+                      const subTotal = denom * count;
+                      return (
+                        <div key={denom} className="bg-white border border-slate-200 p-3 rounded-xl flex items-center justify-between shadow-sm">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-700 font-data-mono">₫{denom.toLocaleString()}</p>
+                            <p className="text-[10px] text-slate-400 font-bold mt-0.5 font-data-mono">
+                              = ₫{subTotal.toLocaleString()}
+                            </p>
                           </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex justify-between items-center bg-amber-50/60 p-3 rounded-xl border border-amber-100 text-xs text-amber-900">
-                      <span className="font-bold">Tổng cộng tiền mặt đếm mệnh giá:</span>
-                      <span className="font-extrabold font-data-mono text-sm">₫{calculatedBillSum.toLocaleString()}</span>
-                    </div>
+                          <input
+                            type="number"
+                            min={0}
+                            placeholder="0"
+                            value={count === 0 ? '' : count}
+                            onChange={(e) => handleBillCountChange(denom, e.target.value)}
+                            className="w-16 px-2.5 py-1.5 text-center bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-data-mono"
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-
-                {/* Mode 2: Manual Total cash input */}
-                {!useBillCounter && (
-                  <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-200/60 max-w-md">
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Tổng số tiền mặt thực tế kiểm đếm được *
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-3 text-xs font-bold text-slate-400">₫</span>
-                      <input
-                        type="number"
-                        required
-                        placeholder="Nhập tổng số tiền mặt đếm được trong két..."
-                        value={actualCashInput}
-                        onChange={(e) => setActualCashInput(e.target.value)}
-                        className="w-full pl-7 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-extrabold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-data-mono"
-                      />
-                    </div>
+                  <div className="flex justify-between items-center bg-amber-50/60 p-3 rounded-xl border border-amber-100 text-xs text-amber-900">
+                    <span className="font-bold">Tổng cộng tiền mặt đếm mệnh giá:</span>
+                    <span className="font-extrabold font-data-mono text-sm">₫{calculatedBillSum.toLocaleString()}</span>
                   </div>
-                )}
+                </div>
 
                 {/* Discrepancy & comparison section */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center bg-slate-50 p-4 rounded-xl border border-slate-200/60">
@@ -416,12 +434,7 @@ export const CashierReport: React.FC = () => {
             </h4>
             
             <div className="space-y-3.5">
-              {[
-                { date: '15/07 - Ca Sáng', time: '12:05', status: 'Khớp quỹ (0đ)', isError: false },
-                { date: '14/07 - Ca Chiều', time: '20:10', status: 'Khớp quỹ (0đ)', isError: false },
-                { date: '14/07 - Ca Sáng', time: '12:01', status: 'Thừa +20,000đ (Bệnh nhân quên lấy tiền thối)', isError: true, warning: true },
-                { date: '13/07 - Ca Chiều', time: '20:05', status: 'Khớp quỹ (0đ)', isError: false },
-              ].map((log, idx) => (
+              {closingHistory.map((log, idx) => (
                 <div key={idx} className="bg-white p-3 rounded-xl border border-slate-150 flex flex-col gap-1 shadow-sm">
                   <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold">
                     <span>{log.date}</span>

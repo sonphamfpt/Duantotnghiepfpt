@@ -10,9 +10,10 @@ export const queueApi = {
   /**
    * Lễ tân check-in đưa bệnh nhân vào hàng chờ
    */
-  checkIn: (patientId: string, dentistId: string, customRoom?: string, serviceName?: string) => {
+  checkIn: (patientId: string, dentistId: string, customRoom?: string, serviceName?: string, appointmentId?: string) => {
     const rawPatientId = patientId.split('-')[1] || patientId;
     const rawDentistId = dentistId.split('-')[1] || dentistId;
+    const rawAppointmentId = appointmentId ? (appointmentId.split('-')[1] || appointmentId) : undefined;
     return request<any>('/queues/checkin', {
       method: 'POST',
       body: JSON.stringify({
@@ -20,6 +21,7 @@ export const queueApi = {
         dentistId: rawDentistId,
         serviceName,
         customRoom,
+        ...(rawAppointmentId ? { appointmentId: rawAppointmentId } : {}),
       }),
     });
   },

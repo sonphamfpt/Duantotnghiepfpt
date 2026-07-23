@@ -52,6 +52,7 @@ export interface Appointment {
   dentistName: string;
   time: string;
   status: 'Pending' | 'Confirmed' | 'In-Progress' | 'Completed' | 'Cancelled' | 'NoShow';
+  cancelReason?: string;
 }
 
 export interface QueueItem {

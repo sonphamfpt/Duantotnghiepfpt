@@ -45,6 +45,9 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
     pendingTransferDentistId?: string;
   } | null>(null);
 
+  // Success Toast Modal state
+  const [successToast, setSuccessToast] = useState<{ title: string; message: string } | null>(null);
+
   // Dùng ngày thực tế, không hardcode
   const todayDateStr = new Date().toISOString().slice(0, 10);
   const tomorrowDate = new Date();
@@ -68,6 +71,61 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
     [doctorShifts, dentistId, todayDateStr]
   );
 
+<<<<<<< HEAD
+=======
+  // Ca làm việc của tôi ĐỦ ĐIỀU KIỆN đổi/chuyển (>= 12 tiếng)
+  const eligibleMyShifts = React.useMemo(() =>
+    myShifts.filter(s => isShiftEligibleForSwap(s)),
+    [myShifts, isShiftEligibleForSwap]
+  );
+
+  // Ca trực của bác sĩ khác ĐỦ ĐIỀU KIỆN hoán đổi (>= 12 tiếng & KHÔNG xung đột trùng ngày trực)
+  const swapTargets = React.useMemo(() => {
+    if (!originShiftId) return [];
+    const originShift = doctorShifts.find(s => s.id === originShiftId);
+    if (!originShift) return [];
+
+    return doctorShifts.filter(target => {
+      // 1. Phải là bác sĩ khác
+      if (target.dentistId === dentistId) return false;
+      // 2. Phải đủ 12 tiếng nữa mới bắt đầu
+      if (!isShiftEligibleForSwap(target)) return false;
+
+      // 3. Nếu CÙNG NGÀY và CÙNG LOẠI CA: Cả 2 BS đều đang trực ca này -> Không thể hoán đổi ca giống hệt nhau
+      if (target.date === originShift.date && target.shiftType === originShift.shiftType) {
+        return false;
+      }
+
+      // 4. Nếu khác ngày: Bác sĩ hiện tại chưa có ca nào vào ngày của ca đích
+      if (target.date !== originShift.date) {
+        const myShiftOnTargetDate = doctorShifts.some(s => s.dentistId === dentistId && s.date === target.date);
+        if (myShiftOnTargetDate) return false;
+      }
+
+      // 5. Bác sĩ ca đích chưa có ca nào vào ngày của ca gốc
+      if (target.date !== originShift.date) {
+        const targetDentistShiftOnOriginDate = doctorShifts.some(s => s.dentistId === target.dentistId && s.date === originShift.date);
+        if (targetDentistShiftOnOriginDate) return false;
+      }
+
+      return true;
+    });
+  }, [doctorShifts, dentistId, originShiftId, isShiftEligibleForSwap]);
+
+  // Bác sĩ ĐỦ ĐIỀU KIỆN nhận chuyển ca (chưa có ca trực vào ngày của ca gốc)
+  const eligibleTransferDentists = React.useMemo(() => {
+    if (!originShiftId) return dentists.filter(d => d.id !== dentistId);
+    const originShift = doctorShifts.find(s => s.id === originShiftId);
+    if (!originShift) return dentists.filter(d => d.id !== dentistId);
+
+    return dentists.filter(d => {
+      if (d.id === dentistId) return false;
+      const hasShiftOnDate = doctorShifts.some(s => s.dentistId === d.id && s.date === originShift.date);
+      return !hasShiftOnDate;
+    });
+  }, [dentists, doctorShifts, dentistId, originShiftId]);
+
+>>>>>>> 6bb08f5 (Recover receptionist changes)
   const openSwapForShift = (shiftId: string) => {
     setOriginShiftId(shiftId);
     setActionType('swap');
@@ -111,7 +169,10 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
         }
       }
       swapShifts(originShiftId, targetShiftId);
-      alert('Gửi yêu cầu hoán đổi ca trực thành công! Ca trực đã được cập nhật.');
+      setSuccessToast({
+        title: 'Hoán đổi ca trực thành công!',
+        message: 'Lịch làm việc đã được cập nhật và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
+      });
 
     } else if (actionType === 'transfer') {
       if (!targetDentistId) {
@@ -142,6 +203,7 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
         }
       }
       transferShift(originShiftId, targetDentistId);
+<<<<<<< HEAD
       alert('Chuyển giao ca trực thành công! Lịch làm việc đã được cập nhật.');
 
     } else {
@@ -156,6 +218,12 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
       }
       changeShiftRoom(originShiftId, targetRoom);
       alert('Thay đổi phòng trực thành công! Lịch làm việc đã được cập nhật.');
+=======
+      setSuccessToast({
+        title: 'Nhờ trực thay thành công!',
+        message: 'Ca trực đã được chuyển giao và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
+      });
+>>>>>>> 6bb08f5 (Recover receptionist changes)
     }
 
     // Reset and close
@@ -183,8 +251,16 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
     setOriginShiftId('');
     setTargetShiftId('');
     setTargetDentistId('');
+<<<<<<< HEAD
     setTargetRoom('');
     alert('Đã đổi ca và gửi thông báo đến lễ tân thành công! Lễ tân sẽ liên hệ bệnh nhân.');
+=======
+    setFormDentistId('');
+    setSuccessToast({
+      title: 'Xác nhận đổi ca thành công!',
+      message: 'Lịch làm việc đã được chuyển giao. Thông báo danh sách bệnh nhân bị ảnh hưởng đã được gửi đến Lễ tân để hỗ trợ liên hệ.'
+    });
+>>>>>>> 6bb08f5 (Recover receptionist changes)
   };
 
   // List of possible targets to swap with (shifts from other dentists)
@@ -675,6 +751,41 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
               >
                 <Icon name="notifications_active" className="text-[16px]" />
                 Xác nhận &amp; Thông báo lễ tân
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CUSTOM UI SUCCESS NOTIFICATION MODAL ── */}
+      {successToast && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl space-y-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+              <Icon name="check_circle" className="text-3xl font-extrabold" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <h3 className="font-extrabold text-slate-800 text-base">{successToast.title}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
+                {successToast.message}
+              </p>
+            </div>
+
+            <div className="bg-emerald-50/80 border border-emerald-200/70 p-3.5 rounded-2xl text-left flex items-start gap-2 text-xs text-emerald-900">
+              <Icon name="notifications_active" className="text-emerald-600 text-base shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Đã tự động đồng bộ Lễ tân:</p>
+                <p className="text-[11px] text-emerald-700 mt-0.5">Bộ phận Lễ tân tiếp đón đã nhận được thông báo này trực tiếp trên màn hình <strong>"BS Đổi ca / Trực thay"</strong>.</p>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={() => setSuccessToast(null)}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-200 transition-all cursor-pointer"
+              >
+                Đồng ý &amp; Hoàn tất
               </button>
             </div>
           </div>

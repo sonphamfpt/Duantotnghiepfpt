@@ -166,6 +166,7 @@ export const ManagerPatients: React.FC = () => {
                 <th className="px-6 py-4">Họ và tên</th>
                 <th className="px-6 py-4">Số điện thoại</th>
                 <th className="px-6 py-4 text-center">Số lần khám</th>
+                <th className="px-6 py-4 text-center">Số lần hủy</th>
                 <th className="px-6 py-4 text-center">Xếp hạng Hội viên</th>
                 <th className="px-6 py-4 text-center">Trạng thái</th>
                 <th className="px-6 py-4 text-right">Thao tác</th>
@@ -189,6 +190,22 @@ export const ManagerPatients: React.FC = () => {
                       <td className="px-6 py-4 font-semibold text-on-surface-variant">{patient.phone}</td>
                       <td className="px-6 py-4 text-center font-bold text-green-700">
                         {stats.recordCount} lần
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {stats.cancelCount === 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                            0 lần
+                          </span>
+                        ) : stats.cancelCount >= 3 ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-error-container text-error border border-error/20 animate-pulse">
+                            <Icon name="warning" className="text-[11px]" />
+                            {stats.cancelCount} lần
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            {stats.cancelCount} lần
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold border ${tierInfo.class}`}>
@@ -266,7 +283,7 @@ export const ManagerPatients: React.FC = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-on-surface-variant/60 font-medium">
+                  <td colSpan={8} className="text-center py-10 text-on-surface-variant/60 font-medium">
                     Không tìm thấy khách hàng nào khớp với bộ lọc
                   </td>
                 </tr>

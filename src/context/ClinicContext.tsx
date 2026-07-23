@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, ToothState, InvoiceItem, DoctorShift, ShiftChangeNotification, ServiceReviewItem } from '../types/clinic';
-import { INITIAL_LOGS } from '../services/mockData';
 import { socket } from '../services/socketClient';
 
 import {
@@ -24,7 +23,7 @@ interface ClinicContextType {
   logs: ClinicLog[];
   medicalRecords: MedicalRecord[];
   addLog: (module: ClinicLog['module'], type: ClinicLog['type'], message: string) => void;
-  checkInPatient: (patientId: string, dentistId: string, customRoom?: string, serviceName?: string) => void;
+  checkInPatient: (patientId: string, dentistId: string, customRoom?: string, serviceName?: string, appointmentId?: string) => void;
   addAppointment: (appointment: Omit<Appointment, 'id' | 'status'>) => Appointment;
   startTreatment: (queueId: string) => void;
   completeTreatment: (
@@ -47,7 +46,7 @@ interface ClinicContextType {
   lockPatient: (patientId: string) => void;
   rescheduleAppointment: (appointmentId: string, newTime: string, newDentistId?: string, newDentistName?: string) => void;
 
-  cancelAppointment: (appointmentId: string) => void;
+  cancelAppointment: (appointmentId: string, reason?: string) => Promise<boolean>;
   doctorShifts: DoctorShift[];
   shiftChangeNotifications: ShiftChangeNotification[];
   reviews: ServiceReviewItem[];
@@ -76,7 +75,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [logs, setLogs] = useState<ClinicLog[]>(INITIAL_LOGS);
+  const [logs, setLogs] = useState<ClinicLog[]>([]);
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
   const [doctorShifts, setDoctorShifts] = useState<DoctorShift[]>([]);
   const [shiftChangeNotifications, setShiftChangeNotifications] = useState<ShiftChangeNotification[]>([]);
@@ -342,9 +341,9 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  const checkInPatient = async (patientId: string, dentistId: string, customRoom?: string, serviceName?: string) => {
+  const checkInPatient = async (patientId: string, dentistId: string, customRoom?: string, serviceName?: string, appointmentId?: string) => {
     try {
-      const response = await queueApi.checkIn(patientId, dentistId, customRoom, serviceName);
+      const response = await queueApi.checkIn(patientId, dentistId, customRoom, serviceName, appointmentId);
       if (response.success) {
         addLog('RECEPTION', 'INFO', `Bệnh nhân check-in thành công.`);
         await refreshAllData();
@@ -566,7 +565,11 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
+<<<<<<< HEAD
   const cancelAppointment = async (appointmentId: string) => {
+=======
+  const cancelAppointment = async (appointmentId: string, reason: string = 'Hủy bởi lễ tân phòng khám'): Promise<boolean> => {
+>>>>>>> 6bb08f5 (Recover receptionist changes)
     try {
       const response = await appointmentApi.cancel(appointmentId);
       if (response.success) {
@@ -575,7 +578,12 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         );
         addLog('RECEPTION', 'WARN', `Hủy lịch hẹn ${appointmentId} thành công.`);
       }
+<<<<<<< HEAD
     } catch (err) {
+=======
+      return false;
+    } catch (err: any) {
+>>>>>>> 6bb08f5 (Recover receptionist changes)
       console.error('Lỗi khi hủy lịch hẹn:', err);
     }
   };
