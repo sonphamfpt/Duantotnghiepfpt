@@ -1,27 +1,11 @@
-// ════════════════════════════════════════════════════════════════
-// Prisma Schema — Nha khoa GoodSmile
-// Provider: PostgreSQL 16
-// ════════════════════════════════════════════════════════════════
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-// ─────────────────────────────────────────────
-// 1. NGƯỜI DÙNG & PHÂN QUYỀN
-// ─────────────────────────────────────────────
-
-enum RoleCode {
-  patient
-  receptionist
-  dentist
-  cashier
-  manager
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Role {
@@ -33,90 +17,78 @@ model Role {
   @@map("roles")
 }
 
-enum UserStatus {
-  Active
-  Inactive
-}
-
 model User {
-  userId       BigInt     @id @default(autoincrement()) @map("user_id")
-  roleId       Int        @map("role_id")
-  role         Role       @relation(fields: [roleId], references: [roleId])
-  email        String?    @unique @db.VarChar(150)
-  passwordHash String?    @map("password_hash") @db.VarChar(255)
-  fullName     String     @map("full_name") @db.VarChar(150)
-  phone        String?    @db.VarChar(20)
-  avatarUrl    String?    @map("avatar_url")
-  status       UserStatus @default(Active)
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-
-  staffPermission   StaffPermission?
-  dentist           Dentist?
-  patient           Patient?         @relation("PatientAccount")
-  paymentsHandled   Payment[]
-  unlockedPatients  Patient[]        @relation("PatientUnlockedBy")
-  systemLogs        SystemLog[]
+  userId           BigInt           @id @default(autoincrement()) @map("user_id")
+  roleId           Int              @map("role_id")
+  email            String?          @unique @db.VarChar(150)
+  passwordHash     String?          @map("password_hash") @db.VarChar(255)
+  fullName         String           @map("full_name") @db.VarChar(150)
+  phone            String?          @db.VarChar(20)
+  avatarUrl        String?          @map("avatar_url")
+  status           UserStatus       @default(Active)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  dentist          Dentist?
+  unlockedPatients Patient[]        @relation("PatientUnlockedBy")
+  patient          Patient?         @relation("PatientAccount")
+  paymentsHandled  Payment[]
+  staffPermission  StaffPermission?
+  systemLogs       SystemLog[]
+  role             Role             @relation(fields: [roleId], references: [roleId])
 
   @@map("users")
 }
 
 model StaffPermission {
   userId    BigInt  @id @map("user_id")
-  user      User    @relation(fields: [userId], references: [userId], onDelete: Cascade)
   admission Boolean @default(false)
   clinical  Boolean @default(false)
   checkout  Boolean @default(false)
   settings  Boolean @default(false)
+  user      User    @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@map("staff_permissions")
 }
 
-// ─────────────────────────────────────────────
-// 2. BÁC SĨ & PHÒNG KHÁM
-// ─────────────────────────────────────────────
-
 model Room {
-  roomId   Int     @id @default(autoincrement()) @map("room_id")
-  name     String  @unique @db.VarChar(50)
-  isActive Boolean @default(true) @map("is_active")
-
-  dentists       Dentist[]
-  dentistShifts  DentistShift[]
+  roomId         Int             @id @default(autoincrement()) @map("room_id")
+  name           String          @unique @db.VarChar(50)
+  isActive       Boolean         @default(true) @map("is_active")
   appointments   Appointment[]
-  queueTickets   QueueTicket[]
-  medicalRecords MedicalRecord[]
+  dentistShifts  DentistShift[]
+  dentists       Dentist[]
   invoices       Invoice[]
+  medicalRecords MedicalRecord[]
+  queueTickets   QueueTicket[]
 
   @@map("rooms")
 }
 
 model Dentist {
-  dentistId       BigInt  @id @default(autoincrement()) @map("dentist_id")
-  userId          BigInt  @unique @map("user_id")
-  user            User    @relation(fields: [userId], references: [userId])
-  specialty       String? @db.VarChar(255)
-  degree          String? @db.VarChar(100)
-  experienceYears Int?    @map("experience_years")
-  casesHandled    String? @map("cases_handled") @db.VarChar(20)
-  bio             String?
-  motto           String?
-  defaultRoomId   Int?    @map("default_room_id")
-  defaultRoom     Room?   @relation(fields: [defaultRoomId], references: [roomId])
-  isActive        Boolean @default(true) @map("is_active")
-
-  education         DentistEducation[]
-  certifications    DentistCertification[]
-  clinicalStrengths DentistClinicalStrength[]
-  workHistory       DentistWorkHistory[]
-  shifts            DentistShift[]
-  appointments      Appointment[]
-  queueTickets      QueueTicket[]
-  medicalRecords    MedicalRecord[]
-  treatmentPlans    TreatmentPlan[]
-  invoices          Invoice[]
-  shiftChangesAsOriginal ShiftChangeNotification[] @relation("ShiftChangeOriginalDentist")
+  dentistId              BigInt                    @id @default(autoincrement()) @map("dentist_id")
+  userId                 BigInt                    @unique @map("user_id")
+  specialty              String?                   @db.VarChar(255)
+  degree                 String?                   @db.VarChar(100)
+  experienceYears        Int?                      @map("experience_years")
+  casesHandled           String?                   @map("cases_handled") @db.VarChar(20)
+  bio                    String?
+  motto                  String?
+  defaultRoomId          Int?                      @map("default_room_id")
+  isActive               Boolean                   @default(true) @map("is_active")
+  appointments           Appointment[]
+  certifications         DentistCertification[]
+  clinicalStrengths      DentistClinicalStrength[]
+  education              DentistEducation[]
+  shifts                 DentistShift[]
+  workHistory            DentistWorkHistory[]
+  defaultRoom            Room?                     @relation(fields: [defaultRoomId], references: [roomId])
+  user                   User                      @relation(fields: [userId], references: [userId])
+  invoices               Invoice[]
+  medicalRecords         MedicalRecord[]
+  queueTickets           QueueTicket[]
   shiftChangesAsNew      ShiftChangeNotification[] @relation("ShiftChangeNewDentist")
+  shiftChangesAsOriginal ShiftChangeNotification[] @relation("ShiftChangeOriginalDentist")
+  treatmentPlans         TreatmentPlan[]
 
   @@map("dentists")
 }
@@ -124,9 +96,9 @@ model Dentist {
 model DentistEducation {
   id          BigInt  @id @default(autoincrement())
   dentistId   BigInt  @map("dentist_id")
-  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
   description String
   sortOrder   Int     @default(0) @map("sort_order")
+  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
 
   @@map("dentist_education")
 }
@@ -134,9 +106,9 @@ model DentistEducation {
 model DentistCertification {
   id          BigInt  @id @default(autoincrement())
   dentistId   BigInt  @map("dentist_id")
-  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
   description String
   sortOrder   Int     @default(0) @map("sort_order")
+  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
 
   @@map("dentist_certifications")
 }
@@ -144,9 +116,9 @@ model DentistCertification {
 model DentistClinicalStrength {
   id          BigInt  @id @default(autoincrement())
   dentistId   BigInt  @map("dentist_id")
-  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
   description String
   sortOrder   Int     @default(0) @map("sort_order")
+  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
 
   @@map("dentist_clinical_strengths")
 }
@@ -154,84 +126,68 @@ model DentistClinicalStrength {
 model DentistWorkHistory {
   id          BigInt  @id @default(autoincrement())
   dentistId   BigInt  @map("dentist_id")
-  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
   periodText  String? @map("period_text") @db.VarChar(100)
   description String
   sortOrder   Int     @default(0) @map("sort_order")
+  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
 
   @@map("dentist_work_history")
 }
 
-// ─────────────────────────────────────────────
-// 3. BỆNH NHÂN & HẠNG THÀNH VIÊN
-// ─────────────────────────────────────────────
-
 model MembershipTier {
-  tierId          Int      @id @default(autoincrement()) @map("tier_id")
-  code            String   @unique @db.VarChar(20) // STANDARD, GOLD, PLATINUM, DIAMOND
-  name            String   @db.VarChar(50)
-  minPoints       Int      @default(0) @map("min_points")
-  discountPercent Decimal  @default(0) @map("discount_percent") @db.Decimal(5, 2)
-
-  patients Patient[]
+  tierId          Int       @id @default(autoincrement()) @map("tier_id")
+  code            String    @unique @db.VarChar(20)
+  name            String    @db.VarChar(50)
+  minPoints       Int       @default(0) @map("min_points")
+  discountPercent Decimal   @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  patients        Patient[]
 
   @@map("membership_tiers")
 }
 
 model Patient {
-  patientId         BigInt    @id @default(autoincrement()) @map("patient_id")
-  userId            BigInt?   @unique @map("user_id")
-  user              User?     @relation("PatientAccount", fields: [userId], references: [userId])
-  fullName          String    @map("full_name") @db.VarChar(150)
-  phone             String    @unique @db.VarChar(20)
-  dateOfBirth       DateTime? @map("date_of_birth") @db.Date
-  gender            String?   @db.VarChar(10)
-  criticalAllergy   String?   @map("critical_allergy")
-  medicalCondition  String?   @map("medical_condition")
-  address           String?   @db.VarChar(255)
-  walletBalance     Decimal   @default(0) @map("wallet_balance") @db.Decimal(14, 2)
-  loyaltyPoints     Int       @default(0) @map("loyalty_points")
-  tierId            Int       @map("tier_id")
-  tier              MembershipTier @relation(fields: [tierId], references: [tierId])
-  isLocked          Boolean   @default(false) @map("is_locked")
-  lockedReason      String?   @map("locked_reason")
-  unlockedByUserId  BigInt?   @map("unlocked_by_user_id")
-  unlockedBy        User?     @relation("PatientUnlockedBy", fields: [unlockedByUserId], references: [userId])
-  createdAt         DateTime  @default(now()) @map("created_at")
-
-  walletTransactions WalletTransaction[]
+  patientId          BigInt              @id @default(autoincrement()) @map("patient_id")
+  userId             BigInt?             @unique @map("user_id")
+  fullName           String              @map("full_name") @db.VarChar(150)
+  phone              String              @unique @db.VarChar(20)
+  dateOfBirth        DateTime?           @map("date_of_birth") @db.Date
+  gender             String?             @db.VarChar(10)
+  criticalAllergy    String?             @map("critical_allergy")
+  medicalCondition   String?             @map("medical_condition")
+  address            String?             @db.VarChar(255)
+  walletBalance      Decimal             @default(0) @map("wallet_balance") @db.Decimal(14, 2)
+  loyaltyPoints      Int                 @default(0) @map("loyalty_points")
+  tierId             Int                 @map("tier_id")
+  isLocked           Boolean             @default(false) @map("is_locked")
+  lockedReason       String?             @map("locked_reason")
+  unlockedByUserId   BigInt?             @map("unlocked_by_user_id")
+  createdAt          DateTime            @default(now()) @map("created_at")
   appointments       Appointment[]
-  queueTickets       QueueTicket[]
-  medicalRecords     MedicalRecord[]
-  treatmentPlans     TreatmentPlan[]
   invoices           Invoice[]
+  medicalRecords     MedicalRecord[]
+  tier               MembershipTier      @relation(fields: [tierId], references: [tierId])
+  unlockedBy         User?               @relation("PatientUnlockedBy", fields: [unlockedByUserId], references: [userId])
+  user               User?               @relation("PatientAccount", fields: [userId], references: [userId])
+  queueTickets       QueueTicket[]
   reviews            ServiceReview[]
+  treatmentPlans     TreatmentPlan[]
+  walletTransactions WalletTransaction[]
 
   @@map("patients")
 }
 
-enum WalletTxType {
-  Recharge
-  PaymentDeduct
-  Refund
-}
-
 model WalletTransaction {
-  walletTxId        BigInt       @id @default(autoincrement()) @map("wallet_tx_id")
-  patientId         BigInt       @map("patient_id")
-  patient           Patient      @relation(fields: [patientId], references: [patientId])
-  amount             Decimal      @db.Decimal(14, 2)
-  type               WalletTxType
-  relatedInvoiceId   BigInt?      @map("related_invoice_id")
-  relatedInvoice     Invoice?     @relation(fields: [relatedInvoiceId], references: [invoiceId])
-  createdAt          DateTime     @default(now()) @map("created_at")
+  walletTxId       BigInt       @id @default(autoincrement()) @map("wallet_tx_id")
+  patientId        BigInt       @map("patient_id")
+  amount           Decimal      @db.Decimal(14, 2)
+  type             WalletTxType
+  relatedInvoiceId BigInt?      @map("related_invoice_id")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  patient          Patient      @relation(fields: [patientId], references: [patientId])
+  relatedInvoice   Invoice?     @relation(fields: [relatedInvoiceId], references: [invoiceId])
 
   @@map("wallet_transactions")
 }
-
-// ─────────────────────────────────────────────
-// 4. DỊCH VỤ
-// ─────────────────────────────────────────────
 
 model ServiceCategory {
   categoryId Int       @id @default(autoincrement()) @map("category_id")
@@ -242,62 +198,333 @@ model ServiceCategory {
 }
 
 model Service {
-  serviceId        BigInt   @id @default(autoincrement()) @map("service_id")
-  categoryId       Int?     @map("category_id")
-  category         ServiceCategory? @relation(fields: [categoryId], references: [categoryId])
-  name             String   @db.VarChar(150)
-  price            Decimal  @db.Decimal(14, 2)
-  durationMinutes  Int      @map("duration_minutes") // ★ cốt lõi xử lý thời gian
-  bufferMinutes    Int      @default(0) @map("buffer_minutes")
-  isActive         Boolean  @default(true) @map("is_active")
-  description      String?
-
+  serviceId             BigInt                 @id @default(autoincrement()) @map("service_id")
+  categoryId            Int?                   @map("category_id")
+  name                  String                 @db.VarChar(150)
+  price                 Decimal                @db.Decimal(14, 2)
+  durationMinutes       Int                    @map("duration_minutes")
+  bufferMinutes         Int                    @default(0) @map("buffer_minutes")
+  isActive              Boolean                @default(true) @map("is_active")
+  description           String?
   appointments          Appointment[]
   invoiceItems          InvoiceItem[]
   medicalRecordServices MedicalRecordService[]
   queueTickets          QueueTicket[]
   reviews               ServiceReview[]
+  category              ServiceCategory?       @relation(fields: [categoryId], references: [categoryId])
 
   @@map("services")
 }
 
-// ─────────────────────────────────────────────
-// 5. LỊCH LÀM VIỆC & ĐẶT LỊCH HẸN  ★★★
-// ─────────────────────────────────────────────
-
 model ClinicOperatingHour {
-  weekday    Int      @id @db.SmallInt // 0=CN...6=T7
-  openTime   DateTime @map("open_time") @db.Time
-  closeTime  DateTime @map("close_time") @db.Time
-  lunchStart DateTime? @map("lunch_start") @db.Time
-  lunchEnd   DateTime? @map("lunch_end") @db.Time
-  isClosed   Boolean  @default(false) @map("is_closed")
+  weekday    Int       @id @db.SmallInt
+  openTime   DateTime  @map("open_time") @db.Time(6)
+  closeTime  DateTime  @map("close_time") @db.Time(6)
+  lunchStart DateTime? @map("lunch_start") @db.Time(6)
+  lunchEnd   DateTime? @map("lunch_end") @db.Time(6)
+  isClosed   Boolean   @default(false) @map("is_closed")
 
   @@map("clinic_operating_hours")
+}
+
+model DentistShift {
+  shiftId       BigInt                    @id @default(autoincrement()) @map("shift_id")
+  dentistId     BigInt                    @map("dentist_id")
+  roomId        Int                       @map("room_id")
+  workDate      DateTime                  @map("work_date") @db.Date
+  shiftType     ShiftType                 @map("shift_type")
+  startTime     DateTime                  @map("start_time") @db.Time(6)
+  endTime       DateTime                  @map("end_time") @db.Time(6)
+  isActive      Boolean                   @default(true) @map("is_active")
+  dentist       Dentist                   @relation(fields: [dentistId], references: [dentistId])
+  room          Room                      @relation(fields: [roomId], references: [roomId])
+  notifications ShiftChangeNotification[]
+
+  @@unique([dentistId, workDate, shiftType])
+  @@map("dentist_shifts")
+}
+
+model Appointment {
+  appointmentId       BigInt                    @id @default(autoincrement()) @map("appointment_id")
+  patientId           BigInt                    @map("patient_id")
+  dentistId           BigInt                    @map("dentist_id")
+  serviceId           BigInt                    @map("service_id")
+  roomId              Int?                      @map("room_id")
+  startTime           DateTime                  @map("start_time")
+  endTime             DateTime                  @map("end_time")
+  status              AppointmentStatus         @default(Confirmed)
+  bookingChannel      BookingChannel            @default(Online) @map("booking_channel")
+  patientNotes        String?                   @map("patient_notes")
+  otpVerified         Boolean                   @default(false) @map("otp_verified")
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  cancelledAt         DateTime?                 @map("cancelled_at")
+  cancelReason        String?                   @map("cancel_reason")
+  dentist             Dentist                   @relation(fields: [dentistId], references: [dentistId])
+  patient             Patient                   @relation(fields: [patientId], references: [patientId])
+  room                Room?                     @relation(fields: [roomId], references: [roomId])
+  service             Service                   @relation(fields: [serviceId], references: [serviceId])
+  queueTicket         QueueTicket?
+  serviceReview       ServiceReview?
+  shiftChangeAffected ShiftChangeAffectedItem[]
+
+  @@index([dentistId, startTime])
+  @@index([patientId])
+  @@map("appointments")
+}
+
+model QueueTicket {
+  ticketId           BigInt         @id @default(autoincrement()) @map("ticket_id")
+  appointmentId      BigInt?        @unique @map("appointment_id")
+  patientId          BigInt         @map("patient_id")
+  dentistId          BigInt         @map("dentist_id")
+  roomId             Int?           @map("room_id")
+  serviceId          BigInt?        @map("service_id")
+  status             QueueStatus    @default(Waiting)
+  checkInTime        DateTime       @default(now()) @map("check_in_time")
+  startTreatmentTime DateTime?      @map("start_treatment_time")
+  endTreatmentTime   DateTime?      @map("end_treatment_time")
+  medicalRecord      MedicalRecord?
+  appointment        Appointment?   @relation(fields: [appointmentId], references: [appointmentId])
+  dentist            Dentist        @relation(fields: [dentistId], references: [dentistId])
+  patient            Patient        @relation(fields: [patientId], references: [patientId])
+  room               Room?          @relation(fields: [roomId], references: [roomId])
+  service            Service?       @relation(fields: [serviceId], references: [serviceId])
+
+  @@map("queue_tickets")
+}
+
+model TreatmentPlan {
+  planId             BigInt          @id @default(autoincrement()) @map("plan_id")
+  patientId          BigInt          @map("patient_id")
+  dentistId          BigInt          @map("dentist_id")
+  title              String          @db.VarChar(255)
+  status             PlanStatus      @default(Active)
+  estimatedTotalCost Decimal?        @map("estimated_total_cost") @db.Decimal(14, 2)
+  createdAt          DateTime        @default(now()) @map("created_at")
+  medicalRecords     MedicalRecord[]
+  dentist            Dentist         @relation(fields: [dentistId], references: [dentistId])
+  patient            Patient         @relation(fields: [patientId], references: [patientId])
+
+  @@map("treatment_plans")
+}
+
+model MedicalRecord {
+  recordId        BigInt                 @id @default(autoincrement()) @map("record_id")
+  patientId       BigInt                 @map("patient_id")
+  dentistId       BigInt                 @map("dentist_id")
+  roomId          Int?                   @map("room_id")
+  queueTicketId   BigInt?                @unique @map("queue_ticket_id")
+  treatmentPlanId BigInt?                @map("treatment_plan_id")
+  sessionType     SessionType            @default(independent) @map("session_type")
+  visitDate       DateTime               @default(now()) @map("visit_date") @db.Date
+  diagnosis       String?
+  notes           String?
+  createdAt       DateTime               @default(now()) @map("created_at")
+  invoice         Invoice?
+  files           MedicalRecordFile[]
+  services        MedicalRecordService[]
+  teeth           MedicalRecordTooth[]
+  dentist         Dentist                @relation(fields: [dentistId], references: [dentistId])
+  patient         Patient                @relation(fields: [patientId], references: [patientId])
+  queueTicket     QueueTicket?           @relation(fields: [queueTicketId], references: [ticketId])
+  room            Room?                  @relation(fields: [roomId], references: [roomId])
+  treatmentPlan   TreatmentPlan?         @relation(fields: [treatmentPlanId], references: [planId])
+  prescription    Prescription?
+
+  @@map("medical_records")
+}
+
+model MedicalRecordTooth {
+  id            BigInt         @id @default(autoincrement())
+  recordId      BigInt         @map("record_id")
+  toothNumber   Int            @map("tooth_number")
+  condition     ToothCondition
+  treatmentNote String?        @map("treatment_note")
+  record        MedicalRecord  @relation(fields: [recordId], references: [recordId], onDelete: Cascade)
+
+  @@map("medical_record_teeth")
+}
+
+model MedicalRecordFile {
+  fileId     BigInt        @id @default(autoincrement()) @map("file_id")
+  recordId   BigInt        @map("record_id")
+  fileType   FileType      @map("file_type")
+  title      String        @db.VarChar(255)
+  fileSizeKb Int?          @map("file_size_kb")
+  url        String?
+  record     MedicalRecord @relation(fields: [recordId], references: [recordId], onDelete: Cascade)
+
+  @@map("medical_record_files")
+}
+
+model MedicalRecordService {
+  recordId  BigInt        @map("record_id")
+  serviceId BigInt        @map("service_id")
+  record    MedicalRecord @relation(fields: [recordId], references: [recordId], onDelete: Cascade)
+  service   Service       @relation(fields: [serviceId], references: [serviceId])
+
+  @@id([recordId, serviceId])
+  @@map("medical_record_services")
+}
+
+model Prescription {
+  prescriptionId BigInt             @id @default(autoincrement()) @map("prescription_id")
+  recordId       BigInt             @unique @map("record_id")
+  instructions   String?
+  items          PrescriptionItem[]
+  record         MedicalRecord      @relation(fields: [recordId], references: [recordId], onDelete: Cascade)
+
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  itemId         BigInt       @id @default(autoincrement()) @map("item_id")
+  prescriptionId BigInt       @map("prescription_id")
+  medicineName   String       @map("medicine_name") @db.VarChar(150)
+  dose           String?      @db.VarChar(100)
+  duration       String?      @db.VarChar(100)
+  note           String?
+  prescription   Prescription @relation(fields: [prescriptionId], references: [prescriptionId], onDelete: Cascade)
+
+  @@map("prescription_items")
+}
+
+model Invoice {
+  invoiceId          BigInt              @id @default(autoincrement()) @map("invoice_id")
+  patientId          BigInt              @map("patient_id")
+  medicalRecordId    BigInt?             @unique @map("medical_record_id")
+  dentistId          BigInt?             @map("dentist_id")
+  roomId             Int?                @map("room_id")
+  totalPrice         Decimal             @default(0) @map("total_price") @db.Decimal(14, 2)
+  insuranceDiscount  Decimal             @default(0) @map("insurance_discount") @db.Decimal(14, 2)
+  memberDiscount     Decimal             @default(0) @map("member_discount") @db.Decimal(14, 2)
+  netPrice           Decimal             @default(0) @map("net_price") @db.Decimal(14, 2)
+  paidAmount         Decimal             @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  remainingAmount    Decimal             @default(0) @map("remaining_amount") @db.Decimal(14, 2)
+  status             InvoiceStatus       @default(Pending)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  items              InvoiceItem[]
+  dentist            Dentist?            @relation(fields: [dentistId], references: [dentistId])
+  medicalRecord      MedicalRecord?      @relation(fields: [medicalRecordId], references: [recordId])
+  patient            Patient             @relation(fields: [patientId], references: [patientId])
+  room               Room?               @relation(fields: [roomId], references: [roomId])
+  payments           Payment[]
+  walletTransactions WalletTransaction[]
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  invoiceItemId BigInt  @id @default(autoincrement()) @map("invoice_item_id")
+  invoiceId     BigInt  @map("invoice_id")
+  serviceId     BigInt  @map("service_id")
+  price         Decimal @db.Decimal(14, 2)
+  quantity      Int     @default(1)
+  invoice       Invoice @relation(fields: [invoiceId], references: [invoiceId], onDelete: Cascade)
+  service       Service @relation(fields: [serviceId], references: [serviceId])
+
+  @@map("invoice_items")
+}
+
+model Payment {
+  paymentId     BigInt        @id @default(autoincrement()) @map("payment_id")
+  invoiceId     BigInt        @map("invoice_id")
+  cashierUserId BigInt?       @map("cashier_user_id")
+  amount        Decimal       @db.Decimal(14, 2)
+  method        PaymentMethod
+  paidAt        DateTime      @default(now()) @map("paid_at")
+  cashierUser   User?         @relation(fields: [cashierUserId], references: [userId])
+  invoice       Invoice       @relation(fields: [invoiceId], references: [invoiceId])
+
+  @@map("payments")
+}
+
+model ShiftChangeNotification {
+  notifId           BigInt                    @id @default(autoincrement()) @map("notif_id")
+  shiftId           BigInt?                   @map("shift_id")
+  shiftDate         DateTime                  @map("shift_date") @db.Date
+  shiftType         String                    @map("shift_type") @db.VarChar(20)
+  originalDentistId BigInt                    @map("original_dentist_id")
+  newDentistId      BigInt                    @map("new_dentist_id")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  affectedItems     ShiftChangeAffectedItem[]
+  newDentist        Dentist                   @relation("ShiftChangeNewDentist", fields: [newDentistId], references: [dentistId])
+  originalDentist   Dentist                   @relation("ShiftChangeOriginalDentist", fields: [originalDentistId], references: [dentistId])
+  shift             DentistShift?             @relation(fields: [shiftId], references: [shiftId])
+
+  @@map("shift_change_notifications")
+}
+
+model ShiftChangeAffectedItem {
+  id             BigInt                  @id @default(autoincrement())
+  notifId        BigInt                  @map("notif_id")
+  appointmentId  BigInt                  @map("appointment_id")
+  resolved       Boolean                 @default(false)
+  resolvedAction ResolvedAction?         @map("resolved_action")
+  appointment    Appointment             @relation(fields: [appointmentId], references: [appointmentId])
+  notification   ShiftChangeNotification @relation(fields: [notifId], references: [notifId], onDelete: Cascade)
+
+  @@map("shift_change_affected_items")
+}
+
+model SystemLog {
+  logId       BigInt    @id @default(autoincrement()) @map("log_id")
+  module      LogModule
+  logType     LogType   @map("log_type")
+  message     String
+  actorUserId BigInt?   @map("actor_user_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  actorUser   User?     @relation(fields: [actorUserId], references: [userId])
+
+  @@index([createdAt(sort: Desc)])
+  @@map("system_logs")
+}
+
+model ServiceReview {
+  reviewId      BigInt          @id @default(autoincrement()) @map("review_id")
+  patientId     BigInt          @map("patient_id")
+  appointmentId BigInt?         @unique @map("appointment_id")
+  serviceId     BigInt?         @map("service_id")
+  rating        Int             @db.SmallInt
+  comment       String
+  sentiment     ReviewSentiment @default(NEUTRAL)
+  aiReply       String?         @map("ai_reply")
+  aiRepliedAt   DateTime?       @map("ai_replied_at")
+  status        ReviewStatus    @default(Approved)
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  appointment   Appointment?    @relation(fields: [appointmentId], references: [appointmentId])
+  patient       Patient         @relation(fields: [patientId], references: [patientId])
+  service       Service?        @relation(fields: [serviceId], references: [serviceId])
+
+  @@index([patientId])
+  @@index([serviceId])
+  @@map("service_reviews")
+}
+
+enum RoleCode {
+  patient
+  receptionist
+  dentist
+  cashier
+  manager
+}
+
+enum UserStatus {
+  Active
+  Inactive
+}
+
+enum WalletTxType {
+  Recharge
+  PaymentDeduct
+  Refund
 }
 
 enum ShiftType {
   Morning
   Afternoon
   Full
-}
-
-model DentistShift {
-  shiftId   BigInt    @id @default(autoincrement()) @map("shift_id")
-  dentistId BigInt    @map("dentist_id")
-  dentist   Dentist   @relation(fields: [dentistId], references: [dentistId])
-  roomId    Int       @map("room_id")
-  room      Room      @relation(fields: [roomId], references: [roomId])
-  workDate  DateTime  @map("work_date") @db.Date
-  shiftType ShiftType @map("shift_type")
-  startTime DateTime  @map("start_time") @db.Time
-  endTime   DateTime  @map("end_time") @db.Time
-  isActive  Boolean   @default(true) @map("is_active")
-
-  notifications ShiftChangeNotification[]
-
-  @@unique([dentistId, workDate, shiftType])
-  @@map("dentist_shifts")
 }
 
 enum AppointmentStatus {
@@ -315,72 +542,11 @@ enum BookingChannel {
   Staff
 }
 
-model Appointment {
-  appointmentId  BigInt             @id @default(autoincrement()) @map("appointment_id")
-  patientId      BigInt             @map("patient_id")
-  patient        Patient            @relation(fields: [patientId], references: [patientId])
-  dentistId      BigInt             @map("dentist_id")
-  dentist        Dentist            @relation(fields: [dentistId], references: [dentistId])
-  serviceId      BigInt             @map("service_id")
-  service        Service            @relation(fields: [serviceId], references: [serviceId])
-  roomId         Int?               @map("room_id")
-  room           Room?              @relation(fields: [roomId], references: [roomId])
-  startTime      DateTime           @map("start_time")
-  endTime        DateTime           @map("end_time") // tự tính qua trigger DB, xem migration bổ sung
-  status         AppointmentStatus  @default(Confirmed)
-  bookingChannel BookingChannel     @default(Online) @map("booking_channel")
-  patientNotes   String?            @map("patient_notes")
-  otpVerified    Boolean            @default(false) @map("otp_verified")
-  createdAt      DateTime           @default(now()) @map("created_at")
-  cancelledAt    DateTime?          @map("cancelled_at")
-  cancelReason   String?            @map("cancel_reason")
-
-  queueTicket           QueueTicket?
-  shiftChangeAffected   ShiftChangeAffectedItem[]
-  serviceReview         ServiceReview?
-
-  @@index([dentistId, startTime])
-  @@index([patientId])
-  @@map("appointments")
-  // ⚠️ Ràng buộc EXCLUDE chống chồng lịch KHÔNG khai báo được trong Prisma schema.
-  // Xem file prisma/migrations/manual_add_exclude_constraint.sql — chạy thêm sau khi `prisma migrate dev`.
-}
-
-// ─────────────────────────────────────────────
-// 6. HÀNG CHỜ
-// ─────────────────────────────────────────────
-
 enum QueueStatus {
   Waiting
-  InChair @map("In Chair")
+  InChair   @map("In Chair")
   Completed
 }
-
-model QueueTicket {
-  ticketId            BigInt      @id @default(autoincrement()) @map("ticket_id")
-  appointmentId       BigInt?     @unique @map("appointment_id")
-  appointment         Appointment? @relation(fields: [appointmentId], references: [appointmentId])
-  patientId           BigInt      @map("patient_id")
-  patient             Patient     @relation(fields: [patientId], references: [patientId])
-  dentistId           BigInt      @map("dentist_id")
-  dentist             Dentist     @relation(fields: [dentistId], references: [dentistId])
-  roomId              Int?        @map("room_id")
-  room                Room?       @relation(fields: [roomId], references: [roomId])
-  serviceId           BigInt?     @map("service_id")
-  service             Service?    @relation(fields: [serviceId], references: [serviceId])
-  status               QueueStatus @default(Waiting)
-  checkInTime          DateTime    @default(now()) @map("check_in_time")
-  startTreatmentTime   DateTime?   @map("start_treatment_time")
-  endTreatmentTime     DateTime?   @map("end_treatment_time")
-
-  medicalRecord MedicalRecord?
-
-  @@map("queue_tickets")
-}
-
-// ─────────────────────────────────────────────
-// 7. HỒ SƠ BỆNH ÁN & PHÁC ĐỒ ĐIỀU TRỊ
-// ─────────────────────────────────────────────
 
 enum PlanStatus {
   Active
@@ -388,53 +554,10 @@ enum PlanStatus {
   Cancelled
 }
 
-model TreatmentPlan {
-  planId              BigInt     @id @default(autoincrement()) @map("plan_id")
-  patientId           BigInt     @map("patient_id")
-  patient             Patient    @relation(fields: [patientId], references: [patientId])
-  dentistId           BigInt     @map("dentist_id")
-  dentist             Dentist    @relation(fields: [dentistId], references: [dentistId])
-  title                String     @db.VarChar(255)
-  status               PlanStatus @default(Active)
-  estimatedTotalCost   Decimal?   @map("estimated_total_cost") @db.Decimal(14, 2)
-  createdAt            DateTime   @default(now()) @map("created_at")
-
-  medicalRecords MedicalRecord[]
-
-  @@map("treatment_plans")
-}
-
 enum SessionType {
   independent
   planInit    @map("plan_init")
   planSession @map("plan_session")
-}
-
-model MedicalRecord {
-  recordId          BigInt         @id @default(autoincrement()) @map("record_id")
-  patientId         BigInt         @map("patient_id")
-  patient           Patient        @relation(fields: [patientId], references: [patientId])
-  dentistId         BigInt         @map("dentist_id")
-  dentist           Dentist        @relation(fields: [dentistId], references: [dentistId])
-  roomId            Int?           @map("room_id")
-  room              Room?          @relation(fields: [roomId], references: [roomId])
-  queueTicketId     BigInt?        @unique @map("queue_ticket_id")
-  queueTicket       QueueTicket?   @relation(fields: [queueTicketId], references: [ticketId])
-  treatmentPlanId   BigInt?        @map("treatment_plan_id")
-  treatmentPlan     TreatmentPlan? @relation(fields: [treatmentPlanId], references: [planId])
-  sessionType       SessionType    @default(independent) @map("session_type")
-  visitDate         DateTime       @default(now()) @map("visit_date") @db.Date
-  diagnosis         String?
-  notes             String?
-  createdAt         DateTime       @default(now()) @map("created_at")
-
-  teeth       MedicalRecordTooth[]
-  files       MedicalRecordFile[]
-  services    MedicalRecordService[]
-  prescription Prescription?
-  invoice     Invoice?
-
-  @@map("medical_records")
 }
 
 enum ToothCondition {
@@ -446,114 +569,16 @@ enum ToothCondition {
   treated
 }
 
-model MedicalRecordTooth {
-  id             BigInt         @id @default(autoincrement())
-  recordId       BigInt         @map("record_id")
-  record         MedicalRecord  @relation(fields: [recordId], references: [recordId], onDelete: Cascade)
-  toothNumber    Int            @map("tooth_number")
-  condition      ToothCondition
-  treatmentNote  String?        @map("treatment_note")
-
-  @@map("medical_record_teeth")
-}
-
 enum FileType {
   pdf
   image
   prescription
 }
 
-model MedicalRecordFile {
-  fileId      BigInt        @id @default(autoincrement()) @map("file_id")
-  recordId    BigInt        @map("record_id")
-  record      MedicalRecord @relation(fields: [recordId], references: [recordId], onDelete: Cascade)
-  fileType    FileType      @map("file_type")
-  title       String        @db.VarChar(255)
-  fileSizeKb  Int?          @map("file_size_kb")
-  url         String?
-
-  @@map("medical_record_files")
-}
-
-model MedicalRecordService {
-  recordId  BigInt        @map("record_id")
-  record    MedicalRecord @relation(fields: [recordId], references: [recordId], onDelete: Cascade)
-  serviceId BigInt        @map("service_id")
-  service   Service       @relation(fields: [serviceId], references: [serviceId])
-
-  @@id([recordId, serviceId])
-  @@map("medical_record_services")
-}
-
-model Prescription {
-  prescriptionId BigInt         @id @default(autoincrement()) @map("prescription_id")
-  recordId       BigInt         @unique @map("record_id")
-  record         MedicalRecord  @relation(fields: [recordId], references: [recordId], onDelete: Cascade)
-  instructions   String?
-
-  items PrescriptionItem[]
-
-  @@map("prescriptions")
-}
-
-model PrescriptionItem {
-  itemId         BigInt       @id @default(autoincrement()) @map("item_id")
-  prescriptionId BigInt       @map("prescription_id")
-  prescription   Prescription @relation(fields: [prescriptionId], references: [prescriptionId], onDelete: Cascade)
-  medicineName   String       @map("medicine_name") @db.VarChar(150)
-  dose           String?      @db.VarChar(100)
-  duration       String?      @db.VarChar(100)
-  note           String?
-
-  @@map("prescription_items")
-}
-
-// ─────────────────────────────────────────────
-// 8. HÓA ĐƠN & THANH TOÁN
-// ─────────────────────────────────────────────
-
 enum InvoiceStatus {
   Pending
   PartiallyPaid @map("Partially Paid")
   Paid
-}
-
-model Invoice {
-  invoiceId          BigInt        @id @default(autoincrement()) @map("invoice_id")
-  patientId          BigInt        @map("patient_id")
-  patient            Patient       @relation(fields: [patientId], references: [patientId])
-  medicalRecordId    BigInt?       @unique @map("medical_record_id")
-  medicalRecord      MedicalRecord? @relation(fields: [medicalRecordId], references: [recordId])
-  dentistId          BigInt?       @map("dentist_id")
-  dentist            Dentist?      @relation(fields: [dentistId], references: [dentistId])
-  roomId             Int?          @map("room_id")
-  room               Room?         @relation(fields: [roomId], references: [roomId])
-  totalPrice          Decimal       @default(0) @map("total_price") @db.Decimal(14, 2)
-  insuranceDiscount   Decimal       @default(0) @map("insurance_discount") @db.Decimal(14, 2)
-  memberDiscount      Decimal       @default(0) @map("member_discount") @db.Decimal(14, 2)
-  netPrice            Decimal       @default(0) @map("net_price") @db.Decimal(14, 2)
-  paidAmount          Decimal       @default(0) @map("paid_amount") @db.Decimal(14, 2)
-  remainingAmount     Decimal       @default(0) @map("remaining_amount") @db.Decimal(14, 2)
-  status               InvoiceStatus @default(Pending)
-  createdAt            DateTime      @default(now()) @map("created_at")
-
-  items               InvoiceItem[]
-  payments            Payment[]
-  walletTransactions  WalletTransaction[]
-
-  @@map("invoices")
-}
-
-model InvoiceItem {
-  invoiceItemId BigInt  @id @default(autoincrement()) @map("invoice_item_id")
-  invoiceId     BigInt  @map("invoice_id")
-  invoice       Invoice @relation(fields: [invoiceId], references: [invoiceId], onDelete: Cascade)
-  serviceId     BigInt  @map("service_id")
-  service       Service @relation(fields: [serviceId], references: [serviceId])
-  price         Decimal @db.Decimal(14, 2)
-  quantity      Int     @default(1)
-
-  @@map("invoice_items")
 }
 
 enum PaymentMethod {
@@ -563,60 +588,10 @@ enum PaymentMethod {
   Wallet
 }
 
-model Payment {
-  paymentId       BigInt        @id @default(autoincrement()) @map("payment_id")
-  invoiceId       BigInt        @map("invoice_id")
-  invoice         Invoice       @relation(fields: [invoiceId], references: [invoiceId])
-  cashierUserId   BigInt?       @map("cashier_user_id")
-  cashierUser     User?         @relation(fields: [cashierUserId], references: [userId])
-  amount          Decimal       @db.Decimal(14, 2)
-  method          PaymentMethod
-  paidAt          DateTime      @default(now()) @map("paid_at")
-
-  @@map("payments")
-}
-
-// ─────────────────────────────────────────────
-// 9. ĐỔI CA TRỰC & THÔNG BÁO XUNG ĐỘT
-// ─────────────────────────────────────────────
-
-model ShiftChangeNotification {
-  notifId            BigInt        @id @default(autoincrement()) @map("notif_id")
-  shiftId            BigInt?       @map("shift_id")
-  shift              DentistShift? @relation(fields: [shiftId], references: [shiftId])
-  shiftDate          DateTime      @map("shift_date") @db.Date
-  shiftType          String        @map("shift_type") @db.VarChar(20)
-  originalDentistId  BigInt        @map("original_dentist_id")
-  originalDentist    Dentist       @relation("ShiftChangeOriginalDentist", fields: [originalDentistId], references: [dentistId])
-  newDentistId       BigInt        @map("new_dentist_id")
-  newDentist         Dentist       @relation("ShiftChangeNewDentist", fields: [newDentistId], references: [dentistId])
-  createdAt          DateTime      @default(now()) @map("created_at")
-
-  affectedItems ShiftChangeAffectedItem[]
-
-  @@map("shift_change_notifications")
-}
-
 enum ResolvedAction {
   updated
   cancelled
 }
-
-model ShiftChangeAffectedItem {
-  id              BigInt                   @id @default(autoincrement())
-  notifId         BigInt                   @map("notif_id")
-  notification    ShiftChangeNotification  @relation(fields: [notifId], references: [notifId], onDelete: Cascade)
-  appointmentId   BigInt                   @map("appointment_id")
-  appointment     Appointment              @relation(fields: [appointmentId], references: [appointmentId])
-  resolved        Boolean                  @default(false)
-  resolvedAction  ResolvedAction?          @map("resolved_action")
-
-  @@map("shift_change_affected_items")
-}
-
-// ─────────────────────────────────────────────
-// 10. LOG HỆ THỐNG
-// ─────────────────────────────────────────────
 
 enum LogModule {
   RECEPTION
@@ -633,23 +608,6 @@ enum LogType {
   ERR
 }
 
-model SystemLog {
-  logId       BigInt    @id @default(autoincrement()) @map("log_id")
-  module      LogModule
-  logType     LogType   @map("log_type")
-  message     String
-  actorUserId BigInt?   @map("actor_user_id")
-  actorUser   User?     @relation(fields: [actorUserId], references: [userId])
-  createdAt   DateTime  @default(now()) @map("created_at")
-
-  @@index([createdAt(sort: Desc)])
-  @@map("system_logs")
-}
-
-// ─────────────────────────────────────────────
-// 11. ĐÁNH GIÁ DỊCH VỤ & AI PHẢN HỒI
-// ─────────────────────────────────────────────
-
 enum ReviewSentiment {
   POSITIVE
   NEUTRAL
@@ -661,28 +619,3 @@ enum ReviewStatus {
   Approved
   Hidden
 }
-
-model ServiceReview {
-  reviewId      BigInt          @id @default(autoincrement()) @map("review_id")
-  patientId     BigInt          @map("patient_id")
-  patient       Patient         @relation(fields: [patientId], references: [patientId])
-  appointmentId BigInt?         @unique @map("appointment_id")
-  appointment   Appointment?    @relation(fields: [appointmentId], references: [appointmentId])
-  serviceId     BigInt?         @map("service_id")
-  service       Service?        @relation(fields: [serviceId], references: [serviceId])
-  
-  rating        Int             @db.SmallInt
-  comment       String          @db.Text
-  sentiment     ReviewSentiment @default(NEUTRAL)
-  aiReply       String?         @map("ai_reply") @db.Text
-  aiRepliedAt   DateTime?       @map("ai_replied_at")
-  status        ReviewStatus    @default(Approved)
-
-  createdAt     DateTime        @default(now()) @map("created_at")
-  updatedAt     DateTime        @updatedAt @map("updated_at")
-
-  @@index([patientId])
-  @@index([serviceId])
-  @@map("service_reviews")
-}
-
