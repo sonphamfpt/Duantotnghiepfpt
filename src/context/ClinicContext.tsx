@@ -83,8 +83,9 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   // Đồng bộ hóa toàn bộ dữ liệu từ backend
   const refreshAllData = async () => {
-    try {
-      const [resSvc, resDen, resPat, resApp, resQue, resInv, resShf, resNot, resLog, resRev] = await Promise.all([
+    // Dùng Promise.allSettled để từng API fail độc lập, không block dữ liệu khác
+    const [resSvc, resDen, resPat, resApp, resQue, resInv, resShf, resNot, resLog, resRev] =
+      await Promise.allSettled([
         clinicApi.getServices(),
         clinicApi.getDentists(),
         clinicApi.getPatients(),
@@ -97,50 +98,65 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         reviewApi.getPublicReviews(),
       ]);
 
-      if (resSvc.data) setServices(resSvc.data);
-      if (resDen.data) setDentists(resDen.data);
-      if (resPat.data) setPatients(resPat.data);
-      if (resApp.data) setAppointments(resApp.data);
-      if (resQue.data) setQueue(resQue.data);
-      if (resInv.data) {
-        const mappedInvoices = resInv.data.map((backendInv: any) => ({
-          id: `I-${backendInv.invoiceId}`,
-          patientId: `P-${backendInv.patientId}`,
-          patientName: backendInv.patient?.fullName || 'Khách hàng',
-          patientPhone: backendInv.patient?.phone || '',
-          services: (backendInv.items || []).map((item: any) => ({
-            serviceId: `S-${item.serviceId}`,
-            serviceName: item.service?.name || 'Dịch vụ',
-            price: Number(item.price),
-          })),
-          totalPrice: Number(backendInv.totalPrice),
-          insuranceDiscount: Number(backendInv.insuranceDiscount),
-          memberDiscount: Number(backendInv.memberDiscount),
-          netPrice: Number(backendInv.netPrice),
-          status: backendInv.status === 'PartiallyPaid' ? 'Partially Paid' : backendInv.status,
-          createdAt: backendInv.createdAt,
-          paymentMethod: backendInv.payments && backendInv.payments.length > 0 
-            ? backendInv.payments[0].method 
-            : undefined,
-          room: backendInv.room?.name || undefined,
-          dentistName: backendInv.dentist?.user?.fullName || undefined,
-          paidAmount: Number(backendInv.paidAmount || 0),
-          remainingAmount: Number(backendInv.remainingAmount || 0),
-          payments: (backendInv.payments || []).map((p: any) => ({
-            date: p.paidAt || p.createdAt || backendInv.createdAt,
-            amount: Number(p.amount),
-            method: p.method,
-          })),
-        }));
-        setInvoices(mappedInvoices);
-      }
-      if (resShf.data) setDoctorShifts(resShf.data);
-      if (resNot.data) setShiftChangeNotifications(resNot.data);
-      if (resLog.data) setLogs(resLog.data);
-      if (resRev.data) setReviews(resRev.data);
-    } catch (err) {
-      console.error('Lỗi khi đồng bộ dữ liệu từ backend:', err);
-    }
+    if (resSvc.status === 'fulfilled' && resSvc.value.data) setServices(resSvc.value.data);
+    else if (resSvc.status === 'rejected') console.warn('[refreshAllData] getServices failed:', resSvc.reason);
+
+    if (resDen.status === 'fulfilled' && resDen.value.data) setDentists(resDen.value.data);
+    else if (resDen.status === 'rejected') console.warn('[refreshAllData] getDentists failed:', resDen.reason);
+
+    if (resPat.status === 'fulfilled' && resPat.value.data) setPatients(resPat.value.data);
+    else if (resPat.status === 'rejected') console.warn('[refreshAllData] getPatients failed:', resPat.reason);
+
+    if (resApp.status === 'fulfilled' && resApp.value.data) setAppointments(resApp.value.data);
+    else if (resApp.status === 'rejected') console.warn('[refreshAllData] getAppointments failed:', resApp.reason);
+
+    if (resQue.status === 'fulfilled' && resQue.value.data) setQueue(resQue.value.data);
+    else if (resQue.status === 'rejected') console.warn('[refreshAllData] getQueue failed:', resQue.reason);
+
+    if (resInv.status === 'fulfilled' && resInv.value.data) {
+      const mappedInvoices = resInv.value.data.map((backendInv: any) => ({
+        id: `I-${backendInv.invoiceId}`,
+        patientId: `P-${backendInv.patientId}`,
+        patientName: backendInv.patient?.fullName || 'Khách hàng',
+        patientPhone: backendInv.patient?.phone || '',
+        services: (backendInv.items || []).map((item: any) => ({
+          serviceId: `S-${item.serviceId}`,
+          serviceName: item.service?.name || 'Dịch vụ',
+          price: Number(item.price),
+        })),
+        totalPrice: Number(backendInv.totalPrice),
+        insuranceDiscount: Number(backendInv.insuranceDiscount),
+        memberDiscount: Number(backendInv.memberDiscount),
+        netPrice: Number(backendInv.netPrice),
+        status: backendInv.status === 'PartiallyPaid' ? 'Partially Paid' : backendInv.status,
+        createdAt: backendInv.createdAt,
+        paymentMethod: backendInv.payments && backendInv.payments.length > 0
+          ? backendInv.payments[0].method
+          : undefined,
+        room: backendInv.room?.name || undefined,
+        dentistName: backendInv.dentist?.user?.fullName || undefined,
+        paidAmount: Number(backendInv.paidAmount || 0),
+        remainingAmount: Number(backendInv.remainingAmount || 0),
+        payments: (backendInv.payments || []).map((p: any) => ({
+          date: p.paidAt || p.createdAt || backendInv.createdAt,
+          amount: Number(p.amount),
+          method: p.method,
+        })),
+      }));
+      setInvoices(mappedInvoices);
+    } else if (resInv.status === 'rejected') console.warn('[refreshAllData] getInvoices failed:', resInv.reason);
+
+    if (resShf.status === 'fulfilled' && resShf.value.data) setDoctorShifts(resShf.value.data);
+    else if (resShf.status === 'rejected') console.warn('[refreshAllData] getShifts failed:', resShf.reason);
+
+    if (resNot.status === 'fulfilled' && resNot.value.data) setShiftChangeNotifications(resNot.value.data);
+    else if (resNot.status === 'rejected') console.warn('[refreshAllData] getNotifications failed:', resNot.reason);
+
+    if (resLog.status === 'fulfilled' && resLog.value.data) setLogs(resLog.value.data);
+    else if (resLog.status === 'rejected') console.warn('[refreshAllData] getLogs failed:', resLog.reason);
+
+    if (resRev.status === 'fulfilled' && resRev.value.data) setReviews(resRev.value.data);
+    else if (resRev.status === 'rejected') console.warn('[refreshAllData] getPublicReviews failed:', resRev.reason);
   };
 
   const addReview = async (reviewData: { patientId: string; appointmentId?: string; serviceId?: string; rating: number; comment: string }) => {
