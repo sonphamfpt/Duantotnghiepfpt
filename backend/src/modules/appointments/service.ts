@@ -615,7 +615,6 @@ export class AppointmentsService {
         time: formatDate(appt.startTime),
         status: statusStr,
         cancelReason: appt.cancelReason || undefined,
-        cancelledAt: appt.cancelledAt ? appt.cancelledAt.toISOString() : undefined,
       };
     });
   }

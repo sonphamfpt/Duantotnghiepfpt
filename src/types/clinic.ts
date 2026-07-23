@@ -53,7 +53,6 @@ export interface Appointment {
   time: string;
   status: 'Pending' | 'Confirmed' | 'In-Progress' | 'Completed' | 'Cancelled' | 'NoShow';
   cancelReason?: string;
-  cancelledAt?: string;
 }
 
 export interface QueueItem {
