@@ -565,26 +565,22 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-<<<<<<< HEAD
-  const cancelAppointment = async (appointmentId: string) => {
-=======
   const cancelAppointment = async (appointmentId: string, reason: string = 'Hủy bởi lễ tân phòng khám'): Promise<boolean> => {
->>>>>>> 6bb08f5 (Recover receptionist changes)
     try {
-      const response = await appointmentApi.cancel(appointmentId);
-      if (response.success) {
+      const response = await appointmentApi.cancel(appointmentId, reason);
+      if (response.success || response.data) {
         setAppointments((prev) =>
           prev.map((a) => (a.id === appointmentId ? { ...a, status: 'Cancelled' as const } : a))
         );
-        addLog('RECEPTION', 'WARN', `Hủy lịch hẹn ${appointmentId} thành công.`);
+        addLog('RECEPTION', 'WARN', `Hủy lịch hẹn ${appointmentId} thành công. Lý do: ${reason}`);
+        await refreshAllData();
+        return true;
       }
-<<<<<<< HEAD
-    } catch (err) {
-=======
       return false;
     } catch (err: any) {
->>>>>>> 6bb08f5 (Recover receptionist changes)
       console.error('Lỗi khi hủy lịch hẹn:', err);
+      addLog('RECEPTION', 'ERR', `Lỗi khi hủy lịch hẹn ${appointmentId}: ${err?.message || 'Không thể kết nối API.'}`);
+      return false;
     }
   };
   return (

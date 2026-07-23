@@ -181,8 +181,6 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
       throw new AppError(404, 'SHIFT_NOT_FOUND', 'Một trong hai ca trực không tồn tại.');
     }
 
-<<<<<<< HEAD
-=======
     // Kiểm tra quy chế: Phải gửi yêu cầu trước ít nhất 12 tiếng
     const nowMs = Date.now();
     const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
@@ -235,7 +233,7 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
       }
     }
 
->>>>>>> 6bb08f5 (Recover receptionist changes)
+
     // 1. Phát hiện và tạo các thông báo xung đột lịch hẹn
     await detectAndCreateConflicts(tx, shift1, shift1.dentistId, shift2.dentistId);
     await detectAndCreateConflicts(tx, shift2, shift2.dentistId, shift1.dentistId);
@@ -294,8 +292,6 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
       throw new AppError(404, 'DENTIST_NOT_FOUND', 'Bác sĩ nhận ca trực không tồn tại.');
     }
 
-<<<<<<< HEAD
-=======
     // Kiểm tra quy chế: Phải gửi yêu cầu trước ít nhất 12 tiếng
     const nowMs = Date.now();
     const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
@@ -319,7 +315,7 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
       throw new AppError(400, 'TARGET_DENTIST_HAS_SHIFT', `Bác sĩ ${targetDentist.user.fullName} đã có ca trực vào ngày ${shift.workDate.toISOString().slice(0, 10)}. Không thể nhờ trực thay.`);
     }
 
->>>>>>> 6bb08f5 (Recover receptionist changes)
+
     // 1. Quét tìm và lưu trữ thông tin lịch hẹn bị ảnh hưởng
     await detectAndCreateConflicts(tx, shift, shift.dentistId, targetDentistId);
 

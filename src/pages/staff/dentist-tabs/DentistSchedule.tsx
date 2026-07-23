@@ -71,8 +71,16 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
     [doctorShifts, dentistId, todayDateStr]
   );
 
-<<<<<<< HEAD
-=======
+  // Helper: Kiểm tra ca trực có đủ điều kiện đổi ca (bắt đầu sau ít nhất 12 tiếng)
+  const isShiftEligibleForSwap = React.useCallback((shift: { date: string; shiftType: string }) => {
+    if (!shift.date) return false;
+    const [y, m, d] = shift.date.split('-').map(Number);
+    const startHour = shift.shiftType === 'Afternoon' ? 14 : 8;
+    const shiftStartMs = new Date(y, m - 1, d, startHour, 0, 0).getTime();
+    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+    return shiftStartMs - Date.now() >= TWELVE_HOURS_MS;
+  }, []);
+
   // Ca làm việc của tôi ĐỦ ĐIỀU KIỆN đổi/chuyển (>= 12 tiếng)
   const eligibleMyShifts = React.useMemo(() =>
     myShifts.filter(s => isShiftEligibleForSwap(s)),
@@ -111,21 +119,6 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
       return true;
     });
   }, [doctorShifts, dentistId, originShiftId, isShiftEligibleForSwap]);
-
-  // Bác sĩ ĐỦ ĐIỀU KIỆN nhận chuyển ca (chưa có ca trực vào ngày của ca gốc)
-  const eligibleTransferDentists = React.useMemo(() => {
-    if (!originShiftId) return dentists.filter(d => d.id !== dentistId);
-    const originShift = doctorShifts.find(s => s.id === originShiftId);
-    if (!originShift) return dentists.filter(d => d.id !== dentistId);
-
-    return dentists.filter(d => {
-      if (d.id === dentistId) return false;
-      const hasShiftOnDate = doctorShifts.some(s => s.dentistId === d.id && s.date === originShift.date);
-      return !hasShiftOnDate;
-    });
-  }, [dentists, doctorShifts, dentistId, originShiftId]);
-
->>>>>>> 6bb08f5 (Recover receptionist changes)
   const openSwapForShift = (shiftId: string) => {
     setOriginShiftId(shiftId);
     setActionType('swap');
@@ -203,8 +196,10 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
         }
       }
       transferShift(originShiftId, targetDentistId);
-<<<<<<< HEAD
-      alert('Chuyển giao ca trực thành công! Lịch làm việc đã được cập nhật.');
+      setSuccessToast({
+        title: 'Nhờ trực thay thành công!',
+        message: 'Ca trực đã được chuyển giao và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
+      });
 
     } else {
       // actionType === 'change_room'
@@ -217,13 +212,10 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
         return;
       }
       changeShiftRoom(originShiftId, targetRoom);
-      alert('Thay đổi phòng trực thành công! Lịch làm việc đã được cập nhật.');
-=======
       setSuccessToast({
-        title: 'Nhờ trực thay thành công!',
-        message: 'Ca trực đã được chuyển giao và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
+        title: 'Thay đổi phòng trực thành công!',
+        message: 'Lịch làm việc đã được cập nhật.'
       });
->>>>>>> 6bb08f5 (Recover receptionist changes)
     }
 
     // Reset and close
@@ -251,20 +243,13 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId = 'D
     setOriginShiftId('');
     setTargetShiftId('');
     setTargetDentistId('');
-<<<<<<< HEAD
     setTargetRoom('');
-    alert('Đã đổi ca và gửi thông báo đến lễ tân thành công! Lễ tân sẽ liên hệ bệnh nhân.');
-=======
-    setFormDentistId('');
     setSuccessToast({
       title: 'Xác nhận đổi ca thành công!',
       message: 'Lịch làm việc đã được chuyển giao. Thông báo danh sách bệnh nhân bị ảnh hưởng đã được gửi đến Lễ tân để hỗ trợ liên hệ.'
     });
->>>>>>> 6bb08f5 (Recover receptionist changes)
   };
 
-  // List of possible targets to swap with (shifts from other dentists)
-  const swapTargets = doctorShifts.filter(s => s.dentistId !== dentistId);
 
   return (
     <div className="p-container-padding-desktop grid grid-cols-12 gap-6 animate-in fade-in duration-200">
