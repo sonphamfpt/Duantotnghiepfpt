@@ -80,7 +80,7 @@ export const ReceptionistAppointments: React.FC = () => {
   const { showConfirm, showAlert } = useConfirm();
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [filterDentist, setFilterDentist] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewDay, setViewDay] = useState<'today' | 'tomorrow' | 'week' | 'custom'>('today');
   const [customDate, setCustomDate] = useState('');
@@ -373,7 +373,7 @@ export const ReceptionistAppointments: React.FC = () => {
         </select>
 
         {/* Clear filters */}
-        {(filterDentist !== 'all' || filterStatus !== 'all' || searchQuery || showOnlyLate) && (
+        {(filterDentist !== 'all' || filterStatus !== 'pending' || searchQuery || showOnlyLate) && (
           <button
             onClick={() => {
               setFilterDentist('all');
@@ -443,68 +443,71 @@ export const ReceptionistAppointments: React.FC = () => {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex gap-1.5 flex-wrap">
-                        {/* Vào khám (chỉ Confirmed) */}
-                        {appt.status === 'Confirmed' && (
-                          <div className="flex gap-1.5">
-                            {(() => {
-                              const isAlreadyInQueue = queue.some(q => q.patientId === appt.patientId && q.status !== 'Completed');
-                              if (isAlreadyInQueue) {
-                                return (
-                                  <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold">
-                                    <Icon name="check" className="text-[13px]" />
-                                    Đã tiếp đón
-                                  </span>
-                                );
-                              }
-                              return (
+                        {(() => {
+                          const isAlreadyInQueue = queue.some(q => q.patientId === appt.patientId && q.status !== 'Completed');
+                          if (isAlreadyInQueue) {
+                            return (
+                              <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold">
+                                <Icon name="check" className="text-[13px]" />
+                                Đã tiếp đón
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <>
+                              {/* Check-in & Dời lịch (chỉ Confirmed) */}
+                              {appt.status === 'Confirmed' && (
+                                <>
+                                  <button
+                                    id={`btn-checkin-${appt.id}`}
+                                    onClick={() => handleCheckin(appt)}
+                                    className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:opacity-90 cursor-pointer flex items-center gap-1 active:scale-95 transition-all"
+                                  >
+                                    <Icon name="how_to_reg" className="text-[13px]" />
+                                    Check-in
+                                  </button>
+                                  <button
+                                    onClick={() => setRescheduleApptId(appt.id)}
+                                    className="px-2.5 py-1.5 border border-primary text-primary rounded-lg text-xs font-bold hover:bg-primary/10 cursor-pointer transition-all"
+                                    title="Dời lịch"
+                                  >
+                                    <Icon name="edit_calendar" className="text-[13px]" />
+                                  </button>
+                                </>
+                              )}
+                              {/* Hủy */}
+                              {appt.status !== 'Completed' && appt.status !== 'Cancelled' && (
                                 <button
-                                  id={`btn-checkin-${appt.id}`}
-                                  onClick={() => handleCheckin(appt)}
-                                  className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:opacity-90 cursor-pointer flex items-center gap-1 active:scale-95 transition-all"
+                                  id={`btn-cancel-${appt.id}`}
+                                  onClick={async () => {
+                                    const isConfirmed = await showConfirm({
+                                      title: 'Xác nhận hủy lịch',
+                                      message: `Bạn có chắc chắn muốn hủy lịch hẹn của bệnh nhân ${appt.patientName}? Hành động này không thể hoàn tác.`,
+                                      type: 'error',
+                                      confirmLabel: 'Hủy lịch',
+                                      cancelLabel: 'Quay lại'
+                                    });
+                                    if (isConfirmed) {
+                                      const success = await cancelAppointment(appt.id, 'Hủy bởi lễ tân phòng khám');
+                                      if (success !== false) {
+                                        await showAlert({
+                                          title: 'Thành công',
+                                          message: 'Đã hủy lịch hẹn thành công.',
+                                          type: 'success'
+                                        });
+                                      }
+                                    }
+                                  }}
+                                  className="px-2.5 py-1.5 border border-error text-error rounded-lg text-xs font-bold hover:bg-error-container cursor-pointer transition-all"
+                                  title="Hủy lịch"
                                 >
-                                  <Icon name="how_to_reg" className="text-[13px]" />
-                                  Check-in
+                                  <Icon name="cancel" className="text-[13px]" />
                                 </button>
-                              );
-                            })()}
-                            <button
-                              onClick={() => setRescheduleApptId(appt.id)}
-                              className="px-2.5 py-1.5 border border-primary text-primary rounded-lg text-xs font-bold hover:bg-primary/10 cursor-pointer transition-all"
-                              title="Dời lịch"
-                            >
-                              <Icon name="edit_calendar" className="text-[13px]" />
-                            </button>
-                          </div>
-                        )}
-                        {/* Hủy */}
-                        {appt.status !== 'Completed' && appt.status !== 'Cancelled' && (
-                          <button
-                            id={`btn-cancel-${appt.id}`}
-                            onClick={async () => {
-                              const isConfirmed = await showConfirm({
-                                title: 'Xác nhận hủy lịch',
-                                message: `Bạn có chắc chắn muốn hủy lịch hẹn của bệnh nhân ${appt.patientName}? Hành động này không thể hoàn tác.`,
-                                type: 'error',
-                                confirmLabel: 'Hủy lịch',
-                                cancelLabel: 'Quay lại'
-                              });
-                              if (isConfirmed) {
-                                const success = await cancelAppointment(appt.id);
-                                if (success !== false) {
-                                  await showAlert({
-                                    title: 'Thành công',
-                                    message: 'Đã hủy lịch hẹn thành công.',
-                                    type: 'success'
-                                  });
-                                }
-                              }
-                            }}
-                            className="px-2.5 py-1.5 border border-error text-error rounded-lg text-xs font-bold hover:bg-error-container cursor-pointer transition-all"
-                            title="Hủy lịch"
-                          >
-                            <Icon name="cancel" className="text-[13px]" />
-                          </button>
-                        )}
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </td>
                   </tr>

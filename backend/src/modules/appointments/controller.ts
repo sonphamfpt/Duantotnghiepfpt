@@ -104,7 +104,7 @@ export class AppointmentsController {
   async cancelAppointment(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { cancelReason } = req.body;
+      const cancelReason = req.body?.cancelReason || 'Hủy bởi nhân viên tiếp đón';
       
       const cancelledApp = await appointmentsService.cancelAppointment(id, cancelReason);
 

@@ -46,12 +46,39 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const [date, setDate] = useState(minDateStr);
   const [timeSlot, setTimeSlot] = useState('');
+  const [notes, setNotes] = useState('');
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotsError, setSlotsError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [staffBookingChannel, setStaffBookingChannel] = useState<Extract<BookingChannel, 'Phone' | 'WalkIn'>>('WalkIn');
   const [slotRefreshTick, setSlotRefreshTick] = useState(0);
+
+  // Per-field validation errors matching BookingPage.tsx
+  const [nameError, setNameError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [serviceError, setServiceError] = useState('');
+  const [dentistError, setDentistError] = useState('');
+  const [timeError, setTimeError] = useState('');
+
+  const PHONE_VN_REGEX = /^(0[3|5|7|8|9])[0-9]{8}$/;
+
+  const validatePhone = (phone: string): string => {
+    const clean = phone.replace(/\s|-/g, '');
+    if (!clean) return 'Vui lòng nhập số điện thoại.';
+    if (!/^[0-9]+$/.test(clean)) return 'Số điện thoại chỉ được chứa các chữ số (0-9).';
+    if (clean.length !== 10) return 'Số điện thoại phải đủ 10 chữ số.';
+    if (!PHONE_VN_REGEX.test(clean)) return 'Số điện thoại không hợp lệ. Phải bắt đầu bằng 03x, 05x, 07x, 08x, hoặc 09x.';
+    return '';
+  };
+
+  const validateName = (name: string): string => {
+    const trimmed = name.trim();
+    if (!trimmed) return 'Vui lòng nhập họ và tên.';
+    if (trimmed.length < 3) return 'Họ và tên phải có ít nhất 3 ký tự.';
+    if (/[0-9!@#$%^&*()_+\-=\[\]{};\':"|,.<>\/?\\]/.test(trimmed)) return 'Họ và tên không được chứa ký tự đặc biệt hoặc chữ số.';
+    return '';
+  };
 
   // OTP state
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -202,10 +229,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     e.preventDefault();
     setAntiSpamError('');
 
-    if (!patientName || !patientPhone || !selectedServiceId || !selectedDentistId || !timeSlot || !date) {
-      alert('Vui lòng điền đầy đủ thông tin bắt buộc!');
-      return;
-    }
+    const nErr = validateName(patientName);
+    const pErr = validatePhone(patientPhone);
+    const sErr = !selectedServiceId ? 'Vui lòng chọn dịch vụ điều trị.' : '';
+    const dErr = !selectedDentistId ? 'Vui lòng chọn bác sĩ thăm khám.' : '';
+    const tErr = !timeSlot ? 'Vui lòng chọn khung giờ hẹn khám.' : '';
+
+    setNameError(nErr);
+    setPhoneError(pErr);
+    setServiceError(sErr);
+    setDentistError(dErr);
+    setTimeError(tErr);
+
+    if (nErr || pErr || sErr || dErr || tErr) return;
 
     // Check if phone number is locked
     const matchedPatient = patients.find(p => p.phone === patientPhone.trim());
@@ -260,7 +296,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         dentistId: dentist.id,
         serviceId: service.id,
         startTime: timeSlot,
-        bookingChannel: isStaffBooking ? staffBookingChannel : 'Online',
+        bookingChannel: isStaffBooking ? 'Phone' : 'Online',
         otpToken,
       });
 
@@ -282,7 +318,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         isStaffBooking ? 'RECEPTION' : 'SYSTEM',
         'SUCCESS',
         isStaffBooking
-          ? `Lễ tân tạo lịch hẹn qua kênh ${staffBookingChannel === 'Phone' ? 'điện thoại' : 'trực tiếp'} cho SĐT ${patientPhone}.`
+          ? `Lễ tân đặt lịch hẹn mới thành công cho bệnh nhân SĐT ${patientPhone}.`
           : `OTP xác thực thành công cho SĐT ${patientPhone}. Lịch hẹn đã được tạo.`
       );
 
@@ -306,6 +342,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   // Get blocked time ranges for the selected dentist on selected date
   const selectedService = services.find(s => s.id === selectedServiceId);
+
+  const morningSlots = availableSlots.filter(slot => new Date(slot).getHours() < 12);
+  const afternoonSlots = availableSlots.filter(slot => {
+    const h = new Date(slot).getHours();
+    return h >= 12 && h < 17;
+  });
+  const eveningSlots = availableSlots.filter(slot => new Date(slot).getHours() >= 17);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -389,274 +432,347 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-            <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
-              
-              {/* LEFT COLUMN: Patient Info & Service */}
-              <div className="w-full md:w-1/2 p-6 overflow-y-auto custom-scrollbar border-r border-outline-variant space-y-5 bg-white">
-                
-                <div className="space-y-4">
-                  <h4 className="font-bold text-on-surface flex items-center gap-2 border-b border-outline-variant pb-2">
-                    <Icon name="person" className="text-primary" /> Thông tin bệnh nhân
-                  </h4>
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6 bg-white">
+            
+            {/* Header section inside form */}
+            <div className="pb-3 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Icon name="edit_calendar" className="text-[#005eb8] text-xl" />
+                <h4 className="text-lg font-extrabold text-[#0f172a]">Điền Thông Tin Đăng Ký Lịch Hẹn</h4>
+              </div>
+              {!isStaffBooking && (
+                <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full flex items-center gap-1">
+                  <Icon name="verified_user" className="text-[14px]" /> Xác thực OTP an toàn
+                </span>
+              )}
+            </div>
 
-                  {isStaffBooking && (
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
-                        Hình thức tiếp nhận *
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { value: 'WalkIn' as const, label: 'Trực tiếp', icon: 'person' },
-                          { value: 'Phone' as const, label: 'Điện thoại', icon: 'call' },
-                        ].map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setStaffBookingChannel(option.value)}
-                            className={`px-3 py-2.5 rounded-xl border text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-                              staffBookingChannel === option.value
-                                ? 'bg-primary text-on-primary border-primary shadow-sm'
-                                : 'bg-white text-on-surface border-outline-variant hover:border-primary/50'
-                            }`}
-                          >
-                            <Icon name={option.icon} className="text-[18px]" />
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
-                      Số điện thoại liên hệ *
-                    </label>
-                    <div className="relative">
-                      <Icon name="call" className="absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[20px]" />
-                      <input
-                        type="tel"
-                        required
-                        value={patientPhone}
-                        onChange={(e) => { setPatientPhone(e.target.value); setAntiSpamError(''); }}
-                        placeholder="Nhập SĐT..."
-                        className="w-full bg-surface-container-low border border-outline-variant rounded-xl pl-10 pr-3 py-3 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all"
-                      />
-                    </div>
-                    {existingPatient && (
-                      <p className="text-xs text-primary font-medium mt-1.5 flex items-center gap-1 animate-in fade-in">
-                        <Icon name="check_circle" className="text-[14px]" /> Đã nhận diện bệnh nhân cũ
-                      </p>
-                    )}
+            {/* Row 1: Patient Name & Phone */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Họ và tên bệnh nhân *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={patientName}
+                  onChange={(e) => { setPatientName(e.target.value); setNameError(''); }}
+                  onBlur={(e) => setNameError(validateName(e.target.value))}
+                  placeholder="Ví dụ: Nguyễn Văn A"
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${
+                    nameError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                  }`}
+                />
+                {nameError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{nameError}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Số điện thoại liên hệ *
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={patientPhone}
+                  onChange={(e) => { setPatientPhone(e.target.value); setPhoneError(''); setAntiSpamError(''); }}
+                  onBlur={(e) => setPhoneError(validatePhone(e.target.value))}
+                  placeholder="Ví dụ: 0912345678"
+                  maxLength={11}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${
+                    phoneError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                  }`}
+                />
+                {phoneError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{phoneError}</p>}
+                {existingPatient && !phoneError && (
+                  <p className="text-xs text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
+                    <Icon name="check_circle" className="text-[14px]" /> Đã nhận diện bệnh nhân cũ: {existingPatient.name}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Row 2: Service & Doctor */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Dịch vụ nha khoa điều trị *
+                </label>
+                <select
+                  required
+                  value={selectedServiceId}
+                  onChange={(e) => { setSelectedServiceId(e.target.value); setServiceError(''); setAntiSpamError(''); }}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer ${
+                    serviceError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                  }`}
+                >
+                  <option value="">-- Chọn dịch vụ điều trị --</option>
+                  {services.filter(s => s.isActive).map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — {s.durationMin} phút (₫{s.price.toLocaleString('vi-VN')})
+                    </option>
+                  ))}
+                </select>
+                {serviceError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{serviceError}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Bác sĩ thăm khám *
+                </label>
+                <select
+                  required
+                  value={selectedDentistId}
+                  onChange={(e) => { setSelectedDentistId(e.target.value); setDentistError(''); setAntiSpamError(''); }}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer ${
+                    dentistError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                  }`}
+                >
+                  <option value="">
+                    {(() => {
+                      const activeDentists = dentists.filter(d => 
+                        doctorShifts.some(s => s.dentistId === d.id && s.date === date)
+                      );
+                      return activeDentists.length === 0 
+                        ? "-- Không có bác sĩ trực ngày này --" 
+                        : "-- Chọn bác sĩ phụ trách --";
+                    })()}
+                  </option>
+                  {dentists.filter(d => 
+                    doctorShifts.some(s => s.dentistId === d.id && s.date === date)
+                  ).map(d => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.room})
+                    </option>
+                  ))}
+                </select>
+                {dentistError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{dentistError}</p>}
+              </div>
+            </div>
+
+            {/* Row 3: Date & Time slot */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Ngày hẹn khám *
+                </label>
+                <input
+                  type="date"
+                  required
+                  min={minDateStr}
+                  max={maxDateStr}
+                  value={date}
+                  onChange={(e) => { setDate(e.target.value); setAntiSpamError(''); }}
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                  Khung giờ hẹn * {selectedService && <span className="normal-case text-[#005eb8] font-semibold">({selectedService.durationMin} phút/ca)</span>}
+                </label>
+
+                {!selectedDentistId || !selectedServiceId ? (
+                  <div className="w-full bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-500 italic">
+                    Vui lòng chọn dịch vụ và bác sĩ để xem giờ trống
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
-                      Họ và tên bệnh nhân *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={patientName}
-                      onChange={(e) => setPatientName(e.target.value)}
-                      placeholder="Ví dụ: Nguyễn Văn A"
-                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-3 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all"
-                    />
+                ) : loadingSlots ? (
+                  <div className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-primary font-bold flex items-center gap-2">
+                    <Icon name="progress_activity" className="animate-spin text-base" />
+                    Đang tải khung giờ trống...
                   </div>
-                </div>
-
-                <div className="space-y-4 pt-4">
-                  <h4 className="font-bold text-on-surface flex items-center gap-2 border-b border-outline-variant pb-2">
-                    <Icon name="medical_services" className="text-secondary" /> Dịch vụ & Thời gian
-                  </h4>
-                  
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
-                      Dịch vụ nha khoa điều trị *
-                    </label>
+                ) : slotsError || availableSlots.length === 0 ? (
+                  <div className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-xs text-amber-800 font-medium">
+                    {slotsError || 'Không có khung giờ khả dụng. Vui lòng chọn bác sĩ hoặc ngày khác.'}
+                  </div>
+                ) : (
+                  <>
                     <select
                       required
-                      value={selectedServiceId}
-                      onChange={(e) => setSelectedServiceId(e.target.value)}
-                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all cursor-pointer"
+                      value={timeSlot}
+                      onChange={(e) => { setTimeSlot(e.target.value); setTimeError(''); setAntiSpamError(''); }}
+                      className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm font-bold text-[#005eb8] outline-none transition-all cursor-pointer ${
+                        timeError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                      }`}
                     >
-                      <option value="">-- Chọn dịch vụ --</option>
-                      {services.filter(s => s.isActive).map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} — {s.price.toLocaleString('vi-VN')}₫ ({s.durationMin} phút)
+                      <option value="">-- Chọn khung giờ trống --</option>
+                      {availableSlots.map(slotIso => (
+                        <option key={slotIso} value={slotIso}>
+                          {formatSlotToTimeString(slotIso)}
                         </option>
                       ))}
                     </select>
-                    {selectedService && (
-                      <p className="text-xs text-secondary font-semibold mt-1.5 flex items-center gap-1 animate-in fade-in">
-                        <Icon name="schedule" className="text-[14px]" />
-                        Thời gian ước tính: ~{selectedService.durationMin} phút
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
-                      Ngày khám *
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      min={minDateStr}
-                      max={maxDateStr}
-                      value={date}
-                      onChange={(e) => { setDate(e.target.value); setAntiSpamError(''); }}
-                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl px-3 py-3 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                {/* Anti-spam error */}
-                {antiSpamError && (
-                  <div className="flex items-start gap-2 text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm animate-in fade-in">
-                    <Icon name="gpp_bad" className="text-[20px] shrink-0 mt-0.5" />
-                    <span className="font-medium">{antiSpamError}</span>
-                  </div>
+                    {timeError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{timeError}</p>}
+                  </>
                 )}
               </div>
+            </div>
 
-              {/* RIGHT COLUMN: Doctor & Time */}
-              <div className="w-full md:w-1/2 p-6 bg-surface-container-lowest overflow-y-auto custom-scrollbar space-y-6">
-                
-                <div>
-                  <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1.5">
-                    Chọn Khung giờ * {selectedService && <span className="normal-case text-secondary font-semibold">({selectedService.durationMin} phút/ca)</span>}
+            {/* Time Slot Picker grouped by Morning / Afternoon / Evening */}
+            {selectedDentistId && selectedServiceId && availableSlots.length > 0 && !loadingSlots && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <label className="block text-xs font-extrabold uppercase tracking-wider text-[#0f172a] flex items-center gap-2">
+                    <Icon name="schedule" className="text-[#005eb8] text-base" />
+                    Chọn Nhanh Khung Giờ Hẹn Khám (Theo Buổi)
                   </label>
-                  {!selectedDentistId || !date ? (
-                    <p className="text-xs text-on-surface-variant italic py-4 text-center bg-slate-50 rounded-xl border border-dashed border-outline-variant">
-                      Vui lòng chọn bác sĩ và ngày khám trước
-                    </p>
-                  ) : loadingSlots ? (
-                    <div className="flex items-center justify-center gap-2 text-primary py-4 text-sm font-semibold">
-                      <Icon name="progress_activity" className="animate-spin text-xl" />
-                      Đang tải khung giờ trống...
-                    </div>
-                  ) : slotsError ? (
-                    <div className="text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm font-medium">
-                      {slotsError}
-                    </div>
-                  ) : availableSlots.length === 0 ? (
-                    <p className="text-xs text-on-surface-variant italic py-4 text-center bg-slate-50 rounded-xl border border-dashed border-outline-variant">
-                      Không có khung giờ khả dụng. Vui lòng chọn bác sĩ, dịch vụ hoặc ngày khác.
-                    </p>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {availableSlots.map(slot => {
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Tổng số: <strong className="text-[#005eb8]">{availableSlots.length}</strong> khung giờ trống
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Buổi Sáng */}
+                  {morningSlots.length > 0 && (
+                    <div className="bg-amber-50/40 border border-amber-200/80 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900 uppercase tracking-wide">
+                        <span className="text-base">☀️</span>
+                        <span>Buổi Sáng</span>
+                        <span className="text-[11px] text-amber-700 font-normal normal-case">(08:00 – 12:00)</span>
+                        <span className="ml-auto text-[10px] bg-amber-100/80 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                          {morningSlots.length} giờ
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                        {morningSlots.map(slot => {
                           const isSelected = timeSlot === slot;
                           return (
                             <button
                               key={slot}
                               type="button"
-                              onClick={() => { setTimeSlot(slot); setAntiSpamError(''); }}
-                              className={`py-2 px-1 text-xs font-bold rounded-lg border transition-all ${
+                              onClick={() => { setTimeSlot(slot); setTimeError(''); setAntiSpamError(''); }}
+                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
                                 isSelected
-                                    ? 'bg-secondary text-on-secondary border-secondary shadow-md scale-105 cursor-pointer'
-                                    : 'bg-white text-on-surface border-outline-variant hover:border-secondary/50 hover:bg-secondary/5 cursor-pointer'
+                                  ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
                               }`}
-                              title={formatSlotToTimeString(slot)}
                             >
+                              {isSelected && <Icon name="check" className="text-[13px]" />}
                               {formatSlotToTimeString(slot)}
                             </button>
                           );
                         })}
                       </div>
-                      <p className="text-[10px] text-on-surface-variant mt-2 flex items-center gap-1">
-                          <Icon name="info" className="text-[12px]" />
-                          Danh sách giờ được tính từ ca trực, dịch vụ và lịch đã có trong backend.
-                        </p>
-                    </>
+                    </div>
+                  )}
+
+                  {/* Buổi Chiều */}
+                  {afternoonSlots.length > 0 && (
+                    <div className="bg-sky-50/40 border border-sky-200/80 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-extrabold text-sky-900 uppercase tracking-wide">
+                        <span className="text-base">🌤️</span>
+                        <span>Buổi Chiều</span>
+                        <span className="text-[11px] text-sky-700 font-normal normal-case">(12:00 – 17:00)</span>
+                        <span className="ml-auto text-[10px] bg-sky-100/80 text-sky-900 px-2 py-0.5 rounded-full font-bold">
+                          {afternoonSlots.length} giờ
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                        {afternoonSlots.map(slot => {
+                          const isSelected = timeSlot === slot;
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => { setTimeSlot(slot); setTimeError(''); setAntiSpamError(''); }}
+                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                isSelected
+                                  ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                              }`}
+                            >
+                              {isSelected && <Icon name="check" className="text-[13px]" />}
+                              {formatSlotToTimeString(slot)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Buổi Tối */}
+                  {eveningSlots.length > 0 && (
+                    <div className="bg-indigo-50/40 border border-indigo-200/80 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-extrabold text-indigo-950 uppercase tracking-wide">
+                        <span className="text-base">🌙</span>
+                        <span>Buổi Tối</span>
+                        <span className="text-[11px] text-indigo-700 font-normal normal-case">(17:00 – 20:30)</span>
+                        <span className="ml-auto text-[10px] bg-indigo-100/80 text-indigo-950 px-2 py-0.5 rounded-full font-bold">
+                          {eveningSlots.length} giờ
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                        {eveningSlots.map(slot => {
+                          const isSelected = timeSlot === slot;
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => { setTimeSlot(slot); setTimeError(''); setAntiSpamError(''); }}
+                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                isSelected
+                                  ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                              }`}
+                            >
+                              {isSelected && <Icon name="check" className="text-[13px]" />}
+                              {formatSlotToTimeString(slot)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   )}
                 </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-on-surface-variant mb-3">
-                    Bác sĩ điều trị *
-                  </label>
-                  <div className="flex flex-col gap-2.5">
-                    {(() => {
-                      const activeDentists = dentists.filter(dentist => 
-                        doctorShifts.some(s => s.dentistId === dentist.id && s.date === date)
-                      );
-                      if (activeDentists.length === 0) {
-                        return (
-                          <p className="text-xs text-on-surface-variant italic py-4 text-center bg-slate-50 rounded-xl border border-dashed border-outline-variant">
-                            Không có bác sĩ nào trực vào ngày này. Vui lòng chọn ngày khám khác.
-                          </p>
-                        );
-                      }
-                      return activeDentists.map(dentist => (
-                        <button
-                          key={dentist.id}
-                          type="button"
-                          onClick={() => setSelectedDentistId(dentist.id)}
-                          className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer relative overflow-hidden flex items-center gap-3 ${
-                            selectedDentistId === dentist.id
-                              ? 'border-primary bg-primary-container/10 shadow-sm'
-                              : 'border-outline-variant hover:border-primary/40 bg-white'
-                          }`}
-                        >
-                          {selectedDentistId === dentist.id && (
-                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary rounded-l-xl" />
-                          )}
-                          
-                          <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center shrink-0 border border-outline-variant overflow-hidden">
-                            <Icon name="person" className="text-on-surface-variant text-xl" />
-                          </div>
-                          
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-on-surface">{dentist.name}</p>
-                            <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-1">
-                              <Icon name="meeting_room" className="text-[14px]" /> {dentist.room}
-                            </p>
-                          </div>
-                          
-                          <div className="shrink-0">
-                            {selectedDentistId === dentist.id ? (
-                              <Icon name="check_circle" className="text-primary text-xl" />
-                            ) : (
-                              <Icon name="radio_button_unchecked" className="text-outline-variant text-xl" />
-                            )}
-                          </div>
-                        </button>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-            {/* OTP info banner for patient */}
-            {!isStaffBooking && (
-              <div className="px-6 py-2 bg-blue-50 border-t border-blue-200 flex items-center gap-2 text-xs text-blue-800">
-                <Icon name="verified_user" className="text-[16px] text-blue-600" />
-                <span className="font-medium">Mã OTP sẽ được gửi đến số điện thoại để xác thực lịch hẹn</span>
               </div>
             )}
 
-            {/* Sticky Footer */}
-            <div className="p-4 border-t border-outline-variant bg-surface-container-low shrink-0 flex justify-end gap-3 rounded-b-2xl">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-2.5 border border-outline-variant text-on-surface rounded-xl font-bold cursor-pointer hover:bg-surface-container-high transition-colors"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-8 py-2.5 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
-              >
-                {submitting ? <Icon name="progress_activity" className="animate-spin" /> : <Icon name="event_available" />}
-                {submitting ? 'Đang xử lý...' : isStaffBooking ? 'Đăng Ký Hẹn' : 'Xác Nhận & Gửi OTP'}
-              </button>
+            {/* Notes / Symptom */}
+            <div>
+              <label className="block text-xs font-bold uppercase text-[#475569] mb-1.5">
+                Ghi chú triệu chứng hoặc nhu cầu đặc biệt (Không bắt buộc)
+              </label>
+              <textarea
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Mô tả qua tình trạng răng miệng hiện tại (VD: ê buốt khi uống nước lạnh, niềng răng tháo lắp...)"
+                className="w-full bg-slate-50 border border-slate-300 focus:border-[#005eb8] focus:bg-white rounded-xl px-4 py-2.5 text-sm outline-none transition-all resize-none"
+              ></textarea>
+            </div>
+
+            {/* Anti-spam error */}
+            {antiSpamError && (
+              <div className="flex items-start gap-3 text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm animate-in fade-in">
+                <Icon name="gpp_bad" className="text-[20px] shrink-0 mt-0.5" />
+                <span className="font-medium">{antiSpamError}</span>
+              </div>
+            )}
+
+            {/* Footer buttons */}
+            <div className="pt-4 border-t border-slate-200 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                <Icon name="lock" className="text-[14px] text-[#005eb8]" />
+                <span>{isStaffBooking ? 'Đặt lịch phòng khám' : 'Xác thực OTP bảo mật'}</span>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 border border-slate-300 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-8 py-2.5 bg-[#005eb8] hover:bg-[#004a94] text-white rounded-xl font-bold text-sm shadow hover:shadow-md active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {submitting ? <Icon name="progress_activity" className="animate-spin text-base" /> : <Icon name="verified_user" className="text-base" />}
+                  {submitting ? 'Đang xử lý...' : isStaffBooking ? 'Đăng Ký Hẹn' : 'Xác Nhận & Gửi OTP'}
+                </button>
+              </div>
             </div>
           </form>
         )}

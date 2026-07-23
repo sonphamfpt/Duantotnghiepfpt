@@ -4,13 +4,14 @@ import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
 import { ReviewModal } from '../../../components/ReviewModal';
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
+  Pending: { label: 'Chờ xác nhận', color: 'bg-amber-100 text-amber-800 border-amber-200', icon: 'schedule' },
   Confirmed: { label: 'Đã xác nhận', color: 'bg-secondary-container text-on-secondary-container border-secondary/20', icon: 'event_available' },
   'In-Progress': { label: 'Đang khám', color: 'bg-primary-container text-on-primary-container border-primary/20', icon: 'medical_services' },
   Completed: { label: 'Hoàn thành', color: 'bg-surface-container text-on-surface-variant border-outline-variant', icon: 'check_circle' },
   Cancelled: { label: 'Đã huỷ', color: 'bg-error-container text-on-error-container border-error/20', icon: 'cancel' },
   NoShow: { label: 'Quá hạn / Không đến', color: 'bg-outline-variant/30 text-outline border-outline-variant', icon: 'event_busy' },
-} as const;
+};
 
 
 
@@ -112,7 +113,7 @@ export const PatientAppointments: React.FC = () => {
   }, [myAppointments]);
 
   const upcomingAppointments = mappedAppointments.filter(
-    a => a.status === 'Confirmed' || a.status === 'In-Progress'
+    a => a.status === 'Confirmed' || a.status === 'In-Progress' || a.status === 'Pending'
   );
 
   const pastAppointments = mappedAppointments.filter(

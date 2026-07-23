@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
-import { BookingModal } from '../../components/BookingModal';
 import { Icon } from '../../components/Icon';
 
 const DEFAULT_SERVICE_IMAGE =
@@ -195,8 +195,8 @@ const SERVICE_META: Record<string, {
 const CATEGORIES = ['Tất cả', 'Chăm Sóc Cơ Bản', 'Thẩm Mỹ Răng', 'Phục Hồi Răng', 'Phẫu Thuật', 'Điều Trị Nội Nha', 'Cấy Ghép Implant', 'Chỉnh Nha', 'Chẩn Đoán'];
 
 export const Services: React.FC = () => {
+  const navigate = useNavigate();
   const { services } = useClinic();
-  const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState('Tất cả');
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -306,7 +306,7 @@ export const Services: React.FC = () => {
             {activeCategory !== 'Tất cả' && <> trong <span className="font-bold text-primary">"{activeCategory}"</span></>}
           </p>
           <button
-            onClick={() => setIsBookingOpen(true)}
+            onClick={() => navigate('/book')}
             className="hidden sm:flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold hover:shadow-lg active:scale-95 transition-all cursor-pointer"
           >
             <Icon name="calendar_month" className="text-[16px]" />
@@ -474,7 +474,7 @@ export const Services: React.FC = () => {
           </div>
           <div className="relative z-10 flex flex-col sm:flex-row gap-3 shrink-0">
             <button
-              onClick={() => setIsBookingOpen(true)}
+              onClick={() => navigate('/book')}
               className="bg-white text-primary px-6 py-3 rounded-xl font-bold text-sm hover:shadow-xl active:scale-95 transition-all cursor-pointer"
             >
               Đặt khám miễn phí →
@@ -569,7 +569,10 @@ export const Services: React.FC = () => {
                 Đóng
               </button>
               <button
-                onClick={() => { setSelectedService(null); setIsBookingOpen(true); }}
+                onClick={() => {
+                  setSelectedService(null);
+                  navigate(`/book?serviceId=${selectedSvc.id}`);
+                }}
                 className="flex-1 py-2.5 bg-primary text-on-primary rounded-xl font-bold text-sm hover:shadow-lg active:scale-95 transition-all cursor-pointer"
               >
                 Đặt lịch dịch vụ này →
@@ -578,8 +581,6 @@ export const Services: React.FC = () => {
           </div>
         </div>
       )}
-
-      <BookingModal isOpen={isBookingOpen} onClose={() => setIsBookingOpen(false)} />
     </div>
   );
 };

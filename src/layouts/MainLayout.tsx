@@ -102,10 +102,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         <div className="flex items-center gap-stack-md">
           {user && (
             <Link
-              to={role === 'patient' ? '/patient' : '/dashboard'}
-              className="hidden md:flex items-center text-primary font-bold font-label-md text-base px-4 py-2 hover:bg-surface-container-low rounded-lg transition-all"
+              to={role === 'patient' ? '/patient' : `/dashboard/${role}`}
+              className="flex items-center gap-1.5 bg-primary/10 text-primary border border-primary/20 font-bold font-label-md text-sm px-4 py-2 hover:bg-primary/20 rounded-xl transition-all shadow-sm active:scale-95"
             >
-              {role === 'patient' ? 'Trang cá nhân' : 'Bàn làm việc'}
+              <Icon name="space_dashboard" className="text-[18px]" />
+              <span>{role === 'patient' ? 'Trang cá nhân' : 'Vào bàn làm việc'}</span>
             </Link>
           )}
           <button

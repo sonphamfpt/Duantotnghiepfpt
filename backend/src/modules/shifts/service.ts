@@ -195,8 +195,6 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
       throw new AppError(400, 'SWAP_TOO_LATE', 'Ca trực muốn hoán đổi phải còn ít nhất 12 tiếng mới tới giờ bắt đầu.');
     }
 
-
-
     // 1. Kiểm tra không cho hoán đổi giữa 2 ca giống hệt nhau trong cùng một ngày
     const date1Str = shift1.workDate.toISOString().slice(0, 10);
     const date2Str = shift2.workDate.toISOString().slice(0, 10);
@@ -232,7 +230,6 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
         throw new AppError(400, 'SWAP_CONFLICT_DOCTOR_2', `Bác sĩ ${shift2.dentist.user.fullName} đã có ca trực vào ngày ${shift1.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`);
       }
     }
-
 
     // 1. Phát hiện và tạo các thông báo xung đột lịch hẹn
     await detectAndCreateConflicts(tx, shift1, shift1.dentistId, shift2.dentistId);
@@ -301,8 +298,6 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
       throw new AppError(400, 'TRANSFER_TOO_LATE', 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để nhờ trực thay.');
     }
 
-
-
     // Kiểm tra xung đột: Bác sĩ nhận ca chưa có ca trực nào vào ngày đó
     const existingShiftTarget = await tx.dentistShift.findFirst({
       where: {
@@ -314,7 +309,6 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
     if (existingShiftTarget) {
       throw new AppError(400, 'TARGET_DENTIST_HAS_SHIFT', `Bác sĩ ${targetDentist.user.fullName} đã có ca trực vào ngày ${shift.workDate.toISOString().slice(0, 10)}. Không thể nhờ trực thay.`);
     }
-
 
     // 1. Quét tìm và lưu trữ thông tin lịch hẹn bị ảnh hưởng
     await detectAndCreateConflicts(tx, shift, shift.dentistId, targetDentistId);

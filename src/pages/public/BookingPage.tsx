@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/Icon';
@@ -11,6 +11,7 @@ import { socket } from '../../services/socketClient';
 export const BookingPage: React.FC = () => {
   const { services, dentists, appointments, addLog, patients, refreshAllData, doctorShifts } = useClinic();
   const { role, user } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [patientName, setPatientName] = useState('');
   const [patientPhone, setPatientPhone] = useState('');
@@ -27,6 +28,18 @@ export const BookingPage: React.FC = () => {
 
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [selectedDentistId, setSelectedDentistId] = useState('');
+
+  // Tự động chọn dịch vụ hoặc bác sĩ từ URL query params (?serviceId=... hoặc ?dentistId=...)
+  useEffect(() => {
+    const sId = searchParams.get('serviceId') || searchParams.get('service');
+    if (sId && services.some(s => s.id === sId)) {
+      setSelectedServiceId(sId);
+    }
+    const dId = searchParams.get('dentistId') || searchParams.get('dentist');
+    if (dId && dentists.some(d => d.id === dId)) {
+      setSelectedDentistId(dId);
+    }
+  }, [searchParams, services, dentists]);
 
   const formatDateInputValue = (value: Date): string => {
     const year = value.getFullYear();
@@ -365,6 +378,12 @@ const formatLocalDateStr = (dateStr: string): string => {
     createAppointment(otpToken);
   };
 
+  const morningSlots = availableSlots.filter(slot => new Date(slot).getHours() < 12);
+  const afternoonSlots = availableSlots.filter(slot => {
+    const h = new Date(slot).getHours();
+    return h >= 12 && h < 17;
+  });
+  const eveningSlots = availableSlots.filter(slot => new Date(slot).getHours() >= 17);
 
   return (
     <div className="bg-[#f8fafc] min-h-screen font-body-md pb-20">
@@ -672,6 +691,125 @@ const formatLocalDateStr = (dateStr: string): string => {
                       {slotsError && !timeError && <p className="text-orange-500 text-xs mt-1 flex items-center gap-1"><span>ℹ</span>{slotsError}</p>}
                     </div>
                   </div>
+
+                  {/* Session-Grouped Time Slot Quick Picker */}
+                  {selectedDentistId && selectedServiceId && availableSlots.length > 0 && !loadingSlots && (
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <label className="block text-xs font-extrabold uppercase tracking-wider text-[#0f172a] flex items-center gap-2">
+                          <Icon name="schedule" className="text-[#005eb8] text-base" />
+                          Chọn Nhanh Khung Giờ Khám (Theo Buổi Sáng / Chiều / Tối)
+                        </label>
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          Tổng số: <strong className="text-[#005eb8]">{availableSlots.length}</strong> khung giờ trống
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {/* Buổi Sáng */}
+                        {morningSlots.length > 0 && (
+                          <div className="bg-amber-50/40 border border-amber-200/80 rounded-xl p-3.5 space-y-2">
+                            <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900 uppercase tracking-wide">
+                              <span className="text-base">☀️</span>
+                              <span>Buổi Sáng</span>
+                              <span className="text-[11px] text-amber-700 font-normal normal-case">(08:00 – 12:00)</span>
+                              <span className="ml-auto text-[10px] bg-amber-100/80 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                                {morningSlots.length} giờ
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                              {morningSlots.map(slot => {
+                                const isSelected = selectedTimeIso === slot;
+                                return (
+                                  <button
+                                    key={slot}
+                                    type="button"
+                                    onClick={() => { setSelectedTimeIso(slot); setTimeError(''); setAntiSpamError(''); }}
+                                    className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                      isSelected
+                                        ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                                    }`}
+                                  >
+                                    {isSelected && <Icon name="check" className="text-[13px]" />}
+                                    {formatSlotToTimeString(slot)}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Buổi Chiều */}
+                        {afternoonSlots.length > 0 && (
+                          <div className="bg-sky-50/40 border border-sky-200/80 rounded-xl p-3.5 space-y-2">
+                            <div className="flex items-center gap-2 text-xs font-extrabold text-sky-900 uppercase tracking-wide">
+                              <span className="text-base">🌤️</span>
+                              <span>Buổi Chiều</span>
+                              <span className="text-[11px] text-sky-700 font-normal normal-case">(12:00 – 17:00)</span>
+                              <span className="ml-auto text-[10px] bg-sky-100/80 text-sky-900 px-2 py-0.5 rounded-full font-bold">
+                                {afternoonSlots.length} giờ
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                              {afternoonSlots.map(slot => {
+                                const isSelected = selectedTimeIso === slot;
+                                return (
+                                  <button
+                                    key={slot}
+                                    type="button"
+                                    onClick={() => { setSelectedTimeIso(slot); setTimeError(''); setAntiSpamError(''); }}
+                                    className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                      isSelected
+                                        ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                                    }`}
+                                  >
+                                    {isSelected && <Icon name="check" className="text-[13px]" />}
+                                    {formatSlotToTimeString(slot)}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Buổi Tối */}
+                        {eveningSlots.length > 0 && (
+                          <div className="bg-indigo-50/40 border border-indigo-200/80 rounded-xl p-3.5 space-y-2">
+                            <div className="flex items-center gap-2 text-xs font-extrabold text-indigo-950 uppercase tracking-wide">
+                              <span className="text-base">🌙</span>
+                              <span>Buổi Tối</span>
+                              <span className="text-[11px] text-indigo-700 font-normal normal-case">(17:00 – 20:30)</span>
+                              <span className="ml-auto text-[10px] bg-indigo-100/80 text-indigo-950 px-2 py-0.5 rounded-full font-bold">
+                                {eveningSlots.length} giờ
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                              {eveningSlots.map(slot => {
+                                const isSelected = selectedTimeIso === slot;
+                                return (
+                                  <button
+                                    key={slot}
+                                    type="button"
+                                    onClick={() => { setSelectedTimeIso(slot); setTimeError(''); setAntiSpamError(''); }}
+                                    className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                      isSelected
+                                        ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                                    }`}
+                                  >
+                                    {isSelected && <Icon name="check" className="text-[13px]" />}
+                                    {formatSlotToTimeString(slot)}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Notes / Symptom */}
                   <div>
