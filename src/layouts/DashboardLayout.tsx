@@ -61,6 +61,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Hàng chờ trực tiếp',      icon: 'pending_actions', path: '/dashboard/receptionist?tab=queue' },
           { label: 'Lịch hẹn phòng khám',     icon: 'receipt_long',    path: '/dashboard/receptionist?tab=appointments' },
           { label: 'Trung tâm công việc',  icon: 'assignment_turned_in',     path: '/dashboard/receptionist?tab=reminders' },
+          { label: 'Lịch sử hủy lịch',     icon: 'history',                  path: '/dashboard/receptionist?tab=cancel-history' },
         ];
       case 'dentist':
         return [
