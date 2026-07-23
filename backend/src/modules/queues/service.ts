@@ -113,6 +113,25 @@ export async function checkInPatient(data: {
     throw new AppError(400, 'PATIENT_ALREADY_IN_QUEUE', 'Bệnh nhân này đã có trong hàng chờ khám hôm nay.');
   }
 
+  // [FIX 1] Kiểm tra lịch hẹn: nếu có appointmentId thì xác minh trạng thái
+  if (data.appointmentId) {
+    const appointment = await prisma.appointment.findUnique({
+      where: { appointmentId: data.appointmentId },
+    });
+
+    if (!appointment) {
+      throw new AppError(404, 'APPOINTMENT_NOT_FOUND', 'Không tìm thấy lịch hẹn tương ứng.');
+    }
+
+    if (appointment.status === 'Cancelled') {
+      throw new AppError(
+        400,
+        'APPOINTMENT_CANCELLED',
+        'Lịch hẹn này đã bị hủy. Không thể check-in bệnh nhân từ lịch hẹn đã hủy.'
+      );
+    }
+  }
+
   // 2. Tìm bác sĩ để lấy phòng khám mặc định
   const dentist = await prisma.dentist.findUnique({
     where: { dentistId: data.dentistId },
@@ -151,6 +170,18 @@ export async function checkInPatient(data: {
       room: true,
     },
   });
+
+  // [FIX 2] Đồng bộ: cập nhật Appointment.status → InProgress sau khi tạo QueueTicket
+  if (data.appointmentId) {
+    try {
+      await prisma.appointment.update({
+        where: { appointmentId: data.appointmentId },
+        data: { status: 'InProgress' },
+      });
+    } catch (syncErr) {
+      console.error('Lỗi đồng bộ trạng thái lịch hẹn sang InProgress:', syncErr);
+    }
+  }
 
   try {
     await prisma.systemLog.create({

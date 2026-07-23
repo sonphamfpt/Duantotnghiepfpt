@@ -5,6 +5,7 @@ import { useClinic } from '../../context/ClinicContext';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { DentalChart } from '../../components/DentalChart';
+import DrugAutocomplete from '../../components/DrugAutocomplete';
 import { ToothState } from '../../types/clinic';
 
 // Tab imports
@@ -49,7 +50,7 @@ const DentistHome: React.FC = () => {
   const initialQueueId = searchParams.get('queueId');
   const inChairItem = queue.find(q => q.dentistId === dentistId && q.status === 'In Chair');
   const [selectedQueueId, setSelectedQueueId] = useState<string | null>(inChairItem?.id || initialQueueId);
-  const [activeTab, setActiveTab] = useState<'teeth' | 'diagnosis' | 'services' | 'prescription' | 'files'>('teeth');
+  const [activeTab, setActiveTab] = useState<'teeth' | 'diagnosis' | 'services' | 'prescription' | 'files' | 'postTreatmentNotes'>('teeth');
   const [selectedToothNum, setSelectedToothNum] = useState<number | null>(null);
   const lastSelectedPatientId = React.useRef<string | null>(null);
 
@@ -61,6 +62,7 @@ const DentistHome: React.FC = () => {
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [icdCode, setIcdCode] = useState('');
   const [rxTemplate, setRxTemplate] = useState('');
+  const [postTreatmentNotes, setPostTreatmentNotes] = useState('');
 
   const [activeTeethState, setActiveTeethState] = useState<ToothState[]>([]);
   const [performedServices, setPerformedServices] = useState<string[]>([]);
@@ -300,6 +302,7 @@ const DentistHome: React.FC = () => {
     setTreatmentType('independent');
     setSelectedPlanId('');
     setUploadedFiles([]);
+    setPostTreatmentNotes('');
     setActiveTab('teeth');
   };
 
@@ -371,6 +374,19 @@ const DentistHome: React.FC = () => {
     setSelectedAddDrugId('');
   };
 
+  const handleAddCustomDrug = async (drugName: string) => {
+    const name = drugName.trim();
+    if (!name) return;
+    if (prescriptionDrugs.some(d => d.name === name)) {
+      await showAlert({ title: 'Cảnh báo', message: 'Thuốc này đã có trong đơn thuốc!', type: 'warning' });
+      return;
+    }
+    setPrescriptionDrugs(prev => [
+      ...prev,
+      { name, quantity: 10, unit: 'Viên', instruction: '' }
+    ]);
+  };
+
   const handleTemplateChange = (templateName: string) => {
     setRxTemplate(templateName);
     const preset = TEMPLATE_PRESETS[templateName];
@@ -401,6 +417,7 @@ const DentistHome: React.FC = () => {
       ...(chiefComplaint.trim() ? [`Bệnh sử: ${chiefComplaint.trim()}`] : []),
       `Chẩn đoán: ${icdCode}`,
       ...(drugListStr ? [`Đơn thuốc: ${drugListStr}`] : []),
+      ...(postTreatmentNotes.trim() ? [`Ghi chú sau điều trị: ${postTreatmentNotes.trim()}`] : []),
     ].join(' | ');
 
     if (activePatient) {
@@ -461,6 +478,7 @@ const DentistHome: React.FC = () => {
     setTreatmentType('independent');
     setSelectedPlanId('');
     setUploadedFiles([]);
+    setPostTreatmentNotes('');
   };
 
   const handleOpenSignModal = async () => {
@@ -675,6 +693,7 @@ const DentistHome: React.FC = () => {
                   { key: 'services' as const, label: 'Chỉ định dịch vụ' },
                   { key: 'prescription' as const, label: 'Đơn thuốc mẫu' },
                   { key: 'files' as const, label: 'Tài liệu & X-quang' },
+                  { key: 'postTreatmentNotes' as const, label: 'Ghi chú sau điều trị' },
                 ].map(t => {
                   const isSelected = activeTab === t.key;
                   const countBadge = t.key === 'files' && uploadedFiles.length > 0 ? ` (${uploadedFiles.length})` : '';
@@ -1015,19 +1034,16 @@ const DentistHome: React.FC = () => {
                     <div>
                       <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1">Kê thêm thuốc mới</label>
                       <div className="relative">
-                        <select
-                          value={selectedAddDrugId}
-                          onChange={e => handleAddDrug(e.target.value)}
-                          className="w-full bg-surface-container border border-outline-variant rounded-lg p-2.5 text-xs focus:outline-none appearance-none cursor-pointer pr-8"
-                        >
-                          <option value="">-- Chọn thuốc trong danh mục --</option>
-                          {AVAILABLE_DRUGS.map(d => (
-                            <option key={d.id} value={d.id}>
-                              {d.name} ({d.type})
-                            </option>
-                          ))}
-                        </select>
-                        <Icon name="keyboard_arrow_down" className="absolute right-3 top-1/2 -translate-y-1/2 text-[16px] pointer-events-none text-on-surface-variant" />
+                        <DrugAutocomplete
+                          availableDrugs={AVAILABLE_DRUGS}
+                          onAddDrug={async (id: string) => {
+                            await handleAddDrug(id);
+                          }}
+                          onAddCustomDrug={async (name: string) => {
+                            await handleAddCustomDrug(name);
+                          }}
+                          placeholder="-- Chọn thuốc trong danh mục --"
+                        />
                       </div>
                     </div>
                   </div>
@@ -1260,6 +1276,32 @@ const DentistHome: React.FC = () => {
                 </div>
               )}
 
+              {/* Tab 6: Ghi chú sau điều trị */}
+              {activeTab === 'postTreatmentNotes' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold text-on-surface mb-3 flex items-center gap-2">
+                      <Icon name="notes" className="text-base" />
+                      Ghi chú hướng dẫn sau điều trị
+                    </label>
+                    <textarea
+                      value={postTreatmentNotes}
+                      onChange={(e) => setPostTreatmentNotes(e.target.value)}
+                      placeholder="Nhập hướng dẫn chăm sóc sau điều trị, lưu ý quan trọng cho bệnh nhân...
+Ví dụ: - Không ăn trong 2 giờ
+- Nhai ở bên răng kia
+- Uống nước ấm nếu đau"
+                      className="w-full p-4 border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none text-sm text-on-surface"
+                      rows={10}
+                    />
+                    <div className="mt-3 text-xs text-on-surface-variant flex items-center gap-2">
+                      <Icon name="info" className="text-sm" />
+                      <span>Ghi chú này sẽ được bao gồm trong bệnh án EMR và có thể in ra cho bệnh nhân</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Finalize bottom action bar */}
               <div className="pt-6 border-t border-outline-variant flex justify-between items-center">
                 <div className="text-xs text-on-surface-variant font-medium">
@@ -1469,6 +1511,16 @@ const DentistHome: React.FC = () => {
                     <p className="text-slate-500 italic">Không kê đơn thuốc.</p>
                   )}
                 </div>
+
+                {/* Post-treatment notes */}
+                {postTreatmentNotes.trim() && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-primary uppercase border-b border-slate-200 pb-1">Ghi chú sau điều trị</p>
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      {postTreatmentNotes}
+                    </div>
+                  </div>
+                )}
 
                 {/* Signature area */}
                 <div className="pt-6 border-t border-slate-200 grid grid-cols-2 text-center text-[10px]">

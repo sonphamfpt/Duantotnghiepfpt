@@ -40,26 +40,26 @@ async function detectAndCreateConflicts(
     },
   });
 
-  if (affectedAppointments.length === 0) return null;
-
   // Tạo thông báo đổi ca trực
   const notif = await tx.shiftChangeNotification.create({
     data: {
       shiftDate: shift.workDate,
-      shiftType: shift.shiftType,
+      shiftType: shift.shiftType as any,
       originalDentistId,
       newDentistId,
     },
   });
 
-  // Tạo liên kết các cuộc hẹn bị ảnh hưởng
-  await tx.shiftChangeAffectedItem.createMany({
-    data: affectedAppointments.map((appt) => ({
-      notifId: notif.notifId,
-      appointmentId: appt.appointmentId,
-      resolved: false,
-    })),
-  });
+  if (affectedAppointments.length > 0) {
+    // Tạo liên kết các cuộc hẹn bị ảnh hưởng
+    await tx.shiftChangeAffectedItem.createMany({
+      data: affectedAppointments.map((appt) => ({
+        notifId: notif.notifId,
+        appointmentId: appt.appointmentId,
+        resolved: false,
+      })),
+    });
+  }
 
   // Ghi nhận log cảnh báo
   await tx.systemLog.create({
@@ -151,6 +151,19 @@ export async function createShift(data: {
 }
 
 /**
+ * Tính timestamp chính xác (UTC ms) của giờ bắt đầu ca trực theo giờ Việt Nam (UTC+7)
+ */
+function getShiftStartTimeMs(workDate: Date, shiftType: string): number {
+  const year = workDate.getUTCFullYear();
+  const month = workDate.getUTCMonth();
+  const day = workDate.getUTCDate();
+
+  // Ca Chiều bắt đầu 14:00 (VN) = 07:00 (UTC). Ca Sáng bắt đầu 08:00 (VN) = 01:00 (UTC)
+  const startHourUtc = shiftType === 'Afternoon' ? 7 : 1;
+  return Date.UTC(year, month, day, startHourUtc, 0, 0, 0);
+}
+
+/**
  * Hoán đổi ca trực (Swap) giữa hai ca của hai bác sĩ khác nhau
  */
 export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
@@ -172,20 +185,27 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
     const nowMs = Date.now();
     const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 
-    const start1Hour = shift1.shiftType === 'Afternoon' ? 14 : 8;
-    const start1Ms = new Date(shift1.workDate.getFullYear(), shift1.workDate.getMonth(), shift1.workDate.getDate(), start1Hour, 0, 0).getTime();
+    const start1Ms = getShiftStartTimeMs(shift1.workDate, shift1.shiftType);
     if (start1Ms - nowMs < TWELVE_HOURS_MS) {
       throw new AppError(400, 'SWAP_TOO_LATE', 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để thực hiện hoán đổi.');
     }
 
-    const start2Hour = shift2.shiftType === 'Afternoon' ? 14 : 8;
-    const start2Ms = new Date(shift2.workDate.getFullYear(), shift2.workDate.getMonth(), shift2.workDate.getDate(), start2Hour, 0, 0).getTime();
+    const start2Ms = getShiftStartTimeMs(shift2.workDate, shift2.shiftType);
     if (start2Ms - nowMs < TWELVE_HOURS_MS) {
       throw new AppError(400, 'SWAP_TOO_LATE', 'Ca trực muốn hoán đổi phải còn ít nhất 12 tiếng mới tới giờ bắt đầu.');
     }
 
-    // Kiểm tra xung đột trùng ngày trực: Bác sĩ 1 không được có ca trực khác vào ngày của ca 2 (nếu khác ngày)
-    if (shift1.workDate.toISOString().slice(0, 10) !== shift2.workDate.toISOString().slice(0, 10)) {
+    // 1. Kiểm tra không cho hoán đổi giữa 2 ca giống hệt nhau trong cùng một ngày
+    const date1Str = shift1.workDate.toISOString().slice(0, 10);
+    const date2Str = shift2.workDate.toISOString().slice(0, 10);
+
+    if (date1Str === date2Str && shift1.shiftType === shift2.shiftType) {
+      const shiftName = shift1.shiftType === 'Morning' ? 'Ca Sáng' : shift1.shiftType === 'Afternoon' ? 'Ca Chiều' : 'Ca Cả ngày';
+      throw new AppError(400, 'SAME_SHIFT_SWAP_INVALID', `Cả hai bác sĩ đều đã có lịch trực ${shiftName} vào ngày ${date1Str}. Không thể hoán đổi 2 ca trùng nhau.`);
+    }
+
+    // 2. Kiểm tra xung đột trùng ngày trực: Bác sĩ 1 không được có ca trực khác vào ngày của ca 2 (nếu khác ngày)
+    if (date1Str !== date2Str) {
       const existingShiftDoc1OnDate2 = await tx.dentistShift.findFirst({
         where: {
           dentistId: shift1.dentistId,
@@ -272,8 +292,8 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
     // Kiểm tra quy chế: Phải gửi yêu cầu trước ít nhất 12 tiếng
     const nowMs = Date.now();
     const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
-    const startHour = shift.shiftType === 'Afternoon' ? 14 : 8;
-    const startMs = new Date(shift.workDate.getFullYear(), shift.workDate.getMonth(), shift.workDate.getDate(), startHour, 0, 0).getTime();
+
+    const startMs = getShiftStartTimeMs(shift.workDate, shift.shiftType);
     if (startMs - nowMs < TWELVE_HOURS_MS) {
       throw new AppError(400, 'TRANSFER_TOO_LATE', 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để nhờ trực thay.');
     }

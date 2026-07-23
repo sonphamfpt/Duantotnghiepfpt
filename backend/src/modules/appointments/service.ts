@@ -7,19 +7,19 @@ import { socketManager } from '../../config/socket';
 
 async function resolveServiceId(id: string): Promise<bigint> {
   const cleanId = id.replace('S-', '');
-  
+
   if (/^\d+$/.test(cleanId)) {
     const record = await prisma.service.findUnique({
       where: { serviceId: BigInt(cleanId) },
     });
     if (record) return record.serviceId;
   }
-  
+
   // Tra cứu theo tên dịch vụ nếu không tìm được qua numeric ID
   const record = await prisma.service.findFirst({
     where: { name: { contains: id, mode: 'insensitive' } },
   });
-  
+
   if (!record) {
     throw new AppError(404, `Không tìm thấy dịch vụ tương ứng với mã: ${id}`, 'SERVICE_NOT_FOUND');
   }
@@ -28,21 +28,21 @@ async function resolveServiceId(id: string): Promise<bigint> {
 
 async function resolveDentistId(id: string): Promise<bigint> {
   const cleanId = id.replace('D-', '');
-  
+
   if (/^\d+$/.test(cleanId)) {
     const record = await prisma.dentist.findUnique({
       where: { dentistId: BigInt(cleanId) },
     });
     if (record) return record.dentistId;
   }
-  
+
   // Tra cứu theo tên bác sĩ nếu không tìm được qua numeric ID
   const record = await prisma.dentist.findFirst({
     where: {
       user: { fullName: { contains: id, mode: 'insensitive' } }
     }
   });
-  
+
   if (!record) {
     throw new AppError(404, `Không tìm thấy bác sĩ tương ứng với mã: ${id}`, 'DENTIST_NOT_FOUND');
   }
@@ -73,7 +73,7 @@ export class AppointmentsService {
 
     const isToday = dateStr === getVietnamDateStr(new Date());
     const cacheKey = `slots:${dentistId}:${dateStr}:${serviceId}`;
-    
+
     // 1. Kiểm tra cache Redis
     const cachedSlots = isToday ? null : await redis.get(cacheKey);
     if (cachedSlots) {
@@ -81,16 +81,15 @@ export class AppointmentsService {
       return JSON.parse(cachedSlots);
     }
 
-    // 2. Lấy thông tin ca trực của bác sĩ (dùng khoảng giờ trong ngày để tránh lệch múi giờ)
-    const startOfDay = new Date(`${dateStr}T00:00:00.000Z`);
-    const endOfDay = new Date(`${dateStr}T23:59:59.999Z`);
+    // 2. Lấy thông tin ca trực của bác sĩ (dùng khoảng giờ trong ngày theo múi giờ VN)
+    const dayRange = getVietnamDayUtcRange(dateStr);
 
     const shifts = await prisma.dentistShift.findMany({
       where: {
         dentistId: dentistIdVal,
         workDate: {
-          gte: startOfDay,
-          lte: endOfDay,
+          gte: dayRange.start,
+          lte: dayRange.end,
         },
         isActive: true,
       },
@@ -123,7 +122,6 @@ export class AppointmentsService {
     }
 
     // 5. Lấy danh sách lịch hẹn đã được đặt của bác sĩ trong ngày (trừ trạng thái đã hủy)
-    const dayRange = getVietnamDayUtcRange(dateStr);
     const appointments = await prisma.appointment.findMany({
       where: {
         dentistId: dentistIdVal,
@@ -221,7 +219,7 @@ export class AppointmentsService {
         const tier = await prisma.membershipTier.findFirst({
           where: { code: 'STANDARD' },
         });
-        
+
         if (!tier) {
           throw new AppError(500, 'Không tìm thấy hạng thành viên mặc định (STANDARD). Vui lòng liên hệ quản trị viên.', 'TIER_NOT_FOUND');
         }
@@ -285,7 +283,7 @@ export class AppointmentsService {
     // 3. Khóa Redis Lock để ngăn chặn ghi trùng thời gian thực
     const lockKey = `booking_lock:${dentistId}:${startTime}`;
     const lockToken = Math.random().toString(36).substring(2);
-    
+
     // Đặt lock trong 10 giây (EX: hết hạn sau 10s, NX: chỉ ghi nếu chưa tồn tại)
     const lockAcquired = await redis.set(lockKey, lockToken, 'EX', 10, 'NX');
     if (!lockAcquired) {
@@ -358,11 +356,25 @@ export class AppointmentsService {
       });
 
       // 5. Sau khi đặt lịch thành công, xóa cache slots của bác sĩ trong ngày này
-      const dateStr = startTime.split('T')[0];
+      const dateStr = requestedDateStr;
       const cachePattern = `slots:${dentistId}:${dateStr}:*`;
       const keys = await redis.keys(cachePattern);
       if (keys.length > 0) {
         await redis.del(...keys);
+      }
+
+      // Ghi log đặt lịch thành công
+      try {
+        const patientLabel = newAppointment.patient?.fullName || `BN-${dbPatientId}`;
+        await prisma.systemLog.create({
+          data: {
+            module: 'RECEPTION',
+            logType: 'SUCCESS',
+            message: `Đặt lịch hẹn thành công cho ${patientLabel} - Dịch vụ: ${newAppointment.service?.name || 'N/A'} (${bookingChannel}).`,
+          },
+        });
+      } catch (logErr) {
+        console.error('[LOG_ERR] Ghi log đặt lịch thất bại:', logErr);
       }
 
       return newAppointment;
@@ -389,9 +401,10 @@ export class AppointmentsService {
    * Hủy lịch hẹn
    */
   async cancelAppointment(id: string, cancelReason: string) {
+    const cleanId = id.toString().replace('A-', '');
     // 1. Kiểm tra lịch hẹn tồn tại
     const appointment = await prisma.appointment.findUnique({
-      where: { appointmentId: BigInt(id) },
+      where: { appointmentId: BigInt(cleanId) },
     });
 
     if (!appointment) {
@@ -404,7 +417,7 @@ export class AppointmentsService {
 
     // 2. Tiến hành hủy lịch hẹn
     const updatedAppointment = await prisma.appointment.update({
-      where: { appointmentId: BigInt(id) },
+      where: { appointmentId: BigInt(cleanId) },
       data: {
         status: 'Cancelled',
         cancelledAt: new Date(),
@@ -427,6 +440,7 @@ export class AppointmentsService {
     });
 
     // Nếu hủy lịch từ 3 lần trở lên trong 30 ngày, tự động khóa tài khoản
+    let autoLocked = false;
     if (cancelCount >= 3) {
       await prisma.patient.update({
         where: { patientId: appointment.patientId },
@@ -435,14 +449,44 @@ export class AppointmentsService {
           lockedReason: `Tự động khóa do hủy lịch hẹn ${cancelCount} lần trong vòng 30 ngày.`,
         },
       });
+      autoLocked = true;
     }
 
     // Xóa cache slots của bác sĩ trong ngày bị hủy
-    const dateStr = appointment.startTime.toISOString().split('T')[0];
+    const dateStr = getVietnamDateStr(appointment.startTime);
     const cachePattern = `slots:${appointment.dentistId}:${dateStr}:*`;
     const keys = await redis.keys(cachePattern);
     if (keys.length > 0) {
       await redis.del(...keys);
+    }
+
+    // Ghi log hủy lịch
+    try {
+      const patientInfo = await prisma.patient.findUnique({
+        where: { patientId: appointment.patientId },
+        select: { fullName: true, phone: true },
+      });
+      const patientLabel = patientInfo?.fullName || `BN-${appointment.patientId}`;
+
+      await prisma.systemLog.create({
+        data: {
+          module: 'RECEPTION',
+          logType: 'WARN',
+          message: `Hủy lịch hẹn #A-${id} của bệnh nhân ${patientLabel}. Lý do: ${cancelReason}. Tổng lần hủy (30 ngày): ${cancelCount}.`,
+        },
+      });
+
+      if (autoLocked) {
+        await prisma.systemLog.create({
+          data: {
+            module: 'SYSTEM',
+            logType: 'WARN',
+            message: `Tự động khóa tài khoản bệnh nhân ${patientLabel} (${patientInfo?.phone || ''}) do hủy lịch ${cancelCount} lần trong 30 ngày.`,
+          },
+        });
+      }
+    } catch (logErr) {
+      console.error('[LOG_ERR] Ghi log hủy lịch thất bại:', logErr);
     }
 
     return updatedAppointment;
@@ -473,7 +517,7 @@ export class AppointmentsService {
         const inQueue = await prisma.queueTicket.findFirst({
           where: {
             patientId: appt.patientId,
-            status: { notIn: ['Completed', 'Cancelled'] },
+            status: { notIn: ['Completed'] },
           },
         });
         if (!inQueue) {
@@ -485,6 +529,24 @@ export class AppointmentsService {
               cancelReason: 'Tự động hủy do trễ quá 15 phút chưa check-in',
             },
           });
+
+          // Ghi log riêng cho từng lịch bị tự động hủy
+          try {
+            const patientInfo = await prisma.patient.findUnique({
+              where: { patientId: appt.patientId },
+              select: { fullName: true },
+            });
+            await prisma.systemLog.create({
+              data: {
+                module: 'SYSTEM',
+                logType: 'WARN',
+                message: `Tự động hủy lịch hẹn #A-${appt.appointmentId} của bệnh nhân ${patientInfo?.fullName || `BN-${appt.patientId}`} do trễ quá 15 phút chưa check-in.`,
+              },
+            });
+          } catch (logErr) {
+            console.error('[LOG_ERR] Ghi log tự động hủy thất bại:', logErr);
+          }
+
           countCancelled++;
         }
       }
@@ -507,20 +569,24 @@ export class AppointmentsService {
 
     const pad = (n: number) => n.toString().padStart(2, '0');
     const formatDate = (date: Date): string => {
-      const today = new Date();
-      const isToday = date.getFullYear() === today.getFullYear() &&
-                      date.getMonth() === today.getMonth() &&
-                      date.getDate() === today.getDate();
-      
-      const hh = pad(date.getHours());
-      const mm = pad(date.getMinutes());
-      
+      const vnMs = date.getTime() + 7 * 60 * 60 * 1000;
+      const vnDate = new Date(vnMs);
+      const nowVn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+
+      const isToday =
+        vnDate.getUTCFullYear() === nowVn.getUTCFullYear() &&
+        vnDate.getUTCMonth() === nowVn.getUTCMonth() &&
+        vnDate.getUTCDate() === nowVn.getUTCDate();
+
+      const hh = pad(vnDate.getUTCHours());
+      const mm = pad(vnDate.getUTCMinutes());
+
       if (isToday) {
         return `${hh}:${mm}`;
       } else {
-        const dd = pad(date.getDate());
-        const m = pad(date.getMonth() + 1);
-        const yyyy = date.getFullYear();
+        const dd = pad(vnDate.getUTCDate());
+        const m = pad(vnDate.getUTCMonth() + 1);
+        const yyyy = vnDate.getUTCFullYear();
         return `${dd}/${m}/${yyyy} @ ${hh}:${mm}`;
       }
     };
@@ -548,6 +614,7 @@ export class AppointmentsService {
         dentistName: appt.dentist?.user?.fullName || 'Bác sĩ',
         time: formatDate(appt.startTime),
         status: statusStr,
+        cancelReason: appt.cancelReason || undefined,
       };
     });
   }

@@ -20,17 +20,18 @@ interface NoShowTask {
   service: string;
   phone: string;
   resolved: boolean;
+  cancelReason?: string;
 }
 
 
 export const ReceptionistReminders: React.FC = () => {
-  const { appointments, queue, shiftChangeNotifications } = useClinic();
-  
-  const filteredShiftNotifs = useMemo(() => {
-    return (shiftChangeNotifications || []).filter(n =>
-      n.affectedItems.some(item => !item.resolved)
-    );
-  }, [shiftChangeNotifications]);
+  const {
+    appointments,
+    queue,
+    shiftChangeNotifications,
+    resolveShiftConflict_Update,
+    resolveShiftConflict_Cancel,
+  } = useClinic();
 
   const [hideDoneNotifs, setHideDoneNotifs] = useState(false);
   const [changingDoctorTaskId, setChangingDoctorTaskId] = useState<string | null>(null);
@@ -139,34 +140,55 @@ export const ReceptionistReminders: React.FC = () => {
       }
       
       if (isCancelled || isMissedPast) {
+        let displayDate = 'Hôm nay';
+        let timeStr = a.time;
+        if (a.time.includes('@')) {
+          const datePart = a.time.split('@')[0].trim();
+          timeStr = a.time.split('@')[1].trim();
+          displayDate = datePart === todayStr ? 'Hôm nay' : datePart;
+        }
+
         list.push({
           id: a.id,
           patientName: a.patientName,
-          missedDate: a.time.includes('@') ? a.time.split('@')[0].trim() : 'Hôm qua',
+          missedDate: `${displayDate} (${timeStr})`,
           service: a.serviceName,
           phone: a.patientPhone,
           resolved: false,
+          cancelReason: a.cancelReason,
         });
       }
     }
     return list;
-  }, [appointments, todayMidnight, resolvedIds]);
+  }, [appointments, todayMidnight, todayStr, resolvedIds]);
 
 
   // ─── Lọc & Tìm kiếm (Filters) ───
   const [searchQuery, setSearchQuery] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
-  const taskFilter = (searchParams.get('subTab') || 'all') as 'all' | 'late' | 'noshow';
+  const taskFilter = (searchParams.get('subTab') || 'all') as 'all' | 'shift' | 'late' | 'noshow';
 
-  const setTaskFilter = (val: 'all' | 'late' | 'noshow') => {
+  const setTaskFilter = (val: 'all' | 'shift' | 'late' | 'noshow') => {
     setSearchParams(prev => {
       prev.set('subTab', val);
       return prev;
     });
   };
 
-  // Lọc dữ liệu dựa trên SearchQuery (Tên KH / SĐT)
+  // Lọc dữ liệu dựa trên SearchQuery (Tên KH / SĐT / Tên BS)
   const query = searchQuery.toLowerCase();
+
+  const filteredShiftNotifs = useMemo(() => {
+    if (taskFilter !== 'all' && taskFilter !== 'shift') return [];
+    return (shiftChangeNotifications || []).filter(n => {
+      if (!query) return true;
+      return (
+        n.originalDentistName.toLowerCase().includes(query) ||
+        n.newDentistName.toLowerCase().includes(query) ||
+        (n.affectedItems && n.affectedItems.some(i => i.patientName.toLowerCase().includes(query) || i.patientPhone.includes(query)))
+      );
+    });
+  }, [shiftChangeNotifications, taskFilter, query]);
 
   const filteredLate = useMemo(() => {
     if (taskFilter !== 'all' && taskFilter !== 'late') return [];
@@ -189,6 +211,7 @@ export const ReceptionistReminders: React.FC = () => {
         <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
           {[
             { id: 'all', label: 'Tất cả công việc' },
+            { id: 'shift', label: 'BS Đổi ca / Trực thay' },
             { id: 'late', label: 'Khách trễ hẹn' },
             { id: 'noshow', label: 'Khách lỡ hẹn' },
           ].map(f => (
@@ -208,13 +231,91 @@ export const ReceptionistReminders: React.FC = () => {
           <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
           <input
             type="text"
-            placeholder="Tìm tên KH, SĐT..."
+            placeholder="Tìm tên KH, SĐT, Tên Bác sĩ..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-outline-variant/60 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
           />
         </div>
       </div>
+
+      {/* ── SECTION: Bác sĩ đổi ca / Nhờ trực thay ── */}
+      {filteredShiftNotifs.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="font-bold text-sm text-on-surface flex items-center gap-2 mt-2">
+            <Icon name="published_with_changes" className="text-purple-600" />
+            Bác sĩ đổi lịch / Nhờ trực thay ({filteredShiftNotifs.length})
+          </h3>
+          <div className="flex flex-col gap-3">
+            {filteredShiftNotifs.map(notif => (
+              <div key={notif.id} className="p-4 rounded-2xl border border-purple-200 bg-purple-50/30 shadow-sm space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold shrink-0">
+                      <Icon name="swap_horiz" className="text-[22px]" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-on-surface">
+                        Bác sĩ <span className="text-purple-700 font-extrabold">{notif.originalDentistName}</span> ➔ Bàn giao cho Bác sĩ <span className="text-purple-700 font-extrabold">{notif.newDentistName}</span>
+                      </p>
+                      <p className="text-xs text-on-surface-variant mt-0.5">
+                        Ngày trực: <span className="font-semibold">{notif.shiftDate}</span> • Ca: <span className="font-semibold">{notif.shiftType === 'Morning' ? 'Ca Sáng' : notif.shiftType === 'Afternoon' ? 'Ca Chiều' : 'Cả ngày'}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Patient conflicts list */}
+                {notif.affectedItems && notif.affectedItems.length > 0 ? (
+                  <div className="mt-2 space-y-2 bg-white p-3.5 rounded-xl border border-purple-100">
+                    <p className="text-xs font-bold text-purple-900 flex items-center gap-1">
+                      <Icon name="warning" className="text-amber-500 text-[14px]" />
+                      Bệnh nhân bị ảnh hưởng lịch khám ({notif.affectedItems.length}):
+                    </p>
+                    <div className="divide-y divide-slate-100">
+                      {notif.affectedItems.map((item, idx) => (
+                        <div key={idx} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                          <div>
+                            <p className="font-bold text-slate-800">{item.patientName} <span className="font-semibold text-slate-500">({item.patientPhone})</span></p>
+                            <p className="text-slate-500 text-[11px] mt-0.5">{item.serviceName} • {item.time}</p>
+                          </div>
+                          {item.resolved ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                              <Icon name="check_circle" className="text-[13px]" />
+                              {item.resolvedAction === 'cancelled' ? 'Đã hủy lịch' : `Đã chuyển sang BS ${notif.newDentistName}`}
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={() => resolveShiftConflict_Update(notif.id, item.appointmentId)}
+                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-[11px] transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
+                              >
+                                <Icon name="person_add" className="text-[13px]" />
+                                Đổi sang BS {notif.newDentistName}
+                              </button>
+                              <button
+                                onClick={() => resolveShiftConflict_Cancel(notif.id, item.appointmentId)}
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[11px] transition-colors cursor-pointer"
+                              >
+                                Hủy lịch
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/60 text-xs text-emerald-800 font-medium flex items-center gap-1.5">
+                    <Icon name="check_circle" className="text-emerald-600 text-[16px]" />
+                    Không có bệnh nhân nào bị ảnh hưởng lịch hẹn trong ca trực này.
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── SECTION: Khách trễ hẹn ── */}
       {filteredLate.length > 0 && (
@@ -269,8 +370,16 @@ export const ReceptionistReminders: React.FC = () => {
                   </div>
                   {task.resolved && <Icon name="check_circle" className="text-green-500 text-[20px]" />}
                 </div>
+                {task.cancelReason && !task.resolved && (
+                  <div className="mt-2 flex items-start gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl">
+                    <Icon name="warning" className="text-amber-500 text-[14px] mt-0.5 shrink-0" />
+                    <p className="text-xs text-amber-800 font-medium leading-snug">
+                      <span className="font-bold">Lý do: </span>{task.cancelReason}
+                    </p>
+                  </div>
+                )}
                 {!task.resolved && (
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-3 flex gap-2">
                     <a href={`tel:${task.phone.replace(/\s/g, '')}`} className="flex-1 py-2 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold text-center hover:bg-amber-100 transition-colors flex items-center justify-center gap-1.5">
                       <Icon name="call" className="text-[14px]" />
                       Gọi {task.phone}

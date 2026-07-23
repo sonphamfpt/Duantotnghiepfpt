@@ -6,10 +6,10 @@ import { RescheduleModal } from '../../../components/RescheduleModal';
 import { useConfirm } from '../../../context/ConfirmContext';
 
 const APPT_STATUS: Record<string, { label: string; badge: string; icon: string }> = {
-  Confirmed:   { label: 'Đã xác nhận',  badge: 'bg-secondary-container text-on-secondary-container', icon: 'check_circle' },
-  'In-Progress':{ label: 'Đang khám',   badge: 'bg-primary-container text-on-primary-container',     icon: 'medical_services' },
-  Cancelled:   { label: 'Đã hủy',       badge: 'bg-error-container text-error',                      icon: 'cancel' },
-  Completed:   { label: 'Hoàn tất',     badge: 'bg-surface-container text-on-surface-variant',       icon: 'task_alt' },
+  Confirmed: { label: 'Đã xác nhận', badge: 'bg-secondary-container text-on-secondary-container', icon: 'check_circle' },
+  'In-Progress': { label: 'Đang khám', badge: 'bg-primary-container text-on-primary-container', icon: 'medical_services' },
+  Cancelled: { label: 'Đã hủy', badge: 'bg-error-container text-error', icon: 'cancel' },
+  Completed: { label: 'Hoàn tất', badge: 'bg-surface-container text-on-surface-variant', icon: 'task_alt' },
 };
 
 // ── Helpers tính ngày ──────────────────────────────────────────────────────────
@@ -40,32 +40,35 @@ const checkIfLate = (apptTime: string): { isLate: boolean; minsLate: number } =>
   const dateStr = parseDateFromTime(apptTime);
   // Only check if it's today or yesterday (mock data sometimes uses "Hôm qua")
   if (dateStr !== todayStr() && !dateStr.includes('Hôm qua')) return { isLate: false, minsLate: 0 };
-  
+
   let timeStr = apptTime;
   if (apptTime.includes('@')) {
     timeStr = apptTime.split('@')[1].trim();
   }
-  
-  const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+
+  const match = timeStr.match(/(\d+):(\d+)(?:\s*(AM|PM))?/i);
   if (!match) return { isLate: false, minsLate: 0 };
-  
+
   let hours = parseInt(match[1]);
   const mins = parseInt(match[2]);
-  const isPM = match[3].toUpperCase() === 'PM';
-  
-  if (isPM && hours < 12) hours += 12;
-  if (!isPM && hours === 12) hours = 0;
-  
+  const ampm = match[3];
+
+  if (ampm) {
+    const isPM = ampm.toUpperCase() === 'PM';
+    if (isPM && hours < 12) hours += 12;
+    if (!isPM && hours === 12) hours = 0;
+  }
+
   const now = new Date();
   const apptDateObj = new Date();
   if (dateStr.includes('Hôm qua')) {
     apptDateObj.setDate(apptDateObj.getDate() - 1);
   }
   apptDateObj.setHours(hours, mins, 0, 0);
-  
+
   const diffMs = now.getTime() - apptDateObj.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  
+
   if (diffMins >= 15) {
     return { isLate: true, minsLate: diffMins };
   }
@@ -85,22 +88,16 @@ export const ReceptionistAppointments: React.FC = () => {
 
   const [rescheduleApptId, setRescheduleApptId] = useState<string | null>(null);
 
-  const convertDateToYmd = (dateStr: string): string => {
-    if (!dateStr) return '';
-    if (dateStr.includes('-')) {
-      const parts = dateStr.split('-');
-      if (parts[0].length === 4) return dateStr;
+  const isApptInSelectedDay = (timeStr: string): boolean => {
+    const apptDate = parseDateFromTime(timeStr);
+    if (viewDay === 'today') return apptDate === todayStr();
+    if (viewDay === 'tomorrow') return apptDate === tomorrowStr();
+    if (viewDay === 'custom') {
+      if (!customDate) return false;
+      const [y, m, d] = customDate.split('-');
+      return apptDate === `${d}/${m}/${y}`;
     }
-    if (dateStr.includes('/')) {
-      const parts = dateStr.split('/');
-      if (parts.length === 3) {
-        const day = parts[0].padStart(2, '0');
-        const month = parts[1].padStart(2, '0');
-        const year = parts[2];
-        return `${year}-${month}-${day}`;
-      }
-    }
-    return dateStr;
+    return true; // viewDay === 'week'
   };
 
   const lateAppointmentsToday = appointments.filter(a => {
@@ -124,19 +121,8 @@ export const ReceptionistAppointments: React.FC = () => {
       if (!checkIfLate(a.time).isLate) return false;
     } else {
       // Lọc theo ngày
-      const apptDate = parseDateFromTime(a.time);
-      if (viewDay === 'today' && apptDate !== todayStr()) return false;
-      if (viewDay === 'tomorrow' && apptDate !== tomorrowStr()) return false;
-      
-      if (viewDay === 'custom') {
-        if (!customDate) return false;
-        const [y, m, d] = customDate.split('-');
-        const formattedCustom = `${d}/${m}/${y}`;
-        if (apptDate !== formattedCustom) {
-          return false;
-        }
-      }
-      
+      if (!isApptInSelectedDay(a.time)) return false;
+
       // Lọc trạng thái
       const isAlreadyInQueue = queue.some(q => q.patientId === a.patientId && q.status !== 'Completed');
       if (filterStatus === 'pending') {
@@ -159,7 +145,7 @@ export const ReceptionistAppointments: React.FC = () => {
   });
 
   const handleCheckin = (appt: typeof appointments[0]) => {
-    checkInPatient(appt.patientId, appt.dentistId, undefined, appt.serviceName);
+    checkInPatient(appt.patientId, appt.dentistId, undefined, appt.serviceName, appt.id);
   };
 
   const totalAppts = appointments.length;
@@ -198,44 +184,44 @@ export const ReceptionistAppointments: React.FC = () => {
       {/* ── Quick Stats ── */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
         {[
-          { 
-            label: 'Tổng lịch hẹn',  
-            value: totalAppts,      
-            icon: 'calendar_today',  
+          {
+            label: 'Tổng lịch hẹn',
+            value: totalAppts,
+            icon: 'calendar_today',
             color: 'text-on-surface bg-surface-container border-outline-variant cursor-pointer',
             onClick: () => { setShowOnlyLate(false); setFilterStatus('all'); }
           },
-          { 
-            label: 'Đã xác nhận',    
-            value: confirmedCount,  
-            icon: 'check_circle',    
+          {
+            label: 'Đã xác nhận',
+            value: confirmedCount,
+            icon: 'check_circle',
             color: 'text-secondary bg-secondary-container border-secondary/20 cursor-pointer',
             onClick: () => { setShowOnlyLate(false); setFilterStatus('pending'); }
           },
-          { 
-            label: 'Đang khám',      
-            value: inProgressCount, 
+          {
+            label: 'Đang khám',
+            value: inProgressCount,
             icon: 'medical_services',
             color: 'text-primary bg-primary-container border-primary/20 cursor-pointer',
             onClick: () => { setShowOnlyLate(false); setFilterStatus('In-Progress'); }
           },
-          { 
-            label: 'Lịch trễ hẹn (≥15p)',  
-            value: lateCount,       
-            icon: 'warning',         
-            color: lateCount > 0 
-              ? 'text-error bg-error-container/40 border-error/30 animate-pulse cursor-pointer' 
+          {
+            label: 'Lịch trễ hẹn (≥15p)',
+            value: lateCount,
+            icon: 'warning',
+            color: lateCount > 0
+              ? 'text-error bg-error-container/40 border-error/30 animate-pulse cursor-pointer'
               : 'text-on-surface-variant bg-surface-container border-outline-variant cursor-pointer',
-            onClick: () => { 
-              setShowOnlyLate(!showOnlyLate); 
-              if (!showOnlyLate) { 
-                setViewDay('today'); 
-                setFilterStatus('pending'); 
-              } 
+            onClick: () => {
+              setShowOnlyLate(!showOnlyLate);
+              if (!showOnlyLate) {
+                setViewDay('today');
+                setFilterStatus('pending');
+              }
             }
           },
         ].map(s => (
-          <button 
+          <button
             key={s.label}
             type="button"
             onClick={s.onClick}
@@ -295,9 +281,9 @@ export const ReceptionistAppointments: React.FC = () => {
         <div className="flex gap-2 items-center flex-wrap">
           <div className="flex gap-1 bg-surface-container rounded-xl p-1 border border-outline-variant">
             {[
-              { key: 'today' as const,    label: 'Hôm nay' },
+              { key: 'today' as const, label: 'Hôm nay' },
               { key: 'tomorrow' as const, label: 'Ngày mai' },
-              { key: 'week' as const,     label: 'Cả tuần' },
+              { key: 'week' as const, label: 'Cả tuần' },
             ].map(d => (
               <button
                 key={d.key}
@@ -334,11 +320,10 @@ export const ReceptionistAppointments: React.FC = () => {
                       setViewDay('today');
                     }
                   }}
-                  className={`px-3 py-1.5 text-xs font-bold outline-none cursor-pointer ${
-                    viewDay === 'custom' && !showOnlyLate
+                  className={`px-3 py-1.5 text-xs font-bold outline-none cursor-pointer ${viewDay === 'custom' && !showOnlyLate
                       ? 'bg-primary/10 text-primary'
                       : 'text-on-surface-variant'
-                  }`}
+                    }`}
                   title="Chọn ngày tuỳ chỉnh (Tối đa 7 ngày tới)"
                 />
               );
@@ -382,19 +367,19 @@ export const ReceptionistAppointments: React.FC = () => {
           }}
           className="px-3 py-2 bg-white border border-outline-variant rounded-xl text-xs focus:outline-none cursor-pointer"
         >
-          <option value="pending">Chưa tiếp đón (Mặc định)</option>
-          <option value="all">Tất cả lịch hẹn</option>
+          <option value="all">Tất cả lịch hẹn (Mặc định)</option>
+          <option value="pending">Chưa tiếp đón</option>
           {Object.entries(APPT_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
 
         {/* Clear filters */}
         {(filterDentist !== 'all' || filterStatus !== 'pending' || searchQuery || showOnlyLate) && (
           <button
-            onClick={() => { 
-              setFilterDentist('all'); 
-              setFilterStatus('pending'); 
-              setSearchQuery(''); 
-              setShowOnlyLate(false); 
+            onClick={() => {
+              setFilterDentist('all');
+              setFilterStatus('all');
+              setSearchQuery('');
+              setShowOnlyLate(false);
             }}
             className="text-xs text-on-surface-variant border border-outline-variant rounded-xl px-3 py-2 hover:bg-surface-container cursor-pointer flex items-center gap-1"
           >
@@ -552,11 +537,11 @@ export const ReceptionistAppointments: React.FC = () => {
       <div className="mt-6 bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-outline-variant bg-surface-container-low flex items-center gap-2">
           <Icon name="view_timeline" className="text-primary" />
-          <h4 className="font-headline-sm text-headline-sm">Timeline theo phòng khám — {viewDay === 'today' ? 'Hôm nay' : viewDay === 'tomorrow' ? 'Ngày mai' : 'Cả tuần'}</h4>
+          <h4 className="font-headline-sm text-headline-sm">Timeline theo phòng khám — {viewDay === 'today' ? 'Hôm nay' : viewDay === 'tomorrow' ? 'Ngày mai' : viewDay === 'custom' && customDate ? `Ngày ${customDate.split('-').reverse().join('/')}` : 'Cả tuần'}</h4>
         </div>
         <div className="p-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
           {dentists.map(d => {
-            const dAppts = appointments.filter(a => a.dentistId === d.id);
+            const dAppts = appointments.filter(a => a.dentistId === d.id && isApptInSelectedDay(a.time));
             return (
               <div key={d.id}>
                 <div className="flex items-center gap-2 mb-3">
@@ -592,8 +577,6 @@ export const ReceptionistAppointments: React.FC = () => {
       </div>
 
       <BookingModal isOpen={isBookingOpen} onClose={() => setIsBookingOpen(false)} />
-      <RescheduleModal isOpen={!!rescheduleApptId} onClose={() => setRescheduleApptId(null)} appointmentId={rescheduleApptId} />
-
       <RescheduleModal isOpen={!!rescheduleApptId} onClose={() => setRescheduleApptId(null)} appointmentId={rescheduleApptId} />
     </div>
   );

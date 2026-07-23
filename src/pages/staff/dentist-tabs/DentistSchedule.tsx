@@ -16,7 +16,7 @@ export interface DentistScheduleProps {
 export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: dentistIdProp }) => {
   const { user } = useAuth();
   const dentistId = dentistIdProp || user?.id || '';
-  const { doctorShifts, dentists, appointments, swapShifts, transferShift } = useClinic();
+  const { doctorShifts, dentists, appointments, swapShifts, transferShift, changeShiftRoom } = useClinic();
 
   // Swap / Transfer Modal State
   const [showSwapModal, setShowSwapModal] = useState(false);
@@ -25,10 +25,8 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
   const [targetShiftId, setTargetShiftId] = useState('');
   const [targetDentistId, setTargetDentistId] = useState('');
 
-  // Form interactive selection state (giống Form đặt lịch)
   const [formDentistId, setFormDentistId] = useState('');
-  const [formDate, setFormDate] = useState('');
-  const [formShiftType, setFormShiftType] = useState<'Morning' | 'Afternoon' | 'Full'>('Morning');
+  const [targetRoom, setTargetRoom] = useState('');
 
   // Conflict modal
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -39,6 +37,9 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
     pendingSwapTargetId?: string;
     pendingTransferDentistId?: string;
   } | null>(null);
+
+  // Success Toast Modal state
+  const [successToast, setSuccessToast] = useState<{ title: string; message: string } | null>(null);
 
   // Dùng ngày thực tế, không hardcode
   const todayDateStr = new Date().toISOString().slice(0, 10);
@@ -96,6 +97,7 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
     [doctorShifts, dentistId, todayDateStr]
   );
 
+
   // Ca làm việc của tôi ĐỦ ĐIỀU KIỆN đổi/chuyển (>= 12 tiếng)
   const eligibleMyShifts = React.useMemo(() =>
     myShifts.filter(s => isShiftEligibleForSwap(s)),
@@ -114,13 +116,18 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
       // 2. Phải đủ 12 tiếng nữa mới bắt đầu
       if (!isShiftEligibleForSwap(target)) return false;
 
-      // 3. Nếu khác ngày: Bác sĩ hiện tại chưa có ca nào vào ngày của ca đích
+      // 3. Nếu CÙNG NGÀY và CÙNG LOẠI CA: Cả 2 BS đều đang trực ca này -> Không thể hoán đổi ca giống hệt nhau
+      if (target.date === originShift.date && target.shiftType === originShift.shiftType) {
+        return false;
+      }
+
+      // 4. Nếu khác ngày: Bác sĩ hiện tại chưa có ca nào vào ngày của ca đích
       if (target.date !== originShift.date) {
         const myShiftOnTargetDate = doctorShifts.some(s => s.dentistId === dentistId && s.date === target.date);
         if (myShiftOnTargetDate) return false;
       }
 
-      // 4. Bác sĩ ca đích chưa có ca nào vào ngày của ca gốc
+      // 5. Bác sĩ ca đích chưa có ca nào vào ngày của ca gốc
       if (target.date !== originShift.date) {
         const targetDentistShiftOnOriginDate = doctorShifts.some(s => s.dentistId === target.dentistId && s.date === originShift.date);
         if (targetDentistShiftOnOriginDate) return false;
@@ -142,6 +149,7 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
       return !hasShiftOnDate;
     });
   }, [dentists, doctorShifts, dentistId, originShiftId]);
+
 
   const openSwapForShift = (shiftId: string) => {
     setOriginShiftId(shiftId);
@@ -186,7 +194,10 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
         }
       }
       swapShifts(originShiftId, targetShiftId);
-      alert('Gửi yêu cầu hoán đổi ca trực thành công! Ca trực đã được cập nhật.');
+      setSuccessToast({
+        title: 'Hoán đổi ca trực thành công!',
+        message: 'Lịch làm việc đã được cập nhật và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
+      });
 
     } else if (actionType === 'transfer') {
       if (!targetDentistId) {
@@ -217,7 +228,26 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
         }
       }
       transferShift(originShiftId, targetDentistId);
-      alert('Chuyển giao ca trực thành công! Lịch làm việc đã được cập nhật.');
+      setSuccessToast({
+        title: 'Nhờ trực thay thành công!',
+        message: 'Ca trực đã được chuyển giao và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
+      });
+
+    } else {
+      // actionType === 'change_room'
+      if (!targetRoom) {
+        alert('Vui lòng chọn phòng khám mới!');
+        return;
+      }
+      if (originShift && originShift.room === targetRoom) {
+        alert('Phòng khám mới phải khác phòng khám hiện tại của ca trực!');
+        return;
+      }
+      changeShiftRoom(originShiftId, targetRoom);
+      setSuccessToast({
+        title: 'Thay đổi phòng trực thành công!',
+        message: 'Lịch làm việc đã được cập nhật.'
+      });
     }
 
     // Reset and close
@@ -245,9 +275,13 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
     setOriginShiftId('');
     setTargetShiftId('');
     setTargetDentistId('');
-    setFormDentistId('');
-    alert('Đã đổi ca và gửi thông báo đến lễ tân thành công! Lễ tân sẽ liên hệ bệnh nhân.');
+    setTargetRoom('');
+    setSuccessToast({
+      title: 'Xác nhận đổi ca thành công!',
+      message: 'Lịch làm việc đã được chuyển giao. Thông báo danh sách bệnh nhân bị ảnh hưởng đã được gửi đến Lễ tân để hỗ trợ liên hệ.'
+    });
   };
+
 
   return (
     <div className="p-container-padding-desktop grid grid-cols-12 gap-6 animate-in fade-in duration-200">
@@ -725,8 +759,6 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
                                 onClick={() => {
                                   if (actionType === 'swap' && isValidSwapTarget) {
                                     setTargetShiftId(s.id);
-                                    setFormDate(s.date);
-                                    setFormShiftType(s.shiftType as any);
                                   }
                                 }}
                                 className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
@@ -929,6 +961,41 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
               >
                 <Icon name="notifications_active" className="text-[16px]" />
                 Xác nhận &amp; Thông báo lễ tân
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CUSTOM UI SUCCESS NOTIFICATION MODAL ── */}
+      {successToast && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl space-y-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+              <Icon name="check_circle" className="text-3xl font-extrabold" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <h3 className="font-extrabold text-slate-800 text-base">{successToast.title}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
+                {successToast.message}
+              </p>
+            </div>
+
+            <div className="bg-emerald-50/80 border border-emerald-200/70 p-3.5 rounded-2xl text-left flex items-start gap-2 text-xs text-emerald-900">
+              <Icon name="notifications_active" className="text-emerald-600 text-base shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Đã tự động đồng bộ Lễ tân:</p>
+                <p className="text-[11px] text-emerald-700 mt-0.5">Bộ phận Lễ tân tiếp đón đã nhận được thông báo này trực tiếp trên màn hình <strong>"BS Đổi ca / Trực thay"</strong>.</p>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={() => setSuccessToast(null)}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-200 transition-all cursor-pointer"
+              >
+                Đồng ý &amp; Hoàn tất
               </button>
             </div>
           </div>
