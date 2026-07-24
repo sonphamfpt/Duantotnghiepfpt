@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { Icon } from '../../components/Icon';
-import { BookingModal } from '../../components/BookingModal';
 
 const CATEGORIES = ['Tất cả chuyên khoa', 'Bảo tồn & Vi Phẫu', 'Phẫu thuật Hàm Mặt & Implant', 'Phục Hình Thẩm Mỹ', 'Chỉnh Nha & Niềng Răng'];
 
 export const Doctors: React.FC = () => {
   const { dentists } = useClinic();
+  const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState('Tất cả chuyên khoa');
-  const [isBookingOpen, setIsBookingOpen] = useState(false);
 
   // Merge context data từ CSDL
   const enrichedDentists = dentists.map(d => {
@@ -203,7 +202,7 @@ export const Doctors: React.FC = () => {
           </p>
           <div className="pt-2">
             <button
-              onClick={() => setIsBookingOpen(true)}
+              onClick={() => navigate('/book')}
               className="bg-yellow-400 hover:bg-yellow-500 text-slate-900 font-bold px-8 py-3.5 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer inline-flex items-center gap-2"
             >
               <Icon name="calendar_month" className="text-[20px]" />
@@ -212,13 +211,6 @@ export const Doctors: React.FC = () => {
           </div>
         </div>
       </section>
-
-      {/* Booking Modal */}
-      <BookingModal 
-        isOpen={isBookingOpen} 
-        onClose={() => setIsBookingOpen(false)}
-      />
-
     </div>
   );
 };

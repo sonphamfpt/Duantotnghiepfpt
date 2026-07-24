@@ -123,13 +123,17 @@ function parseEMRNotes(notes: string | undefined, recordId: string): ParsedNotes
 }
 
 export const PatientRecords: React.FC = () => {
-  const { patients, medicalRecords, fetchPatientRecords } = useClinic();
+  const { patients = [], medicalRecords = [], fetchPatientRecords } = useClinic();
   const { user } = useAuth();
   const patientId = user?.id || 'P-8821';
+  const fetchedRef = React.useRef<string | null>(null);
 
   useEffect(() => {
-    fetchPatientRecords(patientId);
-  }, [patientId]);
+    if (patientId && fetchedRef.current !== patientId) {
+      fetchedRef.current = patientId;
+      fetchPatientRecords(patientId);
+    }
+  }, [patientId, fetchPatientRecords]);
 
   const currentPatient = patients.find(p => p.id === patientId) || {
     id: patientId,

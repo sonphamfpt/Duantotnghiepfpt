@@ -31,5 +31,27 @@ export const registerSchema = z.object({
   }),
 });
 
+export const forgotPasswordOtpSchema = z.object({
+  body: z.object({
+    phone: z.string({
+      required_error: "Số điện thoại là bắt buộc",
+    }).regex(/^[0-9]{10,11}$/, "Số điện thoại phải có 10-11 chữ số"),
+  }),
+});
+
+export const resetPasswordSchema = z.object({
+  body: z.object({
+    phone: z.string({
+      required_error: "Số điện thoại là bắt buộc",
+    }),
+    otpToken: z.string({
+      required_error: "Token OTP là bắt buộc",
+    }),
+    newPassword: z.string({
+      required_error: "Mật khẩu mới là bắt buộc",
+    }).min(6, "Mật khẩu mới phải có tối thiểu 6 ký tự"),
+  }),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;

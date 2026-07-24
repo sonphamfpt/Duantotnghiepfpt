@@ -44,4 +44,22 @@ export const authApi = {
     request<AuthUser>('/auth/me', {
       method: 'GET',
     }, { skipAuthRedirect: true }),
+
+  /**
+   * Gửi OTP yêu cầu Quên mật khẩu
+   */
+  sendForgotPasswordOtp: (phone: string) =>
+    request<{ phone: string }>('/auth/forgot-password/send-otp', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    }),
+
+  /**
+   * Đặt lại mật khẩu mới bằng OTP token
+   */
+  resetPassword: (phone: string, otpToken: string, newPassword: string) =>
+    request<{ success: boolean }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ phone, otpToken, newPassword }),
+    }),
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { useAuth } from '../../context/AuthContext';
@@ -15,29 +15,69 @@ import { PatientBilling } from './tabs/PatientBilling';
 
 // ─── Home Tab (Dashboard Overview) ────────────────────────────────────────────
 const PatientHome: React.FC = () => {
-  const { patients, medicalRecords, invoices, appointments, queue } = useClinic();
+  const { patients = [], medicalRecords = [], invoices = [], appointments = [], queue = [], fetchPatientRecords } = useClinic();
   const { user } = useAuth();
 
-  const patientId = user?.id || 'P-8821';
-  const patient = patients.find(p => p.id === patientId) || {
-    id: patientId,
+  const rawPatientId = user?.id || 'P-8821';
+  const cleanId = (id?: string) => (id ? id.toString().replace(/^P-/i, '') : '');
+  const targetPatientId = cleanId(rawPatientId);
+  const targetPhone = user?.phone || '';
+
+  const fetchedRef = useRef<string | null>(null);
+
+  // Tự động tải bệnh án của bệnh nhân hiện tại khi mount (guard 1 lần duy nhất)
+  useEffect(() => {
+    if (rawPatientId && fetchedRef.current !== rawPatientId) {
+      fetchedRef.current = rawPatientId;
+      fetchPatientRecords(rawPatientId);
+    }
+  }, [rawPatientId, fetchPatientRecords]);
+
+  const patient = patients.find(
+    p => p.id === rawPatientId || cleanId(p.id) === targetPatientId || (targetPhone && p.phone === targetPhone)
+  ) || {
+    id: rawPatientId,
     name: user?.name || 'Bệnh nhân',
-    phone: user?.phone || '',
+    phone: targetPhone,
     age: 28,
     gender: 'Nam',
     criticalAllergy: 'Không',
     condition: 'Bình thường'
   };
 
-  const records = medicalRecords.filter(r => r.patientId === patientId);
-  const patientInvoices = invoices.filter(i => i.patientId === patientId || i.patientName === patient.name);
+  const actualPatientId = cleanId(patient.id) || targetPatientId;
+  const actualPhone = patient.phone || targetPhone;
+
+  const records = medicalRecords.filter(r => cleanId(r.patientId) === actualPatientId || cleanId(r.patientId) === targetPatientId);
+  const patientInvoices = invoices.filter(i => 
+    cleanId(i.patientId) === actualPatientId || 
+    cleanId(i.patientId) === targetPatientId || 
+    (patient.name && i.patientName === patient.name)
+  );
   const pendingInvoices = patientInvoices.filter(i => i.status === 'Pending');
 
   const [isBookingOpen, setIsBookingOpen] = useState(false);
 
-  const completedCount = appointments.filter(
-    a => (a.patientId === patientId || a.patientPhone === patient.phone) && a.status === 'Completed'
-  ).length;
+  // 1. Số lịch hẹn Completed
+  const completedApptCount = appointments.filter(a => {
+    const isMatching = cleanId(a.patientId) === actualPatientId || cleanId(a.patientId) === targetPatientId || (actualPhone && a.patientPhone === actualPhone);
+    return isMatching && (a.status === 'Completed' || (a.status as string) === 'COMPLETED');
+  }).length;
+
+  // 2. Số lượt khám ở Hàng chờ Completed
+  const completedQueueCount = queue.filter(q => {
+    const isMatching = cleanId(q.patientId) === actualPatientId || cleanId(q.patientId) === targetPatientId;
+    return isMatching && (q.status === 'Completed' || (q.status as string) === 'COMPLETED');
+  }).length;
+
+  // 3. Số hồ sơ bệnh án
+  const recordsCount = records.length;
+
+  // 4. Số hóa đơn đã thanh toán / hoàn tất
+  const paidInvoicesCount = patientInvoices.filter(i => i.status === 'Paid' || i.status === 'Completed' || i.status === 'Partially Paid').length;
+
+  // Tổng hợp số lượt khám cao nhất từ tất cả nguồn dữ liệu thực tế
+  const completedCount = Math.max(completedApptCount, completedQueueCount, recordsCount, paidInvoicesCount);
 
   // Extract prescription from latest record
   const latestRecordWithPrescription = records.find(r => r.prescription || r.notes?.includes('| Đơn thuốc:'));
@@ -77,11 +117,11 @@ const PatientHome: React.FC = () => {
     return [];
   }, [latestRecordWithPrescription]);
 
-  const myAppointments = appointments.filter(a => (a.patientId === patientId || a.patientPhone === patient.phone));
+  const myAppointments = appointments.filter(a => (cleanId(a.patientId) === targetPatientId || a.patientId === rawPatientId || a.patientPhone === patient.phone));
   const upcomingAppointments = myAppointments.filter(a => a.status === 'Confirmed' || a.status === 'In-Progress');
   
   // Xác định tiến độ điều trị hiện tại (Quy trình khám)
-  const isCheckedIn = queue.some(q => q.patientId === patientId && q.status !== 'Completed');
+  const isCheckedIn = queue.some(q => (cleanId(q.patientId) === targetPatientId || q.patientId === rawPatientId) && q.status !== 'Completed');
   let currentStep = 0;
   
   if (myAppointments.length > 0) {

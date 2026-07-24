@@ -11,6 +11,8 @@ interface OtpVerificationModalProps {
   dentistId?: string;
   startTime?: string;
   serviceId?: string;
+  /** Mục đích OTP: 'register' (mặc định) hoặc 'booking' */
+  purpose?: 'register' | 'booking';
 }
 
 type ApiResponsePayload = {
@@ -39,6 +41,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
   onVerified,
   phoneNumber,
   sendOnOpen = true,
+  purpose = 'register',
 }) => {
   const OTP_LENGTH = 6;
   const COUNTDOWN_SECONDS = 60;
@@ -213,7 +216,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
     try {
       const resData = await request<{ otpToken?: string }>('/auth/verify-otp', {
         method: 'POST',
-        body: JSON.stringify({ phone: phoneNumber.trim(), code: code.trim() }),
+        body: JSON.stringify({ phone: phoneNumber.trim(), code: code.trim(), purpose }),
       });
 
       // Success

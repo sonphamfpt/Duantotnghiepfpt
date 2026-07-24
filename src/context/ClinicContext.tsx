@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { Service, Dentist, Patient, Appointment, QueueItem, Invoice, ClinicLog, MedicalRecord, ToothState, InvoiceItem, DoctorShift, ShiftChangeNotification, ServiceReviewItem } from '../types/clinic';
 import { socket } from '../services/socketClient';
 
@@ -323,19 +323,21 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return () => clearInterval(intervalId);
   }, [appointments, queue]);
 
-  const fetchPatientRecords = async (patientId: string) => {
+  const fetchPatientRecords = useCallback(async (patientId: string) => {
     try {
       const response = await medicalRecordApi.getByPatient(patientId);
       if (response.success && response.data) {
         setMedicalRecords((prev) => {
           const filtered = prev.filter((r) => r.patientId !== patientId);
-          return [...filtered, ...response.data!];
+          const next = [...filtered, ...response.data!];
+          if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+          return next;
         });
       }
     } catch (err) {
       console.error('Lỗi khi tải bệnh án của bệnh nhân:', err);
     }
-  };
+  }, []);
 
   const addLog = (module: ClinicLog['module'], type: ClinicLog['type'], message: string) => {
     const time = new Date().toLocaleTimeString('vi-VN', { hour12: false });

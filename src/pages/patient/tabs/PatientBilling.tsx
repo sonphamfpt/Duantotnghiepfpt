@@ -4,17 +4,25 @@ import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
 
 export const PatientBilling: React.FC = () => {
-  const { invoices, patients, processPayment, appointments } = useClinic();
+  const { invoices = [], patients = [], processPayment, appointments = [], medicalRecords = [] } = useClinic();
   const { user } = useAuth();
   const patientId = user?.id || 'P-8821';
   const patientName = user?.name || 'Bệnh nhân';
-  
-  const currentPatient = patients.find(p => p.id === patientId);
-  const completedCount = appointments.filter(
-    a => (a.patientId === patientId || a.patientPhone === currentPatient?.phone) && a.status === 'Completed'
-  ).length;
+  const cleanId = (id?: string) => (id ? id.toString().replace(/^P-/i, '') : '');
+  const targetPatientId = cleanId(patientId);
 
-  const patientInvoices = invoices.filter(i => i.patientId === patientId);
+  const currentPatient = patients.find(p => p.id === patientId || cleanId(p.id) === targetPatientId);
+  const targetPhone = currentPatient?.phone || user?.phone || '';
+
+  const completedApptCount = appointments.filter(a => {
+    const isMatching = cleanId(a.patientId) === targetPatientId || (targetPhone && a.patientPhone === targetPhone);
+    return isMatching && (a.status === 'Completed' || (a.status as string) === 'COMPLETED');
+  }).length;
+
+  const matchingRecordsCount = medicalRecords.filter(r => cleanId(r.patientId) === targetPatientId).length;
+  const completedCount = Math.max(completedApptCount, matchingRecordsCount);
+
+  const patientInvoices = invoices.filter(i => cleanId(i.patientId) === targetPatientId || i.patientId === patientId);
   const pendingInvoices = patientInvoices.filter(i => i.status === 'Pending' || i.status === 'Partially Paid');
   const paidInvoices = patientInvoices.filter(i => i.status === 'Paid');
 

@@ -332,7 +332,7 @@ export const Home: React.FC = () => {
       {showBanner && (
         <PromoBanner 
           onClose={() => setShowBanner(false)} 
-          onBookNow={() => setIsBookingOpen(true)} 
+          onBookNow={() => navigate('/book')} 
         />
       )}
 
@@ -365,7 +365,7 @@ export const Home: React.FC = () => {
           </p>
           <div className="flex flex-wrap gap-4 pt-2">
             <button
-              onClick={() => setIsBookingOpen(true)}
+              onClick={() => navigate('/book')}
               className="bg-white text-primary px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 hover:shadow-xl active:scale-95 transition-all cursor-pointer"
             >
               Đặt lịch khám ngay
@@ -658,7 +658,7 @@ export const Home: React.FC = () => {
           <p className="text-base opacity-85">Đội ngũ bác sĩ chuyên nghiệp luôn sẵn sàng tư vấn và chăm sóc cho bạn. Đặt lịch online trong 30 giây!</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
-              onClick={() => setIsBookingOpen(true)}
+              onClick={() => navigate('/book')}
               className="bg-white text-primary px-8 py-3 rounded-xl font-bold text-sm hover:shadow-xl active:scale-95 transition-all cursor-pointer"
             >
               Đặt lịch khám miễn phí →
@@ -674,8 +674,6 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Booking Modal */}
-      <BookingModal isOpen={isBookingOpen} onClose={() => setIsBookingOpen(false)} />
     </div>
   );
 };

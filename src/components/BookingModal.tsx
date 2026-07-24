@@ -53,6 +53,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [staffBookingChannel, setStaffBookingChannel] = useState<Extract<BookingChannel, 'Phone' | 'WalkIn'>>('WalkIn');
   const [slotRefreshTick, setSlotRefreshTick] = useState(0);
+  // Dùng ref để giữ tham chiếu fetch function ổn định, tránh vòng lặp re-render
+  const fetchSlotsRef = React.useRef<(() => void) | null>(null);
 
   // Per-field validation errors matching BookingPage.tsx
   const [nameError, setNameError] = useState('');
@@ -171,18 +173,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       }
     };
 
+    // Cập nhật ref mỗi khi dependencies thay đổi (không gây re-render)
+    fetchSlotsRef.current = () => void fetchAvailableSlots();
+
     void fetchAvailableSlots();
-  }, [date, selectedDentistId, selectedServiceId, slotRefreshTick]);
-
-  useEffect(() => {
-    if (!selectedDentistId || !selectedServiceId || date !== formatDateInputValue(new Date())) return;
-
-    const timer = window.setInterval(() => {
-      setSlotRefreshTick((prev) => prev + 1);
-    }, 60000);
-
-    return () => window.clearInterval(timer);
   }, [date, selectedDentistId, selectedServiceId]);
+
+  // REMOVED: polling interval 60s dư thừa (ClinicContext đã poll 30s rồi)
 
   if (!isOpen) return null;
 
@@ -266,6 +263,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     } catch (err: any) {
       setAntiSpamError(err.message || 'Khung giờ đã chọn không còn khả dụng. Vui lòng chọn lại.');
       setSlotRefreshTick((prev) => prev + 1);
+      fetchSlotsRef.current?.();
       setSubmitting(false);
       return;
     }
@@ -322,10 +320,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           : `OTP xác thực thành công cho SĐT ${patientPhone}. Lịch hẹn đã được tạo.`
       );
 
-      await refreshAllData();
-      
       setCreatedAppointment(localApp);
-      setIsSuccess(true);
+      setIsSuccess(true);   // Hiển thị thành công ngay lập tức
+      refreshAllData();     // Chạy nền — không await để không block UI
     } catch (err: any) {
       console.error('Lỗi khi tạo lịch hẹn:', err);
       const errMsg = err.message || 'Không thể tạo lịch hẹn. Vui lòng thử lại.';
@@ -787,6 +784,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         dentistId={selectedDentistId}
         startTime={timeSlot}
         serviceId={selectedServiceId}
+        purpose="booking"
       />
 
       <AlertModal

@@ -1,15 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { Icon } from '../../components/Icon';
-import { BookingModal } from '../../components/BookingModal';
 
 
 export const DoctorDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { dentists } = useClinic();
-  const [isBookingOpen, setIsBookingOpen] = useState(false);
 
   // Find the base dentist record in state
   const dentist = dentists.find(d => d.id === id);
@@ -96,7 +94,7 @@ export const DoctorDetail: React.FC = () => {
 
                 {/* Booking Button */}
                 <button
-                  onClick={() => setIsBookingOpen(true)}
+                  onClick={() => navigate(`/book?dentistId=${dentist.id}`)}
                   className="w-full bg-[#005eb8] text-white py-3 px-4 font-bold flex justify-center items-center gap-2 hover:bg-[#004a94] transition-colors cursor-pointer"
                 >
                   <Icon name="event_available" className="text-[18px]" />
@@ -282,13 +280,6 @@ export const DoctorDetail: React.FC = () => {
           </div>
         </div>
       </section>
-
-      {/* Booking Modal */}
-      <BookingModal 
-        isOpen={isBookingOpen} 
-        onClose={() => setIsBookingOpen(false)} 
-        defaultDentistName={dentist.name}
-      />
     </div>
   );
 };

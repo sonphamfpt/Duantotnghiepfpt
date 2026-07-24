@@ -293,6 +293,59 @@ export class AuthService {
           : null,
     };
   }
+
+  /**
+   * Yêu cầu gửi OTP để Quên mật khẩu
+   */
+  async requestPasswordResetOtp(phone: string) {
+    const normalizedPhone = normalizeOtpPhone(phone);
+    const user = await prisma.user.findFirst({
+      where: { phone: normalizedPhone },
+    });
+
+    if (!user) {
+      throw new AppError(404, 'Không tìm thấy tài khoản tương ứng với số điện thoại này.', 'USER_NOT_FOUND');
+    }
+
+    const { otpHelper } = require('./otp');
+    // Dùng namespace 'forgot' — độc lập với OTP đăng ký và đặt lịch
+    await otpHelper.generateOtp(normalizedPhone, 'forgot');
+    return { phone: normalizedPhone };
+  }
+
+  /**
+   * Đặt lại mật khẩu mới bằng otpToken
+   */
+  async resetPassword(data: { phone: string; otpToken: string; newPassword: string }) {
+    const { phone, otpToken, newPassword } = data;
+    const normalizedPhone = normalizeOtpPhone(phone);
+
+    try {
+      const decoded = jwt.verify(otpToken, env.JWT_SECRET) as { phone: string; verified: boolean };
+      if (!decoded.verified || normalizeOtpPhone(decoded.phone) !== normalizedPhone) {
+        throw new AppError(400, 'Mã xác thực OTP không hợp lệ hoặc không khớp với số điện thoại.', 'INVALID_OTP_TOKEN');
+      }
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw new AppError(400, 'Mã xác thực OTP đã hết hạn hoặc không hợp lệ. Vui lòng lấy mã mới.', 'INVALID_OTP_TOKEN');
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { phone: normalizedPhone },
+    });
+
+    if (!user) {
+      throw new AppError(404, 'Không tìm thấy tài khoản người dùng.', 'USER_NOT_FOUND');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { userId: user.userId },
+      data: { passwordHash },
+    });
+
+    return { success: true };
+  }
 }
 
 export const authService = new AuthService();

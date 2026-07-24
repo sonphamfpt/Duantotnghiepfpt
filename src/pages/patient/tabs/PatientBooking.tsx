@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { OtpVerificationModal } from '../../../components/OtpVerificationModal';
 import { AlertModal } from '../../../components/AlertModal';
@@ -55,7 +55,8 @@ export const PatientBooking: React.FC = () => {
   const [slotsError, setSlotsError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showOtpModal, setShowOtpModal] = useState(false);
-  const [slotRefreshTick, setSlotRefreshTick] = useState(0);
+  // Dùng ref để giữ tham chiếu fetch function ổn định, tránh vòng lặp re-render
+  const fetchSlotsRef = React.useRef<(() => void) | null>(null);
   const [antiSpamError, setAntiSpamError] = useState('');
 
   // Per-field validation errors matching BookingPage.tsx
@@ -119,9 +120,9 @@ export const PatientBooking: React.FC = () => {
     }
   }, [date, doctorShifts, selectedDentistId]);
 
-  // Fetch slots
-  const fetchAvailableSlots = useCallback(async () => {
-    if (!selectedDentistId || !selectedServiceId || !date) {
+  // Fetch slots — không dùng useCallback để tránh vòng lặp re-render
+  const fetchAvailableSlots = async (dentistId: string, serviceId: string, dateStr: string) => {
+    if (!dentistId || !serviceId || !dateStr) {
       setAvailableSlots([]);
       setSelectedTimeIso('');
       return;
@@ -131,7 +132,7 @@ export const PatientBooking: React.FC = () => {
     setSlotsError('');
 
     try {
-      const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
+      const response = await appointmentApi.getAvailableSlots(dentistId, dateStr, serviceId);
       const slots = response.data || [];
 
       if (slots.length > 0) {
@@ -150,11 +151,16 @@ export const PatientBooking: React.FC = () => {
     } finally {
       setLoadingSlots(false);
     }
-  }, [selectedDentistId, selectedServiceId, date]);
+  };
 
+  // Cập nhật ref mỗi khi dependencies thay đổi (không gây re-render)
+  fetchSlotsRef.current = () => fetchAvailableSlots(selectedDentistId, selectedServiceId, date);
+
+  // Fetch slot khi bác sĩ / dịch vụ / ngày thay đổi
   useEffect(() => {
-    fetchAvailableSlots();
-  }, [fetchAvailableSlots, slotRefreshTick]);
+    fetchAvailableSlots(selectedDentistId, selectedServiceId, date);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDentistId, selectedServiceId, date]);
 
   const checkRateLimit = (phone: string): boolean => {
     const activeAppts = matchedPatient
@@ -225,7 +231,7 @@ export const PatientBooking: React.FC = () => {
       setShowOtpModal(true);
     } catch (err: any) {
       setAntiSpamError(err.message || 'Khung giờ đã chọn không còn khả dụng. Vui lòng chọn lại.');
-      setSlotRefreshTick((prev) => prev + 1);
+      fetchSlotsRef.current?.();
     } finally {
       setSubmitting(false);
     }
@@ -268,8 +274,8 @@ export const PatientBooking: React.FC = () => {
 
       setBookedApptId(bookedApp.appointmentId.toString());
       setCreatedAppointment(localApp);
-      setIsBooked(true);
-      await refreshAllData();
+      setIsBooked(true);   // Hiển thị thành công ngay lập tức
+      refreshAllData();    // Chạy nền — không await để không block UI
     } catch (err: any) {
       console.error('Lỗi khi tạo lịch hẹn:', err);
       const errMsg = err.message || 'Không thể tạo lịch hẹn.';
@@ -727,6 +733,7 @@ export const PatientBooking: React.FC = () => {
         dentistId={selectedDentistId}
         startTime={selectedTimeIso}
         serviceId={selectedServiceId}
+        purpose="booking"
       />
 
       <AlertModal

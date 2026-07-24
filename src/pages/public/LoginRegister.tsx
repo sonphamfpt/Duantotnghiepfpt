@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../../context/AuthContext';
 import { BrandLogo } from '../../components/BrandLogo';
 import { OtpVerificationModal } from '../../components/OtpVerificationModal';
+import { ForgotPasswordModal } from '../../components/ForgotPasswordModal';
 import { clinicApi } from '../../services/api/clinicApi';
 
 const DEMO_ACCOUNTS = [
@@ -37,7 +38,10 @@ export const LoginRegister: React.FC = () => {
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
   const [showRegisterOtpModal, setShowRegisterOtpModal] = useState(false);
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [regConfirmError, setRegConfirmError] = useState('');
   
   const [isAutoFilled, setIsAutoFilled] = useState(false);
   const [phoneError, setPhoneError] = useState('');
@@ -114,56 +118,99 @@ export const LoginRegister: React.FC = () => {
     }, 600);
   };
 
-  // Validate form fields client-side — lỗi hiển thị ngay dưới từng trường
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+  const isValidVNPhone = (p: string) => /^(0[3|5|7|8|9])[0-9]{8}$|^(0[1-9])[0-9]{9}$/.test(p);
+  const getPasswordStrength = (pw: string): number => {
+    if (!pw) return 0;
+    let s = 0;
+    if (pw.length >= 8) s++;
+    if (/[A-Z]/.test(pw)) s++;
+    if (/[0-9]/.test(pw)) s++;
+    if (/[^A-Za-z0-9]/.test(pw)) s++;
+    return s;
+  };
+  const strengthLabel = ['', 'Yếu', 'Trung bình', 'Khá mạnh', 'Rất mạnh'];
+  const strengthColor = ['', 'bg-red-400', 'bg-orange-400', 'bg-yellow-400', 'bg-emerald-500'];
+  const regPwStrength = getPasswordStrength(regPassword);
+
+  // ─── Validate Form ────────────────────────────────────────────────────────
   const validateForm = () => {
     if (isLoginTab) {
       if (!email.trim()) {
         setErrorMsg('Vui lòng nhập Email hoặc Số điện thoại.');
         return false;
       }
+      if (email.trim().length < 3) {
+        setErrorMsg('Tài khoản quá ngắn, vui lòng kiểm tra lại.');
+        return false;
+      }
       if (!password) {
         setErrorMsg('Vui lòng nhập mật khẩu.');
+        return false;
+      }
+      if (password.length < 6) {
+        setErrorMsg('Mật khẩu phải có ít nhất 6 ký tự.');
         return false;
       }
     } else {
       const errs: Record<string, string> = {};
 
-      if (!regPhone.trim()) {
+      // SĐT
+      const cleanPhone = regPhone.trim();
+      if (!cleanPhone) {
         errs.phone = 'Vui lòng nhập số điện thoại.';
       } else if (phoneError) {
-        // SĐT đã có tài khoản
         errs.phone = phoneError;
-      } else {
-        const phoneRegex = /(0[3|5|7|8|9])+([0-9]{8})\b/;
-        if (!phoneRegex.test(regPhone.trim())) {
-          errs.phone = 'Số điện thoại không hợp lệ (Ví dụ: 0987654321).';
-        }
+      } else if (!isValidVNPhone(cleanPhone)) {
+        errs.phone = 'Số điện thoại Việt Nam không hợp lệ (VD: 0987654321).';
       }
 
-      if (!regName.trim()) {
+      // Họ tên
+      const cleanName = regName.trim();
+      if (!cleanName) {
         errs.name = 'Vui lòng nhập họ và tên.';
+      } else if (cleanName.length < 2) {
+        errs.name = 'Họ tên phải có ít nhất 2 ký tự.';
+      } else if (/[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(cleanName)) {
+        errs.name = 'Họ tên không được chứa số hoặc ký tự đặc biệt.';
       }
 
+      // Ngày sinh
       if (!regBirthDate) {
         errs.birthDate = 'Vui lòng chọn ngày sinh.';
       } else {
         const birthDateObj = new Date(regBirthDate);
-        if (birthDateObj > new Date()) {
+        const today = new Date();
+        const age = today.getFullYear() - birthDateObj.getFullYear();
+        if (birthDateObj > today) {
           errs.birthDate = 'Ngày sinh không được ở tương lai.';
         } else if (birthDateObj.getFullYear() < 1900) {
           errs.birthDate = 'Năm sinh tối thiểu từ năm 1900.';
+        } else if (age < 1) {
+          errs.birthDate = 'Tuổi phải từ 1 trở lên.';
+        } else if (age > 120) {
+          errs.birthDate = 'Ngày sinh không hợp lệ.';
         }
       }
 
+      // Địa chỉ
       if (!regAddress.trim()) {
         errs.address = 'Vui lòng nhập địa chỉ liên hệ.';
       }
 
-      if (regPassword.length < 6) {
+      // Mật khẩu
+      if (!regPassword) {
+        errs.password = 'Vui lòng nhập mật khẩu.';
+      } else if (regPassword.length < 6) {
         errs.password = 'Mật khẩu phải chứa ít nhất 6 ký tự.';
+      } else if (regPassword !== regPassword.trim()) {
+        errs.password = 'Mật khẩu không được bắt đầu hoặc kết thúc bằng khoảng trắng.';
       }
 
-      if (regPassword && regPassword !== regConfirmPassword) {
+      // Xác nhận mật khẩu
+      if (!regConfirmPassword) {
+        errs.confirmPassword = 'Vui lòng xác nhận mật khẩu.';
+      } else if (regPassword && regPassword !== regConfirmPassword) {
         errs.confirmPassword = 'Mật khẩu xác nhận không khớp.';
       }
 
@@ -480,9 +527,13 @@ export const LoginRegister: React.FC = () => {
                       <label className="block text-[10.5px] font-black text-slate-700 uppercase tracking-wider">
                         Mật khẩu
                       </label>
-                      <a href="#" className="text-[11px] text-primary font-black hover:underline transition-all">
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotPasswordModal(true)}
+                        className="text-[11px] text-primary font-black hover:underline transition-all cursor-pointer"
+                      >
                         Quên mật khẩu?
-                      </a>
+                      </button>
                     </div>
                     <div className="relative group">
                       <Icon name="lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors text-[18px]" />
@@ -686,9 +737,20 @@ export const LoginRegister: React.FC = () => {
                       <Icon name="lock" className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors text-[18px] ${fieldErrors.password ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary'}`} />
                       <input
                         type={showRegPassword ? 'text' : 'password'}
-                        placeholder="Tối thiểu 6 ký tự"
+                        placeholder="Tối thiểu 6 ký tự..."
                         value={regPassword}
-                        onChange={(e) => { setRegPassword(e.target.value); clearFieldError('password'); clearFieldError('confirmPassword'); }}
+                        maxLength={64}
+                        onChange={(e) => {
+                          setRegPassword(e.target.value);
+                          clearFieldError('password');
+                          clearFieldError('confirmPassword');
+                          // Re-check confirm real-time
+                          if (regConfirmPassword && e.target.value !== regConfirmPassword) {
+                            setRegConfirmError('Mật khẩu xác nhận không khớp.');
+                          } else {
+                            setRegConfirmError('');
+                          }
+                        }}
                         className={`w-full bg-slate-50/50 border rounded-2xl pl-11 pr-11 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:outline-none transition-all shadow-sm ${fieldErrors.password ? 'border-red-400 focus:border-red-400 focus:ring-red-100 bg-red-50/20' : 'border-slate-200 focus:border-primary focus:ring-primary/10'}`}
                       />
                       <button
@@ -699,6 +761,25 @@ export const LoginRegister: React.FC = () => {
                         <Icon name={showRegPassword ? 'visibility_off' : 'visibility'} />
                       </button>
                     </div>
+
+                    {/* Password Strength Bar */}
+                    {regPassword.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4].map((lvl) => (
+                            <div
+                              key={lvl}
+                              className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${regPwStrength >= lvl ? strengthColor[regPwStrength] : 'bg-slate-200'}`}
+                            />
+                          ))}
+                        </div>
+                        <p className={`text-[10.5px] font-semibold ${regPwStrength <= 1 ? 'text-red-500' : regPwStrength === 2 ? 'text-orange-500' : regPwStrength === 3 ? 'text-yellow-600' : 'text-emerald-600'}`}>
+                          Độ mạnh: {strengthLabel[regPwStrength]}
+                          {regPwStrength < 3 && ' — nên thêm chữ hoa, số hoặc ký tự đặc biệt'}
+                        </p>
+                      </div>
+                    )}
+
                     {fieldErrors.password && (
                       <p className="flex items-center gap-1 text-[11px] font-semibold text-red-600 mt-1">
                         <Icon name="error" className="text-[13px] shrink-0" />{fieldErrors.password}
@@ -709,24 +790,52 @@ export const LoginRegister: React.FC = () => {
                   {/* Confirm Password */}
                   <div className="space-y-1.5">
                     <label className="block text-[10.5px] font-black text-slate-700 uppercase tracking-wider">
-                      Xác nhận mật khẩu
+                      Xác nhận mật khẩu *
                     </label>
                     <div className="relative group">
-                      <Icon name="lock" className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors text-[18px] ${fieldErrors.confirmPassword ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary'}`} />
+                      <Icon name="lock_reset" className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors text-[18px] ${(fieldErrors.confirmPassword || regConfirmError) ? 'text-red-400' : 'text-slate-400 group-focus-within:text-primary'}`} />
                       <input
-                        type={showRegPassword ? 'text' : 'password'}
-                        placeholder="Nhập lại mật khẩu"
+                        type={showRegConfirmPassword ? 'text' : 'password'}
+                        placeholder="Nhập lại mật khẩu..."
                         value={regConfirmPassword}
-                        onChange={(e) => { setRegConfirmPassword(e.target.value); clearFieldError('confirmPassword'); }}
-                        className={`w-full bg-slate-50/50 border rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:outline-none transition-all shadow-sm ${fieldErrors.confirmPassword ? 'border-red-400 focus:border-red-400 focus:ring-red-100 bg-red-50/20' : 'border-slate-200 focus:border-primary focus:ring-primary/10'}`}
+                        maxLength={64}
+                        onChange={(e) => {
+                          setRegConfirmPassword(e.target.value);
+                          clearFieldError('confirmPassword');
+                          if (e.target.value && e.target.value !== regPassword) {
+                            setRegConfirmError('Mật khẩu xác nhận không khớp.');
+                          } else {
+                            setRegConfirmError('');
+                          }
+                        }}
+                        className={`w-full bg-slate-50/50 border rounded-2xl pl-11 pr-11 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:outline-none transition-all shadow-sm ${
+                          (fieldErrors.confirmPassword || regConfirmError)
+                            ? 'border-red-400 focus:border-red-400 focus:ring-red-100 bg-red-50/20'
+                            : regConfirmPassword && !regConfirmError
+                            ? 'border-emerald-400 focus:border-emerald-400 focus:ring-emerald-100'
+                            : 'border-slate-200 focus:border-primary focus:ring-primary/10'
+                        }`}
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors text-[18px] cursor-pointer"
+                      >
+                        <Icon name={showRegConfirmPassword ? 'visibility_off' : 'visibility'} />
+                      </button>
                     </div>
-                    {fieldErrors.confirmPassword && (
+                    {(fieldErrors.confirmPassword || regConfirmError) && (
                       <p className="flex items-center gap-1 text-[11px] font-semibold text-red-600 mt-1">
-                        <Icon name="error" className="text-[13px] shrink-0" />{fieldErrors.confirmPassword}
+                        <Icon name="error" className="text-[13px] shrink-0" />{fieldErrors.confirmPassword || regConfirmError}
+                      </p>
+                    )}
+                    {regConfirmPassword && !regConfirmError && !fieldErrors.confirmPassword && (
+                      <p className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 mt-1">
+                        <Icon name="check_circle" className="text-[13px] shrink-0" />Mật khẩu khớp!
                       </p>
                     )}
                   </div>
+
                 </>
               )}
 
@@ -815,6 +924,15 @@ export const LoginRegister: React.FC = () => {
       onClose={() => setShowRegisterOtpModal(false)}
       onVerified={completeRegistration}
       phoneNumber={regPhone.trim()}
+    />
+    <ForgotPasswordModal
+      isOpen={showForgotPasswordModal}
+      onClose={() => setShowForgotPasswordModal(false)}
+      onSuccess={(resetPhone) => {
+        setIsLoginTab(true);
+        setEmail(resetPhone);
+        setSuccessMsg('Đặt lại mật khẩu thành công. Vui lòng nhập mật khẩu mới để đăng nhập.');
+      }}
     />
     </>
   );

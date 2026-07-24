@@ -44,11 +44,14 @@ export const DentistRecords: React.FC = () => {
     setSelectedPatientId(urlPatientId);
   }, [urlPatientId]);
 
+  const fetchedRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (selectedPatientId) {
+    if (selectedPatientId && fetchedRef.current !== selectedPatientId) {
+      fetchedRef.current = selectedPatientId;
       fetchPatientRecords(selectedPatientId);
     }
-  }, [selectedPatientId]);
+  }, [selectedPatientId, fetchPatientRecords]);
 
   const selectPatient = (id: string) => {
     setSelectedPatientId(id);

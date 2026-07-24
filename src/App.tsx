@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import { AuthProvider, useAuth, UserRole } from './context/AuthContext';
 import { ClinicProvider } from './context/ClinicContext';
 import { ConfirmProvider } from './context/ConfirmContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { MainLayout } from './layouts/MainLayout';
 import { DashboardLayout } from './layouts/DashboardLayout';
 
@@ -94,9 +95,10 @@ const GuestOnlyRoute: React.FC<{ component: React.ComponentType }> = ({ componen
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ConfirmProvider>
-        <ClinicProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ConfirmProvider>
+          <ClinicProvider>
           <Router>
             <Routes>
               {/* Public Routes */}
@@ -145,5 +147,6 @@ export default function App() {
         </ClinicProvider>
       </ConfirmProvider>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
