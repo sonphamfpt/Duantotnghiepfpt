@@ -83,10 +83,17 @@ model Room {
 
   dentists       Dentist[]
   dentistShifts  DentistShift[]
+<<<<<<< Updated upstream
   appointments   Appointment[]
   queueTickets   QueueTicket[]
   medicalRecords MedicalRecord[]
   invoices       Invoice[]
+=======
+  dentists       Dentist[]
+  invoices       Invoice[]
+  medicalRecords MedicalRecord[]
+  queueTickets   QueueTicket[]
+>>>>>>> Stashed changes
 
   @@map("rooms")
 }
