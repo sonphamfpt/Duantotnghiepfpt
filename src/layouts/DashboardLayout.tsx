@@ -24,23 +24,23 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
   const getRoleAccentClass = () => {
     switch (role) {
-      case 'patient':      return 'border-secondary';
+      case 'patient': return 'border-secondary';
       case 'receptionist': return 'border-orange-500';
-      case 'dentist':      return 'border-primary';
-      case 'cashier':      return 'border-amber-600';
-      case 'manager':      return 'border-purple-600';
-      default:             return 'border-outline-variant';
+      case 'dentist': return 'border-primary';
+      case 'cashier': return 'border-amber-600';
+      case 'manager': return 'border-purple-600';
+      default: return 'border-outline-variant';
     }
   };
 
   const getRoleConfig = () => {
     switch (role) {
-      case 'patient':      return { title: 'Cổng Bệnh Nhân',     badge: 'bg-secondary/10 text-secondary border-secondary/20',          dot: 'bg-secondary' };
-      case 'receptionist': return { title: 'Quản Lý Tiếp Đón',   badge: 'bg-orange-50 text-orange-700 border-orange-200',              dot: 'bg-orange-500' };
-      case 'dentist':      return { title: 'Hồ Sơ Lâm Sàng',     badge: 'bg-primary/10 text-primary border-primary/20',               dot: 'bg-primary' };
-      case 'cashier':      return { title: 'Thu Ngân & Tài Chính', badge: 'bg-amber-50 text-amber-700 border-amber-200',               dot: 'bg-amber-600' };
-      case 'manager':      return { title: 'Quản Trị Hệ Thống',   badge: 'bg-purple-50 text-purple-700 border-purple-200',             dot: 'bg-purple-600' };
-      default:             return { title: 'GoodSmile Pro',        badge: 'bg-surface-container text-outline border-outline-variant',   dot: 'bg-outline' };
+      case 'patient': return { title: 'Cổng Bệnh Nhân', badge: 'bg-secondary/10 text-secondary border-secondary/20', dot: 'bg-secondary' };
+      case 'receptionist': return { title: 'Quản Lý Tiếp Đón', badge: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' };
+      case 'dentist': return { title: 'Hồ Sơ Lâm Sàng', badge: 'bg-primary/10 text-primary border-primary/20', dot: 'bg-primary' };
+      case 'cashier': return { title: 'Thu Ngân & Tài Chính', badge: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-600' };
+      case 'manager': return { title: 'Quản Trị Hệ Thống', badge: 'bg-purple-50 text-purple-700 border-purple-200', dot: 'bg-purple-600' };
+      default: return { title: 'GoodSmile Pro', badge: 'bg-surface-container text-outline border-outline-variant', dot: 'bg-outline' };
     }
   };
 
@@ -48,43 +48,43 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
     switch (role) {
       case 'patient':
         return [
-          { label: 'Bảng điều khiển',  icon: 'dashboard',       path: '/patient' },
-          { label: 'Đặt lịch khám',    icon: 'calendar_add_on', path: '/patient?tab=booking' },
-          { label: 'Lịch hẹn của tôi', icon: 'calendar_month',  path: '/patient?tab=appointments' },
-          { label: 'Hàng chờ thực tế', icon: 'groups',          path: '/patient?tab=queue' },
-          { label: 'Hồ sơ bệnh án',    icon: 'folder_shared',   path: '/patient?tab=records' },
-          { label: 'Lịch sử giao dịch', icon: 'history',         path: '/patient?tab=billing' },
+          { label: 'Bảng điều khiển', icon: 'dashboard', path: '/patient' },
+          { label: 'Đặt lịch khám', icon: 'calendar_add_on', path: '/patient?tab=booking' },
+          { label: 'Lịch hẹn của tôi', icon: 'calendar_month', path: '/patient?tab=appointments' },
+          { label: 'Hàng chờ thực tế', icon: 'groups', path: '/patient?tab=queue' },
+          { label: 'Hồ sơ bệnh án', icon: 'folder_shared', path: '/patient?tab=records' },
+          { label: 'Lịch sử giao dịch', icon: 'history', path: '/patient?tab=billing' },
         ];
       case 'receptionist':
         return [
-          { label: 'Bàn tiếp nhận',          icon: 'folder_shared',   path: '/dashboard/receptionist' },
-          { label: 'Hàng chờ trực tiếp',      icon: 'pending_actions', path: '/dashboard/receptionist?tab=queue' },
-          { label: 'Lịch hẹn phòng khám',     icon: 'receipt_long',    path: '/dashboard/receptionist?tab=appointments' },
-          { label: 'Trung tâm công việc',  icon: 'assignment_turned_in',     path: '/dashboard/receptionist?tab=reminders' },
+          { label: 'Bàn tiếp nhận', icon: 'folder_shared', path: '/dashboard/receptionist' },
+          { label: 'Hàng chờ trực tiếp', icon: 'pending_actions', path: '/dashboard/receptionist?tab=queue' },
+          { label: 'Lịch hẹn phòng khám', icon: 'receipt_long', path: '/dashboard/receptionist?tab=appointments' },
+          { label: 'Trung tâm công việc', icon: 'assignment_turned_in', path: '/dashboard/receptionist?tab=reminders' },
         ];
       case 'dentist':
         return [
-          { label: 'Hàng chờ bác sĩ',   icon: 'pending_actions', path: '/dashboard/dentist' },
-          { label: 'Bàn khám lâm sàng',  icon: 'dashboard',       path: '/dashboard/dentist?tab=workspace' },
-          { label: 'Hồ sơ bệnh án EMR', icon: 'folder_shared',   path: '/dashboard/dentist?tab=records' },
-          { label: 'Lịch làm việc',      icon: 'calendar_month',  path: '/dashboard/dentist?tab=schedule' },
+          { label: 'Hàng chờ bác sĩ', icon: 'pending_actions', path: '/dashboard/dentist' },
+          { label: 'Bàn khám lâm sàng', icon: 'dashboard', path: '/dashboard/dentist?tab=workspace' },
+          { label: 'Hồ sơ bệnh án EMR', icon: 'folder_shared', path: '/dashboard/dentist?tab=records' },
+          { label: 'Lịch làm việc', icon: 'calendar_month', path: '/dashboard/dentist?tab=schedule' },
         ];
       case 'cashier':
         return [
-          { label: 'Thu phí hóa đơn',     icon: 'payments',   path: '/dashboard/cashier' },
-          { label: 'Sổ quỹ & Báo cáo ca', icon: 'analytics',  path: '/dashboard/cashier?tab=report' },
-          { label: 'Lịch sử thanh toán',  icon: 'history',    path: '/dashboard/cashier?tab=history' },
+          { label: 'Thu phí hóa đơn', icon: 'payments', path: '/dashboard/cashier' },
+          { label: 'Sổ quỹ & Báo cáo ca', icon: 'analytics', path: '/dashboard/cashier?tab=report' },
+          { label: 'Lịch sử thanh toán', icon: 'history', path: '/dashboard/cashier?tab=history' },
         ];
       case 'manager':
         return [
-          { label: 'Tổng quan phòng khám',   icon: 'monitoring',         path: '/dashboard/manager' },
-          { label: 'Quản lý khách hàng',     icon: 'person_search',      path: '/dashboard/manager?tab=patients' },
-          { label: 'Bảng theo dõi hàng chờ', icon: 'pending_actions',    path: '/dashboard/manager?tab=queue' },
-          { label: 'Doanh thu phòng khám',    icon: 'receipt_long',       path: '/dashboard/manager?tab=revenue' },
-          { label: 'Lịch làm việc bác sĩ',   icon: 'calendar_month',     path: '/dashboard/manager?tab=schedule' },
-          { label: 'Nhân sự & Phân quyền',   icon: 'groups',             path: '/dashboard/manager?tab=rbac' },
-          { label: 'Cấu hình giá dịch vụ',   icon: 'settings',           path: '/dashboard/manager?tab=settings' },
-          { label: 'Đánh giá & AI Phản hồi', icon: 'rate_review',        path: '/dashboard/manager?tab=reviews' },
+          { label: 'Tổng quan phòng khám', icon: 'monitoring', path: '/dashboard/manager' },
+          { label: 'Quản lý khách hàng', icon: 'person_search', path: '/dashboard/manager?tab=patients' },
+          { label: 'Bảng theo dõi hàng chờ', icon: 'pending_actions', path: '/dashboard/manager?tab=queue' },
+          { label: 'Doanh thu phòng khám', icon: 'receipt_long', path: '/dashboard/manager?tab=revenue' },
+          { label: 'Lịch làm việc bác sĩ', icon: 'calendar_month', path: '/dashboard/manager?tab=schedule' },
+          { label: 'Nhân sự & Phân quyền', icon: 'groups', path: '/dashboard/manager?tab=rbac' },
+          { label: 'Cấu hình giá dịch vụ', icon: 'settings', path: '/dashboard/manager?tab=settings' },
+          { label: 'Đánh giá & AI Phản hồi', icon: 'rate_review', path: '/dashboard/manager?tab=reviews' },
         ];
       default:
         return [];
@@ -133,11 +133,10 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <button
                 key={index}
                 onClick={() => navigate(item.path)}
-                className={`w-full text-left rounded-lg px-3 py-2.5 flex items-center gap-3 transition-all duration-150 ${
-                  active
+                className={`w-full text-left rounded-lg px-3 py-2.5 flex items-center gap-3 transition-all duration-150 ${active
                     ? 'bg-secondary-container text-on-secondary-container font-bold shadow-sm'
                     : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-                }`}
+                  }`}
               >
                 <Icon name={item.icon} className="text-[20px]" />
                 <span className="text-xs font-semibold truncate">{item.label}</span>
