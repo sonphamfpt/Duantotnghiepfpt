@@ -120,8 +120,8 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           netPrice: Number(backendInv.netPrice),
           status: backendInv.status === 'PartiallyPaid' ? 'Partially Paid' : backendInv.status,
           createdAt: backendInv.createdAt,
-          paymentMethod: backendInv.payments && backendInv.payments.length > 0 
-            ? backendInv.payments[0].method 
+          paymentMethod: backendInv.payments && backendInv.payments.length > 0
+            ? backendInv.payments[0].method
             : undefined,
           room: backendInv.room?.name || undefined,
           dentistName: backendInv.dentist?.user?.fullName || undefined,

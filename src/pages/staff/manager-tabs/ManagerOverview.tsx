@@ -1,9 +1,32 @@
 import React from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { exportToExcel } from '../../../utils/exportToExcel';
 
 export const ManagerOverview: React.FC = () => {
   const { queue, invoices, appointments, logs } = useClinic();
+
+  const handleExportExcel = () => {
+    const exportData = invoices.map((i) => ({
+      id: i.id,
+      patientName: i.patientName,
+      patientPhone: i.patientPhone,
+      totalPrice: i.totalPrice,
+      netPrice: i.netPrice,
+      status: i.status === 'Paid' ? 'Đã thanh toán' : 'Chờ thanh toán',
+      createdAt: new Date(i.createdAt).toLocaleString('vi-VN'),
+    }));
+
+    exportToExcel(exportData, 'Bao_Cao_Tong_Quan_GoodSmile', {
+      id: 'Mã hóa đơn',
+      patientName: 'Tên bệnh nhân',
+      patientPhone: 'Số điện thoại',
+      totalPrice: 'Tổng tiền (VND)',
+      netPrice: 'Thực thu (VND)',
+      status: 'Trạng thái',
+      createdAt: 'Ngày tạo',
+    });
+  };
 
   // Calculations
   const totalRevenue = invoices.filter((i) => i.status === 'Paid').reduce((sum, item) => sum + item.netPrice, 0);
@@ -33,13 +56,20 @@ export const ManagerOverview: React.FC = () => {
             Giám sát hiệu suất vận hành và tình trạng phần mềm hệ thống.
           </p>
         </div>
-        <div>
+        <div className="flex gap-2">
           <button
-            onClick={() => alert('Đã xuất báo cáo tổng quan tháng sang PDF!')}
-            className="px-4 py-2 rounded-lg bg-primary text-white font-label-md flex items-center gap-2 hover:opacity-90 transition-opacity cursor-pointer text-xs font-bold"
+            onClick={handleExportExcel}
+            className="px-4 py-2 rounded-lg bg-green-700 text-white font-label-md flex items-center gap-2 hover:bg-green-800 transition-colors cursor-pointer text-xs font-bold shadow-sm"
           >
-            <Icon name="download" className="text-[18px]" />
-            Xuất Báo Cáo PDF
+            <Icon name="description" className="text-[18px]" />
+            Xuất File Excel
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-4 py-2 rounded-lg bg-primary text-white font-label-md flex items-center gap-2 hover:opacity-90 transition-opacity cursor-pointer text-xs font-bold shadow-sm"
+          >
+            <Icon name="print" className="text-[18px]" />
+            In Báo Cáo
           </button>
         </div>
       </div>
@@ -104,7 +134,7 @@ export const ManagerOverview: React.FC = () => {
 
       {/* Charts & System Log Console */}
       <div className="grid grid-cols-12 gap-6 min-h-[480px]">
-        {/* Visual Charts — tính từ appointments + queue thực */}
+        {/* Visual Charts */}
         <div className="col-span-12 lg:col-span-7 bg-white rounded-xl border border-outline-variant p-6 flex flex-col shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -122,7 +152,6 @@ export const ManagerOverview: React.FC = () => {
           </div>
 
           {(() => {
-            // Tính dữ liệu 7 ngày gần nhất từ invoices (createdAt) và appointments
             const DAY_LABELS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
             const today = new Date();
             const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -131,35 +160,34 @@ export const ManagerOverview: React.FC = () => {
               return d;
             });
 
-            const barData = weekDays.map((day) => {
+            const weekBars = weekDays.map((day) => {
               const dayStr = day.toDateString();
-              // Đếm appointments trong ngày
-              const apptCount = appointments.filter(() => {
-                // appointments không có date field đủ — dùng invoices.createdAt thay thế
-                return false;
+
+              // Tính số appointments trong ngày này
+              const apptCount = appointments.filter((a) => {
+                if (!a.time) return false;
+                try {
+                  return new Date(a.time).toDateString() === dayStr;
+                } catch {
+                  return false;
+                }
               }).length;
-              // Đếm invoices (hóa đơn) phát sinh trong ngày
-              const invoiceCount = invoices.filter((inv) => {
-                return new Date(inv.createdAt).toDateString() === dayStr;
+
+              // Tính số hóa đơn phát sinh trong ngày này
+              const invCount = invoices.filter((inv) => {
+                if (!inv.createdAt) return false;
+                try {
+                  return new Date(inv.createdAt).toDateString() === dayStr;
+                } catch {
+                  return false;
+                }
               }).length;
-              // Đếm lượt queue check-in trong ngày (checkInTime là HH:MM nên không có date — dùng invoices)
-              const queueCount = queue.filter((q) => q.status !== 'Completed').length;
+
               return {
                 label: DAY_LABELS[day.getDay()],
-                apptVal: apptCount + (new Date().toDateString() === dayStr ? appointments.length : 0),
-                invoiceVal: invoiceCount,
+                apptCount,
+                invCount,
               };
-            });
-
-            // Dùng appointments.length + invoices theo ngày để tính
-            const weekBars = weekDays.map((day, i) => {
-              const dayStr = day.toDateString();
-              const isToday = new Date().toDateString() === dayStr;
-              // Hóa đơn phát sinh
-              const invCount = invoices.filter((inv) => new Date(inv.createdAt).toDateString() === dayStr).length;
-              // Appointments hôm nay hiển thị tất cả (không có date field riêng)
-              const apptCount = isToday ? appointments.length : Math.max(0, invCount - 1 + (i % 3));
-              return { label: DAY_LABELS[day.getDay()], apptCount, invCount };
             });
 
             const maxVal = Math.max(...weekBars.flatMap((b) => [b.apptCount, b.invCount]), 1);
@@ -180,17 +208,17 @@ export const ManagerOverview: React.FC = () => {
                       <div className="w-full flex gap-1 items-end h-full">
                         <div
                           className="flex-1 bg-primary/70 rounded-t group relative cursor-pointer hover:bg-primary transition-all"
-                          style={{ height: `${Math.max(pct1, 4)}%` }}
+                          style={{ height: `${Math.max(pct1, 6)}%` }}
                         >
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-inverse-surface text-white text-[8px] px-1.5 py-0.5 rounded hidden group-hover:block whitespace-nowrap">
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-inverse-surface text-white text-[8px] px-1.5 py-0.5 rounded hidden group-hover:block whitespace-nowrap z-10">
                             {bar.apptCount} lịch hẹn
                           </div>
                         </div>
                         <div
                           className="flex-1 bg-accent-pink/70 rounded-t group relative cursor-pointer hover:bg-accent-pink transition-all"
-                          style={{ height: `${Math.max(pct2, 4)}%` }}
+                          style={{ height: `${Math.max(pct2, 6)}%` }}
                         >
-                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-inverse-surface text-white text-[8px] px-1.5 py-0.5 rounded hidden group-hover:block whitespace-nowrap">
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-inverse-surface text-white text-[8px] px-1.5 py-0.5 rounded hidden group-hover:block whitespace-nowrap z-10">
                             {bar.invCount} hóa đơn
                           </div>
                         </div>

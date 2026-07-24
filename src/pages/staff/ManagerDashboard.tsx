@@ -10,6 +10,7 @@ import { ManagerSchedule } from './manager-tabs/ManagerSchedule';
 import { ManagerPatients } from './manager-tabs/ManagerPatients';
 import { ManagerReviews } from './manager-tabs/ManagerReviews';
 import { ManagerAiChat } from './manager-tabs/ManagerAiChat';
+import { ManagerLogs } from './manager-tabs/ManagerLogs';
 
 export const ManagerDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -33,6 +34,8 @@ export const ManagerDashboard: React.FC = () => {
         return <ManagerReviews />;
       case 'aichat':
         return <ManagerAiChat />;
+      case 'logs':
+        return <ManagerLogs />;
       default:
         return <ManagerOverview />;
     }

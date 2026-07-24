@@ -17,6 +17,7 @@ import servicesRouter from './modules/services/routes';
 import staffRouter from './modules/staff/routes';
 import logsRouter from './modules/logs/routes';
 import reviewsRouter from './modules/reviews/routes';
+import roomsRouter from './modules/rooms/routes';
 
 import { errorHandler } from './middlewares/errorHandler';
 import { env } from './config/env';
@@ -59,6 +60,7 @@ app.use('/api/services',         servicesRouter);
 app.use('/api/staff',            staffRouter);
 app.use('/api/logs',             logsRouter);
 app.use('/api/reviews',          reviewsRouter);
+app.use('/api/rooms',            roomsRouter);
 
 // 5. Middleware xử lý lỗi tập trung (bắt buộc đặt cuối cùng)
 app.use(errorHandler);
