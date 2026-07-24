@@ -68,6 +68,7 @@ export const PatientAppointments: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [cancelId, setCancelId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [qrCodeApptId, setQrCodeApptId] = useState<string | null>(null);
   const [reviewMap, setReviewMap] = useState<Record<string, { rating: number; comment: string }>>({
     'PAST-01': { rating: 5, comment: 'Bác sĩ Hương rất nhẹ nhàng, tư vấn kỹ lưỡng, chỉnh nha không đau!' },
@@ -452,21 +453,26 @@ export const PatientAppointments: React.FC = () => {
                   
                   <div className="mt-2">
                     <label className="block text-xs font-bold uppercase text-on-surface-variant mb-2 text-left">Lý do huỷ lịch (Tùy chọn)</label>
-                    <select className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none">
+                    <select
+                      value={cancelReason}
+                      onChange={e => setCancelReason(e.target.value)}
+                      className="w-full bg-surface-container-low border border-outline-variant rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none"
+                    >
                       <option value="">-- Chọn lý do --</option>
-                      <option value="1">Bận đột xuất</option>
-                      <option value="2">Đã khám ở nơi khác</option>
-                      <option value="3">Hết đau răng / Không còn nhu cầu</option>
-                      <option value="4">Lý do khác</option>
+                      <option value="Bận đột xuất">Bận đột xuất</option>
+                      <option value="Đã khám ở nơi khác">Đã khám ở nơi khác</option>
+                      <option value="Hết đau răng / Không còn nhu cầu">Hết đau răng / Không còn nhu cầu</option>
+                      <option value="Lý do khác">Lý do khác</option>
                     </select>
                   </div>
 
                   <div className="flex flex-col gap-3 pt-2">
                     <button
                       onClick={() => {
-                        cancelAppointment(cancelId);
+                        cancelAppointment(cancelId, cancelReason || 'Bệnh nhân tự hủy lịch');
                         alert('Yêu cầu huỷ lịch hẹn khám của bạn đã được gửi thành công!');
                         setCancelId(null);
+                        setCancelReason('');
                       }}
                       className="w-full py-3 bg-error text-on-error rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md"
                     >

@@ -312,7 +312,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             prev.map((item) => (item.id === a.id ? { ...item, status: 'Cancelled' as const } : item))
           );
           addLog('SYSTEM', 'WARN', `Lịch hẹn ${a.id} của ${a.patientName} bị tự động hủy do trễ 15 phút chưa check-in.`);
-          appointmentApi.cancel(a.id, 'Tự động hủy do trễ quá 15 phút chưa check-in').catch(() => {});
+          appointmentApi.cancel(a.id, 'Tự động hủy do trễ quá 15 phút chưa check-in').catch(() => { });
         }
       });
     };
