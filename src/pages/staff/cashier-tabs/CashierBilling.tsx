@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { calculateRevenueStats } from '../../../utils/revenueUtils';
 
 export const CashierBilling: React.FC = () => {
   const { invoices, processPayment, patients } = useClinic();
@@ -20,6 +21,8 @@ export const CashierBilling: React.FC = () => {
   const [payAmountInput, setPayAmountInput] = useState<string>('');
   const [isPartialPay, setIsPartialPay] = useState<boolean>(false);
 
+  const [receiptDateFilter, setReceiptDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('today');
+
   // Filtering Pending Invoices
   const pendingInvoices = invoices.filter(
     (inv) =>
@@ -31,42 +34,53 @@ export const CashierBilling: React.FC = () => {
       (selectedDentist === 'All' || inv.dentistName === selectedDentist)
   );
 
-  // Recently Paid Invoices for quick access
-  const recentlyPaidInvoices = invoices
-    .filter((inv) => inv.status === 'Paid')
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5); // limit to last 5 for quick print in this screen
+  // Filter Paid Invoices by date range (Hôm nay, Hôm qua, 7 ngày qua, 30 ngày qua, Tất cả)
+  const filteredPaidInvoices = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
+    const sevenDaysAgo = todayStart - 6 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = todayStart - 29 * 24 * 60 * 60 * 1000;
 
-  // Calculate today's shift collected revenue dynamically
-  const todayRevenue = invoices.reduce((sum, inv) => {
-    if (inv.payments && inv.payments.length > 0) {
-      return sum + inv.payments.reduce((s, p) => s + p.amount, 0);
-    }
-    if (inv.status === 'Paid') {
-      return sum + inv.netPrice;
-    }
-    return sum;
-  }, 0);
+    return invoices
+      .filter((inv) => {
+        const isPaid = inv.status === 'Paid' || inv.status === 'Partially Paid';
+        if (!isPaid) return false;
 
-  const todayCash = invoices.reduce((sum, inv) => {
-    if (inv.payments && inv.payments.length > 0) {
-      return sum + inv.payments.filter(p => p.method === 'Cash').reduce((s, p) => s + p.amount, 0);
-    }
-    if (inv.status === 'Paid' && inv.paymentMethod === 'Cash') {
-      return sum + inv.netPrice;
-    }
-    return sum;
-  }, 0);
+        const paymentDates = (inv.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
+        const invDateMs = paymentDates.length > 0 ? Math.max(...paymentDates) : new Date(inv.createdAt).getTime();
 
-  const todayNonCash = invoices.reduce((sum, inv) => {
-    if (inv.payments && inv.payments.length > 0) {
-      return sum + inv.payments.filter(p => p.method !== 'Cash').reduce((s, p) => s + p.amount, 0);
-    }
-    if (inv.status === 'Paid' && inv.paymentMethod && inv.paymentMethod !== 'Cash') {
-      return sum + inv.netPrice;
-    }
-    return sum;
-  }, 0);
+        if (receiptDateFilter === 'today') {
+          return invDateMs >= todayStart;
+        }
+        if (receiptDateFilter === 'yesterday') {
+          return invDateMs >= yesterdayStart && invDateMs < todayStart;
+        }
+        if (receiptDateFilter === '7days') {
+          return invDateMs >= sevenDaysAgo;
+        }
+        if (receiptDateFilter === '30days') {
+          return invDateMs >= thirtyDaysAgo;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const aDates = (a.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
+        const bDates = (b.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
+        const aMs = aDates.length > 0 ? Math.max(...aDates) : new Date(a.createdAt).getTime();
+        const bMs = bDates.length > 0 ? Math.max(...bDates) : new Date(b.createdAt).getTime();
+        return bMs - aMs;
+      });
+  }, [invoices, receiptDateFilter]);
+
+  // Calculate today's shift collected revenue dynamically using unified helper
+  const todayStats = useMemo(() => {
+    return calculateRevenueStats(invoices);
+  }, [invoices]);
+
+  const todayRevenue = todayStats.totalCollected;
+  const todayCash = todayStats.cashIncome;
+  const todayNonCash = todayStats.nonCashIncome;
 
   const activeInvoice = invoices.find((inv) => inv.id === selectedInvoiceId);
   const activePatient = activeInvoice
@@ -340,18 +354,38 @@ export const CashierBilling: React.FC = () => {
             </div>
 
             {/* Quick side panel: Recently completed transactions (moved horizontally underneath) */}
-            {recentlyPaidInvoices.length > 0 && (
-              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-5 space-y-4 shadow-sm">
+            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-5 space-y-4 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <Icon name="check_circle" className="text-emerald-600 text-base" />
-                  Giao Dịch Vừa Hoàn Tất (In Nhanh Biên Lai)
+                  <Icon name="receipt" className="text-emerald-600 text-base" />
+                  Lịch Sử Biên Lai (In Nhanh)
+                  <span className="ml-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-black font-data-mono">
+                    {filteredPaidInvoices.length}
+                  </span>
                 </h4>
 
+                {/* Date Filter Dropdown styled matching user request */}
+                <div className="relative shrink-0">
+                  <select
+                    value={receiptDateFilter}
+                    onChange={(e) => setReceiptDateFilter(e.target.value as any)}
+                    className="bg-white border border-slate-300 hover:border-slate-400 rounded-xl px-3.5 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all cursor-pointer shadow-2xs pr-8 font-headline text-left"
+                  >
+                    <option value="today">Hôm nay</option>
+                    <option value="yesterday">Hôm qua</option>
+                    <option value="7days">7 ngày trước</option>
+                    <option value="30days">30 ngày trước</option>
+                    <option value="all">Tất cả lịch sử</option>
+                  </select>
+                </div>
+              </div>
+
+              {filteredPaidInvoices.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                  {recentlyPaidInvoices.map((inv) => (
+                  {filteredPaidInvoices.map((inv) => (
                     <div
                       key={inv.id}
-                      className="bg-white p-3.5 border border-slate-150 rounded-xl flex flex-col justify-between gap-3 shadow-sm relative pl-4 overflow-hidden"
+                      className="bg-white p-3.5 border border-slate-150 rounded-xl flex flex-col justify-between gap-3 shadow-sm relative pl-4 overflow-hidden hover:border-emerald-300 hover:shadow-md transition-all"
                     >
                       <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-600" />
                       
@@ -363,7 +397,7 @@ export const CashierBilling: React.FC = () => {
                           </span>
                         </div>
                         <h5 className="font-bold text-xs text-slate-800 truncate">{inv.patientName}</h5>
-                        <p className="text-[10px] text-slate-400 font-bold">₫{inv.netPrice.toLocaleString()}</p>
+                        <p className="text-[10px] text-slate-400 font-bold">₫{(inv.paidAmount || inv.netPrice || 0).toLocaleString()}</p>
                       </div>
                       
                       <button
@@ -371,7 +405,7 @@ export const CashierBilling: React.FC = () => {
                           setPrintingInvoiceId(inv.id);
                           setShowReceipt(true);
                         }}
-                        className="w-full py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold rounded-lg border border-blue-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        className="w-full py-1.5 bg-blue-50 hover:bg-blue-100 active:scale-95 text-blue-700 text-[10px] font-bold rounded-lg border border-blue-200 flex items-center justify-center gap-1 transition-all cursor-pointer"
                       >
                         <Icon name="print" className="text-xs" />
                         In lại biên lai
@@ -379,8 +413,13 @@ export const CashierBilling: React.FC = () => {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="py-8 text-center text-slate-400 text-xs font-semibold bg-white rounded-xl border border-slate-150 flex flex-col items-center justify-center">
+                  <Icon name="receipt_long" className="text-3xl mb-1.5 text-slate-300" />
+                  <span>Không tìm thấy biên lai nào trong mốc thời gian đã chọn ({receiptDateFilter === 'today' ? 'Hôm nay' : receiptDateFilter === 'yesterday' ? 'Hôm qua' : receiptDateFilter === '7days' ? '7 ngày trước' : receiptDateFilter === '30days' ? '30 ngày trước' : 'Tất cả'}).</span>
+                </div>
+              )}
+            </div>
 
           </div>
         </div>
