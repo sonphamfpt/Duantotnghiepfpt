@@ -1,13 +1,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { calculateRevenueStats } from '../../../utils/revenueUtils';
 
 export const CashierReport: React.FC = () => {
-  const { invoices } = useClinic();
+  const { invoices, addLog } = useClinic();
 
   // Shift details
   const initialCash = 15200000; // 15.2M VND starter fund
   const todayDateStr = new Date().toDateString();
+  const STORAGE_CLOSING_KEY = 'goodsmile_shift_closing_history';
 
   // Shift start time state (dùng để reset doanh thu ca mới sau khi chốt ca)
   const [shiftStartTime, setShiftStartTime] = useState<number | null>(() => {
@@ -30,58 +32,26 @@ export const CashierReport: React.FC = () => {
     }
   }, [todayDateStr, shiftStartTime]);
 
-  // Filter invoices paid in current active shift
-  const todayInvoices = useMemo(() => {
-    return invoices.filter((inv) => {
-      const isPaid = inv.status === 'Paid' || inv.status === 'Partially Paid';
-      const paymentDates = (inv.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
-      const invoiceDate = paymentDates.length > 0 ? new Date(Math.max(...paymentDates)) : new Date(inv.createdAt);
-      const isToday = isPaid && invoiceDate.toDateString() === todayDateStr;
-      if (!isToday) return false;
-      if (shiftStartTime) {
-        return invoiceDate.getTime() >= shiftStartTime;
-      }
-      return true;
-    });
-  }, [invoices, todayDateStr, shiftStartTime]);
+  // Unified Revenue Statistics
+  const todayFullStats = useMemo(() => {
+    return calculateRevenueStats(invoices);
+  }, [invoices]);
 
-  // Calculate shift income per payment method for current active shift
-  const cashIncome = useMemo(() => {
-    return invoices.reduce((sum, inv) => {
-      const paymentDates = (inv.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
-      const invoiceDate = paymentDates.length > 0 ? new Date(Math.max(...paymentDates)) : new Date(inv.createdAt);
-      if (invoiceDate.toDateString() !== todayDateStr) return sum;
-      if (shiftStartTime && invoiceDate.getTime() < shiftStartTime) return sum;
+  const activeShiftStats = useMemo(() => {
+    return calculateRevenueStats(invoices, { minTimestamp: shiftStartTime });
+  }, [invoices, shiftStartTime]);
 
-      if (inv.payments && inv.payments.length > 0) {
-        return sum + inv.payments.filter(p => p.method === 'Cash').reduce((s, p) => s + p.amount, 0);
-      }
-      if (inv.status === 'Paid' && inv.paymentMethod === 'Cash') {
-        return sum + inv.netPrice;
-      }
-      return sum;
-    }, 0);
-  }, [invoices, todayDateStr, shiftStartTime]);
-
-  const nonCashIncome = useMemo(() => {
-    return invoices.reduce((sum, inv) => {
-      const paymentDates = (inv.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
-      const invoiceDate = paymentDates.length > 0 ? new Date(Math.max(...paymentDates)) : new Date(inv.createdAt);
-      if (invoiceDate.toDateString() !== todayDateStr) return sum;
-      if (shiftStartTime && invoiceDate.getTime() < shiftStartTime) return sum;
-
-      if (inv.payments && inv.payments.length > 0) {
-        return sum + inv.payments.filter(p => p.method !== 'Cash').reduce((s, p) => s + p.amount, 0);
-      }
-      if (inv.status === 'Paid' && inv.paymentMethod && inv.paymentMethod !== 'Cash') {
-        return sum + inv.netPrice;
-      }
-      return sum;
-    }, 0);
-  }, [invoices, todayDateStr, shiftStartTime]);
+  const todayInvoices = activeShiftStats.paidInvoices;
+  const cashIncome = activeShiftStats.cashIncome;
+  const nonCashIncome = activeShiftStats.nonCashIncome;
 
   const totalCollected = cashIncome + nonCashIncome;
   const expectedPhysicalCash = initialCash + cashIncome;
+
+  const handleResetShiftTime = () => {
+    setShiftStartTime(null);
+    localStorage.removeItem('goodsmile_shift_start_time');
+  };
 
   // Form states
   const [reportNotes, setReportNotes] = useState('');
@@ -124,12 +94,30 @@ export const CashierReport: React.FC = () => {
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
   };
 
-  const [closingHistory, setClosingHistory] = useState([
-    { date: `${getFormattedPastDate(1)} - Ca Chiều`, time: '20:10', status: 'Khớp quỹ (0đ)', isError: false, warning: false },
-    { date: `${getFormattedPastDate(1)} - Ca Sáng`, time: '12:05', status: 'Khớp quỹ (0đ)', isError: false, warning: false },
-    { date: `${getFormattedPastDate(2)} - Ca Sáng`, time: '12:01', status: 'Thừa +20,000đ (Bệnh nhân quên lấy tiền thối)', isError: true, warning: true },
-    { date: `${getFormattedPastDate(3)} - Ca Chiều`, time: '20:05', status: 'Khớp quỹ (0đ)', isError: false, warning: false },
-  ]);
+  // Persisted Closing History state from localStorage
+  const [closingHistory, setClosingHistory] = useState<Array<{
+    date: string;
+    time: string;
+    status: string;
+    isError: boolean;
+    warning: boolean;
+  }>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_CLOSING_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (_) {}
+    return [
+      { date: `${getFormattedPastDate(1)} - Ca Chiều`, time: '20:10', status: 'Khớp quỹ (0đ)', isError: false, warning: false },
+      { date: `${getFormattedPastDate(1)} - Ca Sáng`, time: '12:05', status: 'Khớp quỹ (0đ)', isError: false, warning: false },
+      { date: `${getFormattedPastDate(2)} - Ca Sáng`, time: '12:01', status: 'Thừa +20,000đ (Bệnh nhân quên lấy tiền thối)', isError: true, warning: true },
+      { date: `${getFormattedPastDate(3)} - Ca Chiều`, time: '20:05', status: 'Khớp quỹ (0đ)', isError: false, warning: false },
+    ];
+  });
 
   const handleShiftClose = (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,7 +141,20 @@ export const CashierReport: React.FC = () => {
       warning: discrepancy > 0,
     };
 
-    setClosingHistory(prev => [newLog, ...prev]);
+    setClosingHistory(prev => {
+      const updated = [newLog, ...prev];
+      try {
+        localStorage.setItem(STORAGE_CLOSING_KEY, JSON.stringify(updated));
+      } catch (err) {
+        console.error('Lỗi lưu lịch sử chốt ca:', err);
+      }
+      return updated;
+    });
+
+    if (addLog) {
+      addLog('CASHIER', 'SUCCESS', `Khóa sổ & chốt ca trực ${currentShift} (${dateStr}). Kết quả đối soát: ${statusText}.`);
+    }
+
     setIsSubmitted(true);
     alert('Báo cáo ca trực đã được chốt và khóa sổ thành công!');
   };
@@ -179,6 +180,32 @@ export const CashierReport: React.FC = () => {
           <p className="text-xs font-bold text-slate-700 font-data-mono">{new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}</p>
         </div>
       </div>
+
+      {/* Active Shift Notice Banner (if a previous shift close was executed today) */}
+      {shiftStartTime && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-50 p-4 rounded-2xl border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0">
+              <Icon name="history_toggle_off" className="text-lg" />
+            </div>
+            <div>
+              <p className="font-extrabold text-amber-950">
+                Ca làm việc hiện tại đang tính từ mốc chốt ca trước lúc {new Date(shiftStartTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+              <p className="text-[11px] text-amber-700 font-medium mt-0.5">
+                Doanh thu ca mới: <strong className="text-amber-900 font-bold">₫{activeShiftStats.totalCollected.toLocaleString()}</strong> ({activeShiftStats.paidInvoiceCount} HD) • Tổng doanh thu cả ngày: <strong className="text-amber-900 font-bold">₫{todayFullStats.totalCollected.toLocaleString()}</strong> ({todayFullStats.paidInvoiceCount} HD)
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleResetShiftTime}
+            className="px-3.5 py-1.5 bg-white hover:bg-amber-100 text-amber-800 rounded-xl font-bold border border-amber-300 transition-colors shrink-0 cursor-pointer shadow-2xs"
+          >
+            Bắt đầu lại ca (Tính cả ngày)
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-12 gap-6">
         
@@ -386,7 +413,7 @@ export const CashierReport: React.FC = () => {
                           {inv.paymentMethod === 'Cash' ? 'Tiền mặt' : inv.paymentMethod === 'Transfer' ? 'Chuyển khoản' : 'Thẻ POS'}
                         </span>
                       </td>
-                      <td className="px-5 py-2.5 text-right font-mono font-bold">₫{inv.netPrice.toLocaleString()}</td>
+                      <td className="px-5 py-2.5 text-right font-mono font-bold">₫{(inv.paidAmount || inv.netPrice || 0).toLocaleString()}</td>
                     </tr>
                   ))}
                   {todayInvoices.length === 0 && (

@@ -9,6 +9,7 @@ import { CheckInModal } from '../../components/CheckInModal';
 import { ReceptionistQueue } from './receptionist-tabs/ReceptionistQueue';
 import { ReceptionistAppointments } from './receptionist-tabs/ReceptionistAppointments';
 import { ReceptionistReminders } from './receptionist-tabs/ReceptionistReminders';
+import { ReceptionistHistory } from './receptionist-tabs/ReceptionistHistory';
 
 
 // ─── Home: Bàn tiếp nhận ──────────────────────────────────────────────────────
@@ -299,6 +300,7 @@ export const ReceptionistDashboard: React.FC = () => {
     case 'queue': return <ReceptionistQueue />;
     case 'appointments': return <ReceptionistAppointments />;
     case 'reminders': return <ReceptionistReminders />;
+    case 'history': return <ReceptionistHistory />;
 
     default: return <ReceptionistHome />;
   }

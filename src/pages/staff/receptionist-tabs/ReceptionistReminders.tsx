@@ -239,80 +239,159 @@ export const ReceptionistReminders: React.FC = () => {
         </div>
       </div>
 
-      {/* ── SECTION: Bác sĩ đổi ca / Nhờ trực thay ── */}
+      {/* ── SECTION: Bác sĩ đổi lịch / Nhờ trực thay ── */}
       {filteredShiftNotifs.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <h3 className="font-bold text-sm text-on-surface flex items-center gap-2 mt-2">
-            <Icon name="published_with_changes" className="text-purple-600" />
-            Bác sĩ đổi lịch / Nhờ trực thay ({filteredShiftNotifs.length})
+            <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
+              <Icon name="published_with_changes" className="text-[18px]" />
+            </span>
+            <span>Bác sĩ đổi lịch / Nhờ trực thay</span>
+            <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-extrabold text-xs">
+              {filteredShiftNotifs.length}
+            </span>
           </h3>
-          <div className="flex flex-col gap-3">
-            {filteredShiftNotifs.map(notif => (
-              <div key={notif.id} className="p-4 rounded-2xl border border-purple-200 bg-purple-50/30 shadow-sm space-y-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold shrink-0">
-                      <Icon name="swap_horiz" className="text-[22px]" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm text-on-surface">
-                        Bác sĩ <span className="text-purple-700 font-extrabold">{notif.originalDentistName}</span> ➔ Bàn giao cho Bác sĩ <span className="text-purple-700 font-extrabold">{notif.newDentistName}</span>
-                      </p>
-                      <p className="text-xs text-on-surface-variant mt-0.5">
-                        Ngày trực: <span className="font-semibold">{notif.shiftDate}</span> • Ca: <span className="font-semibold">{notif.shiftType === 'Morning' ? 'Ca Sáng' : notif.shiftType === 'Afternoon' ? 'Ca Chiều' : 'Cả ngày'}</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Patient conflicts list */}
-                {notif.affectedItems && notif.affectedItems.length > 0 ? (
-                  <div className="mt-2 space-y-2 bg-white p-3.5 rounded-xl border border-purple-100">
-                    <p className="text-xs font-bold text-purple-900 flex items-center gap-1">
-                      <Icon name="warning" className="text-amber-500 text-[14px]" />
-                      Bệnh nhân bị ảnh hưởng lịch khám ({notif.affectedItems.length}):
-                    </p>
-                    <div className="divide-y divide-slate-100">
-                      {notif.affectedItems.map((item, idx) => (
-                        <div key={idx} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                          <div>
-                            <p className="font-bold text-slate-800">{item.patientName} <span className="font-semibold text-slate-500">({item.patientPhone})</span></p>
-                            <p className="text-slate-500 text-[11px] mt-0.5">{item.serviceName} • {item.time}</p>
-                          </div>
-                          {item.resolved ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                              <Icon name="check_circle" className="text-[13px]" />
-                              {item.resolvedAction === 'cancelled' ? 'Đã hủy lịch' : `Đã chuyển sang BS ${notif.newDentistName}`}
-                            </span>
-                          ) : (
-                            <div className="flex items-center gap-2 shrink-0">
-                              <button
-                                onClick={() => resolveShiftConflict_Update(notif.id, item.appointmentId)}
-                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-[11px] transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
-                              >
-                                <Icon name="person_add" className="text-[13px]" />
-                                Đổi sang BS {notif.newDentistName}
-                              </button>
-                              <button
-                                onClick={() => resolveShiftConflict_Cancel(notif.id, item.appointmentId)}
-                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[11px] transition-colors cursor-pointer"
-                              >
-                                Hủy lịch
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+          <div className="flex flex-col gap-4">
+            {filteredShiftNotifs.map(notif => {
+              const cleanDoctorName = (name: string) => {
+                if (!name) return 'Bác sĩ';
+                const cleaned = name.replace(/^(bác sĩ|bs\.?)\s+/ig, '').trim();
+                return `BS. ${cleaned}`;
+              };
+
+              const origName = cleanDoctorName(notif.originalDentistName);
+              const newName = cleanDoctorName(notif.newDentistName);
+
+              const shiftTypeInfo = notif.shiftType === 'Morning'
+                ? { label: 'Ca Sáng (08:00 - 14:00)', bg: 'bg-sky-50 text-sky-700 border-sky-200', icon: 'wb_sunny' }
+                : notif.shiftType === 'Afternoon'
+                ? { label: 'Ca Chiều (14:00 - 20:00)', bg: 'bg-teal-50 text-teal-700 border-teal-200', icon: 'wb_twilight' }
+                : { label: 'Cả Ngày (08:00 - 20:00)', bg: 'bg-amber-50 text-amber-800 border-amber-200', icon: 'schedule' };
+
+              return (
+                <div key={notif.id} className="p-4 sm:p-5 rounded-2xl border border-purple-200/90 bg-gradient-to-br from-white via-purple-50/20 to-purple-50/40 shadow-sm hover:shadow-md transition-all space-y-4">
+                  
+                  {/* Top Header Bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1.5 rounded-xl bg-purple-100/80 border border-purple-200 text-purple-800 text-xs font-extrabold flex items-center gap-1.5 shadow-2xs">
+                        <Icon name="swap_horiz" className="text-purple-600 text-[16px]" />
+                        Yêu cầu Bàn giao / Trực thay
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 font-mono shadow-2xs">
+                        <Icon name="calendar_today" className="text-[14px] text-slate-400" />
+                        {notif.shiftDate}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-xl border text-xs font-bold ${shiftTypeInfo.bg}`}>
+                        <Icon name={shiftTypeInfo.icon} className="text-[14px]" />
+                        {shiftTypeInfo.label}
+                      </span>
                     </div>
                   </div>
-                ) : (
-                  <div className="mt-2 bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/60 text-xs text-emerald-800 font-medium flex items-center gap-1.5">
-                    <Icon name="check_circle" className="text-emerald-600 text-[16px]" />
-                    Không có bệnh nhân nào bị ảnh hưởng lịch hẹn trong ca trực này.
+
+                  {/* Transfer Visual Flow Diagram */}
+                  <div className="grid grid-cols-1 sm:grid-cols-7 gap-3 items-center bg-white p-4 rounded-xl border border-purple-100/90 shadow-2xs">
+                    {/* Origin Doctor */}
+                    <div className="sm:col-span-3 flex items-center gap-3 p-2.5 bg-purple-50/50 rounded-xl border border-purple-100/60">
+                      <div className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center font-black text-sm shrink-0 shadow-xs">
+                        {origName.replace('BS. ', '').charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bác sĩ bàn giao</p>
+                        <p className="font-extrabold text-sm text-slate-800 truncate">{origName}</p>
+                      </div>
+                    </div>
+
+                    {/* Transfer Indicator Arrow */}
+                    <div className="sm:col-span-1 flex flex-col items-center justify-center text-purple-600 py-1">
+                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center shadow-2xs">
+                        <Icon name="arrow_forward" className="text-lg rotate-90 sm:rotate-0" />
+                      </div>
+                      <span className="text-[10px] font-bold text-purple-600 mt-1 uppercase tracking-wider">Chuyển</span>
+                    </div>
+
+                    {/* Target Doctor */}
+                    <div className="sm:col-span-3 flex items-center gap-3 p-2.5 bg-indigo-50/50 rounded-xl border border-indigo-100/60">
+                      <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-sm shrink-0 shadow-xs">
+                        {newName.replace('BS. ', '').charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bác sĩ nhận ca</p>
+                        <p className="font-extrabold text-sm text-slate-900 truncate">{newName}</p>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {/* Patient Conflicts status */}
+                  {notif.affectedItems && notif.affectedItems.length > 0 ? (
+                    <div className="space-y-3 bg-white p-4 rounded-xl border border-amber-200/80 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
+                          <Icon name="warning" className="text-amber-500 text-[16px]" />
+                          Bệnh nhân bị ảnh hưởng lịch khám ({notif.affectedItems.length}):
+                        </p>
+                        <span className="text-[11px] font-bold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full border border-amber-200">
+                          Cần xử lý
+                        </span>
+                      </div>
+
+                      <div className="divide-y divide-slate-100">
+                        {notif.affectedItems.map((item, idx) => (
+                          <div key={idx} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                            <div>
+                              <p className="font-extrabold text-slate-900 text-sm">
+                                {item.patientName}{' '}
+                                <span className="font-semibold text-slate-500 text-xs font-mono">({item.patientPhone})</span>
+                              </p>
+                              <p className="text-slate-500 text-xs mt-0.5 flex items-center gap-1">
+                                <Icon name="medical_services" className="text-[13px] text-slate-400" />
+                                {item.serviceName} • <span className="font-bold text-slate-700">{item.time}</span>
+                              </p>
+                            </div>
+
+                            {item.resolved ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-3 py-1.5 rounded-xl shadow-2xs">
+                                <Icon name="check_circle" className="text-emerald-600 text-[15px]" />
+                                {item.resolvedAction === 'cancelled' ? 'Đã hủy lịch' : `Đã chuyển sang ${newName}`}
+                              </span>
+                            ) : (
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  onClick={() => resolveShiftConflict_Update(notif.id, item.appointmentId)}
+                                  className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                                >
+                                  <Icon name="person_add" className="text-[15px]" />
+                                  Đổi sang {newName}
+                                </button>
+                                <button
+                                  onClick={() => resolveShiftConflict_Cancel(notif.id, item.appointmentId)}
+                                  className="px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-700 active:scale-95 text-slate-700 rounded-xl font-bold text-xs transition-all cursor-pointer border border-slate-200"
+                                >
+                                  Hủy lịch
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-50/90 p-3.5 rounded-xl border border-emerald-200/80 text-xs text-emerald-900 font-semibold flex items-center justify-between shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <Icon name="check_circle" className="text-emerald-600 text-[18px] shrink-0" />
+                        <span>Không có bệnh nhân nào bị ảnh hưởng lịch hẹn trong ca trực này.</span>
+                      </div>
+                      <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-200">
+                        ✓ An toàn
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
