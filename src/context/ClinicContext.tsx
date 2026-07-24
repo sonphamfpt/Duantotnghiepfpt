@@ -513,6 +513,13 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       });
       if (response.success) {
         addLog('DENTIST', 'SUCCESS', `Hoàn tất phiên điều trị.`);
+        setAppointments((prev) =>
+          prev.map((a) =>
+            a.patientId === queueItem.patientId && (a.status === 'Confirmed' || a.status === 'In-Progress')
+              ? { ...a, status: 'Completed' }
+              : a
+          )
+        );
         await refreshAllData();
         if (queueItem?.patientId) {
           await fetchPatientRecords(queueItem.patientId);

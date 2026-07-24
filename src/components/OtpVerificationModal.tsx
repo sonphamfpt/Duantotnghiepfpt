@@ -42,6 +42,9 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
   phoneNumber,
   sendOnOpen = true,
   purpose = 'register',
+  dentistId,
+  startTime,
+  serviceId,
 }) => {
   const OTP_LENGTH = 6;
   const COUNTDOWN_SECONDS = 60;
@@ -81,7 +84,13 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
     try {
       await request('/auth/send-otp', {
         method: 'POST',
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({
+          phone,
+          purpose,
+          dentistId,
+          startTime,
+          serviceId,
+        }),
       });
 
       setCountdown(COUNTDOWN_SECONDS);
@@ -95,7 +104,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
     } finally {
       setIsSendingOtp(false);
     }
-  }, [phoneNumber]);
+  }, [phoneNumber, purpose, dentistId, startTime, serviceId]);
 
   // Init OTP on open
   useEffect(() => {

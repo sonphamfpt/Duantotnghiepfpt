@@ -561,6 +561,7 @@ export class AppointmentsService {
         patient: { include: { user: true } },
         dentist: { include: { user: true } },
         service: true,
+        queueTicket: true,
       },
       orderBy: {
         startTime: 'asc',
@@ -593,10 +594,10 @@ export class AppointmentsService {
 
     return list.map((appt) => {
       let statusStr: 'Confirmed' | 'In-Progress' | 'Completed' | 'Cancelled' | 'NoShow' = 'Confirmed';
-      if (appt.status === 'InProgress') {
-        statusStr = 'In-Progress';
-      } else if (appt.status === 'Completed') {
+      if (appt.status === 'Completed' || appt.queueTicket?.status === 'Completed') {
         statusStr = 'Completed';
+      } else if (appt.status === 'InProgress' || appt.queueTicket?.status === 'InChair') {
+        statusStr = 'In-Progress';
       } else if (appt.status === 'Cancelled') {
         statusStr = 'Cancelled';
       } else if (appt.status === 'NoShow') {

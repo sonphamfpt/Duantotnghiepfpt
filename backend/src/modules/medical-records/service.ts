@@ -207,15 +207,22 @@ export async function createRecord(data: {
       });
     }
 
-    // 2.4 Cập nhật trạng thái QueueTicket sang Completed nếu có
+    // 2.4 Cập nhật trạng thái QueueTicket & Appointment liên quan sang Completed nếu có
     if (data.queueTicketId) {
-      await tx.queueTicket.update({
+      const updatedTicket = await tx.queueTicket.update({
         where: { ticketId: data.queueTicketId },
         data: {
           status: 'Completed',
           endTreatmentTime: new Date(),
         },
       });
+
+      if (updatedTicket.appointmentId) {
+        await tx.appointment.update({
+          where: { appointmentId: updatedTicket.appointmentId },
+          data: { status: 'Completed' },
+        });
+      }
     }
 
     // 2.5 Tính số lượt khám của bệnh nhân để tự động xếp hạng thành viên

@@ -70,6 +70,7 @@ const DentistHome: React.FC = () => {
   const [prescriptionDrugs, setPrescriptionDrugs] = useState<Array<{ name: string; quantity: number; unit: string; instruction: string }>>([]);
   const [selectedAddDrugId, setSelectedAddDrugId] = useState('');
   const [showSignModal, setShowSignModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; type: 'pdf' | 'image' | 'prescription'; title: string; size: string; url?: string }>>([]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -398,7 +399,7 @@ const DentistHome: React.FC = () => {
   };
 
   const handleFinalize = async () => {
-    if (!selectedQueueId) return;
+    if (!selectedQueueId || isSubmitting) return;
     if (!icdCode.trim()) {
       await showAlert({
         title: 'Thiếu thông tin',
@@ -407,78 +408,83 @@ const DentistHome: React.FC = () => {
       });
       return;
     }
-    const drugListStr = prescriptionDrugs.map(d => `${d.name} (${d.quantity} ${d.unit}) - ${d.instruction}`).join('; ');
-    const finalNotes = [
-      `Dị ứng: ${formAllergy}`,
-      `Bệnh lý nền: ${formCondition}`,
-      ...(formDOB.trim() ? [`Ngày sinh: ${formDOB.trim()}`] : []),
-      ...(formGender.trim() ? [`Giới tính: ${formGender.trim()}`] : []),
-      ...(formAddress.trim() ? [`Địa chỉ: ${formAddress.trim()}`] : []),
-      ...(chiefComplaint.trim() ? [`Bệnh sử: ${chiefComplaint.trim()}`] : []),
-      `Chẩn đoán: ${icdCode}`,
-      ...(drugListStr ? [`Đơn thuốc: ${drugListStr}`] : []),
-      ...(postTreatmentNotes.trim() ? [`Ghi chú sau điều trị: ${postTreatmentNotes.trim()}`] : []),
-    ].join(' | ');
+    setIsSubmitting(true);
+    try {
+      const drugListStr = prescriptionDrugs.map(d => `${d.name} (${d.quantity} ${d.unit}) - ${d.instruction}`).join('; ');
+      const finalNotes = [
+        `Dị ứng: ${formAllergy}`,
+        `Bệnh lý nền: ${formCondition}`,
+        ...(formDOB.trim() ? [`Ngày sinh: ${formDOB.trim()}`] : []),
+        ...(formGender.trim() ? [`Giới tính: ${formGender.trim()}`] : []),
+        ...(formAddress.trim() ? [`Địa chỉ: ${formAddress.trim()}`] : []),
+        ...(chiefComplaint.trim() ? [`Bệnh sử: ${chiefComplaint.trim()}`] : []),
+        `Chẩn đoán: ${icdCode}`,
+        ...(drugListStr ? [`Đơn thuốc: ${drugListStr}`] : []),
+        ...(postTreatmentNotes.trim() ? [`Ghi chú sau điều trị: ${postTreatmentNotes.trim()}`] : []),
+      ].join(' | ');
 
-    if (activePatient) {
-      // Chỉ gửi fields có giá trị thực — không ghi đè dữ liệu cũ bằng chuỗi rỗng
-      await updatePatientDetails(activePatient.id, {
-        criticalAllergy: formAllergy || undefined,
-        condition: formCondition || undefined,
-        gender: formGender || undefined,
-        dateOfBirth: formDOB || undefined,
-        address: formAddress || undefined,
-      });
+      if (activePatient) {
+        // Chỉ gửi fields có giá trị thực — không ghi đè dữ liệu cũ bằng chuỗi rỗng
+        await updatePatientDetails(activePatient.id, {
+          criticalAllergy: formAllergy || undefined,
+          condition: formCondition || undefined,
+          gender: formGender || undefined,
+          dateOfBirth: formDOB || undefined,
+          address: formAddress || undefined,
+        });
+      }
+
+      const result = await completeTreatment(
+        selectedQueueId,
+        activeTeethState,
+        finalNotes,
+        performedServices.length > 0 ? performedServices : ['S-08'],
+        treatmentType,
+        selectedPlanId,
+        uploadedFiles
+      );
+
+      if (!result.success) {
+        await showAlert({
+          title: 'Lỗi hệ thống',
+          message: `Không thể hoàn tất ca điều trị:\n${result.error || 'Lỗi không xác định từ máy chủ.'}`,
+          type: 'error'
+        });
+        return;
+      }
+
+      if (treatmentType === 'plan_session') {
+        await showAlert({
+          title: 'Thành công',
+          message: `Đã hoàn tất phiên điều trị thuộc Phác đồ #${selectedPlanId} thành công (Không sinh thêm hóa đơn)!`,
+          type: 'success'
+        });
+      } else if (treatmentType === 'plan_init') {
+        await showAlert({
+          title: 'Thành công',
+          message: 'Đã khởi tạo phác đồ điều trị thành công và gửi hóa đơn tổng sang quầy Thu ngân!',
+          type: 'success'
+        });
+      } else {
+        await showAlert({
+          title: 'Thành công',
+          message: 'Đã hoàn tất ca điều trị lâm sàng và gửi hóa đơn thanh toán thành công!',
+          type: 'success'
+        });
+      }
+
+      setShowSignModal(false);
+      setSelectedQueueId(null);
+      setPerformedServices([]);
+      setServiceSearch('');
+      setPrescriptionDrugs([]);
+      setTreatmentType('independent');
+      setSelectedPlanId('');
+      setUploadedFiles([]);
+      setPostTreatmentNotes('');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const result = await completeTreatment(
-      selectedQueueId,
-      activeTeethState,
-      finalNotes,
-      performedServices.length > 0 ? performedServices : ['S-08'],
-      treatmentType,
-      selectedPlanId,
-      uploadedFiles
-    );
-
-    if (!result.success) {
-      await showAlert({
-        title: 'Lỗi hệ thống',
-        message: `Không thể hoàn tất ca điều trị:\n${result.error || 'Lỗi không xác định từ máy chủ.'}`,
-        type: 'error'
-      });
-      return;
-    }
-
-    if (treatmentType === 'plan_session') {
-      await showAlert({
-        title: 'Thành công',
-        message: `Đã hoàn tất phiên điều trị thuộc Phác đồ #${selectedPlanId} thành công (Không sinh thêm hóa đơn)!`,
-        type: 'success'
-      });
-    } else if (treatmentType === 'plan_init') {
-      await showAlert({
-        title: 'Thành công',
-        message: 'Đã khởi tạo phác đồ điều trị thành công và gửi hóa đơn tổng sang quầy Thu ngân!',
-        type: 'success'
-      });
-    } else {
-      await showAlert({
-        title: 'Thành công',
-        message: 'Đã hoàn tất ca điều trị lâm sàng và gửi hóa đơn thanh toán thành công!',
-        type: 'success'
-      });
-    }
-
-    setShowSignModal(false);
-    setSelectedQueueId(null);
-    setPerformedServices([]);
-    setServiceSearch('');
-    setPrescriptionDrugs([]);
-    setTreatmentType('independent');
-    setSelectedPlanId('');
-    setUploadedFiles([]);
-    setPostTreatmentNotes('');
   };
 
   const handleOpenSignModal = async () => {
@@ -1558,13 +1564,23 @@ Ví dụ: - Không ăn trong 2 giờ
                   Quay lại sửa
                 </button>
                 <button
+                  disabled={isSubmitting}
                   onClick={() => {
                     handleFinalize();
                   }}
-                  className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all"
+                  className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Icon name="draw" className="text-[16px]" />
-                  Xác Nhận Ký & Gửi Hóa Đơn
+                  {isSubmitting ? (
+                    <>
+                      <Icon name="progress_activity" className="text-[16px] animate-spin" />
+                      Đang xử lý ký bệnh án...
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="draw" className="text-[16px]" />
+                      Xác Nhận Ký & Gửi Hóa Đơn
+                    </>
+                  )}
                 </button>
               </div>
             </div>

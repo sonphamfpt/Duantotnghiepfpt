@@ -264,30 +264,42 @@ export const PatientAppointments: React.FC = () => {
 
                     {/* Right: Actions */}
                     <div className="flex sm:flex-col gap-2 sm:w-40 justify-end sm:justify-start pt-4 sm:pt-0 sm:border-l border-outline-variant sm:pl-6">
-                      <button
-                        onClick={() => setQrCodeApptId(appt.id)}
-                        className="flex-1 sm:flex-none px-4 py-2.5 bg-primary text-on-primary rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all cursor-pointer shadow-sm"
-                      >
-                        <Icon name="qr_code_2" className="text-[18px]" />
-                        Mã Check-in
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (appt.isLateCancel) {
-                            alert('Chỉ được hủy lịch trực tuyến trước giờ khám ít nhất 1 tiếng. Vui lòng gọi Hotline 1900-xxxx để được hỗ trợ.');
-                          } else {
-                            setCancelId(appt.id);
-                          }
-                        }}
-                        className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border ${
-                          appt.isLateCancel
-                            ? 'bg-surface-container-low text-error/30 border-dashed border-error/20 cursor-not-allowed'
-                            : 'border-error/30 text-error hover:bg-error-container/30 cursor-pointer'
-                        }`}
-                      >
-                        <Icon name="event_busy" className="text-[18px]" />
-                        Huỷ lịch
-                      </button>
+                      {appt.status === 'In-Progress' ? (
+                        <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 text-center">
+                          <p className="text-xs font-bold text-primary flex items-center justify-center gap-1">
+                            <Icon name="stethoscope" className="text-[16px] animate-pulse" />
+                            Đang khám bệnh
+                          </p>
+                          <p className="text-[10px] text-on-surface-variant mt-1">Đang điều trị tại phòng</p>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setQrCodeApptId(appt.id)}
+                            className="flex-1 sm:flex-none px-4 py-2.5 bg-primary text-on-primary rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all cursor-pointer shadow-sm"
+                          >
+                            <Icon name="qr_code_2" className="text-[18px]" />
+                            Mã Check-in
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (appt.isLateCancel) {
+                                alert('Chỉ được hủy lịch trực tuyến trước giờ khám ít nhất 1 tiếng. Vui lòng gọi Hotline 1900-xxxx để được hỗ trợ.');
+                              } else {
+                                setCancelId(appt.id);
+                              }
+                            }}
+                            className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border ${
+                              appt.isLateCancel
+                                ? 'bg-surface-container-low text-error/30 border-dashed border-error/20 cursor-not-allowed'
+                                : 'border-error/30 text-error hover:bg-error-container/30 cursor-pointer'
+                            }`}
+                          >
+                            <Icon name="event_busy" className="text-[18px]" />
+                            Huỷ lịch
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -529,7 +541,7 @@ export const PatientAppointments: React.FC = () => {
       <ReviewModal
         isOpen={Boolean(activeReviewId)}
         onClose={() => setActiveReviewId(null)}
-        patientId="P-9902"
+        patientId={patientId}
         appointmentId={activeReviewId || undefined}
         serviceName={mappedAppointments.find(a => a.id === activeReviewId)?.service}
       />

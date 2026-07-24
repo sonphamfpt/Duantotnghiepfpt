@@ -228,6 +228,17 @@ export async function updateTicketStatus(
     },
   });
 
+  if (newStatus === 'Completed' && updated.appointmentId) {
+    try {
+      await prisma.appointment.update({
+        where: { appointmentId: updated.appointmentId },
+        data: { status: 'Completed' },
+      });
+    } catch (syncErr) {
+      console.error('Lỗi đồng bộ trạng thái lịch hẹn sang Completed:', syncErr);
+    }
+  }
+
   try {
     let msg = '';
     if (newStatus === 'InChair') {

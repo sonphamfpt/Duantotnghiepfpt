@@ -73,8 +73,8 @@ export class AuthController {
       }
 
       // Xác định purpose: nếu có startTime (đặt lịch) thì 'booking', ngược lại 'register'
-      const { dentistId, startTime, serviceId } = req.body;
-      const purpose = startTime ? 'booking' : 'register';
+      const { dentistId, startTime, serviceId, purpose: reqPurpose } = req.body;
+      const purpose = reqPurpose || (startTime ? 'booking' : 'register');
 
       if (phone && startTime) {
         const patient = await prisma.patient.findUnique({ where: { phone: phone.trim() } });
