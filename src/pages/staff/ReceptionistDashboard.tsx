@@ -5,11 +5,10 @@ import { useClinic } from '../../context/ClinicContext';
 import { BookingModal } from '../../components/BookingModal';
 import { CheckInModal } from '../../components/CheckInModal';
 
-// Tab imports
 import { ReceptionistQueue } from './receptionist-tabs/ReceptionistQueue';
 import { ReceptionistAppointments } from './receptionist-tabs/ReceptionistAppointments';
 import { ReceptionistReminders } from './receptionist-tabs/ReceptionistReminders';
-import { ReceptionistHistory } from './receptionist-tabs/ReceptionistHistory';
+import { ReceptionistCancelHistory } from './receptionist-tabs/ReceptionistCancelHistory';
 
 
 // ─── Home: Bàn tiếp nhận ──────────────────────────────────────────────────────
@@ -19,6 +18,7 @@ const ReceptionistHome: React.FC = () => {
 
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
+  const [checkInInitialMode, setCheckInInitialMode] = useState<'existing' | 'new' | 'qr'>('qr');
 
   const [now] = useState(new Date());
   const hour = now.getHours();
@@ -101,16 +101,19 @@ const ReceptionistHome: React.FC = () => {
       {/* ── 2 Action Buttons Primary ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <button
-          id="btn-checkin-home"
-          onClick={() => setShowCheckInModal(true)}
+          id="btn-qr-checkin-home"
+          onClick={() => {
+            setCheckInInitialMode('qr');
+            setShowCheckInModal(true);
+          }}
           className="h-28 bg-primary-container text-white rounded-2xl px-6 flex items-center gap-5 hover:scale-[1.02] transition-transform shadow-xl shadow-primary-container/30 cursor-pointer text-left"
         >
           <div className="bg-white/20 p-4 rounded-xl shrink-0">
-            <Icon name="how_to_reg" className="text-4xl" />
+            <Icon name="qr_code_scanner" className="text-4xl" />
           </div>
           <div>
-            <h3 className="text-headline-sm font-bold text-white">Đón Tiếp Bệnh Nhân</h3>
-            <p className="text-sm opacity-80 mt-0.5">Check-in • Bệnh nhân cũ / Mới / Quét QR</p>
+            <h3 className="text-headline-sm font-bold text-white">Check-in Mã QR</h3>
+            <p className="text-sm opacity-80 mt-0.5">Quét mã QR lịch hẹn để check-in tự động</p>
           </div>
         </button>
 
@@ -284,7 +287,8 @@ const ReceptionistHome: React.FC = () => {
       <CheckInModal
         isOpen={showCheckInModal}
         onClose={() => setShowCheckInModal(false)}
-        title="Đón tiếp & Check-in bệnh nhân"
+        title="Check-in Quét mã QR"
+        initialMode={checkInInitialMode}
       />
       <BookingModal isOpen={isBookingOpen} onClose={() => setIsBookingOpen(false)} />
     </div>
@@ -300,7 +304,7 @@ export const ReceptionistDashboard: React.FC = () => {
     case 'queue': return <ReceptionistQueue />;
     case 'appointments': return <ReceptionistAppointments />;
     case 'reminders': return <ReceptionistReminders />;
-    case 'history': return <ReceptionistHistory />;
+    case 'history': return <ReceptionistCancelHistory />;
 
     default: return <ReceptionistHome />;
   }

@@ -9,16 +9,24 @@ interface CheckInModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
+  initialMode?: CheckInMode;
 }
 
 export const CheckInModal: React.FC<CheckInModalProps> = ({
   isOpen,
   onClose,
-  title = 'Đón tiếp & Check-in',
+  title = 'Check-in Quét mã QR',
+  initialMode = 'qr',
 }) => {
   const { queue, patients, dentists, services, checkInPatient, addPatient, appointments } = useClinic();
 
-  const [mode, setMode] = useState<CheckInMode>('existing');
+  const [mode, setMode] = useState<CheckInMode>(initialMode);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+    }
+  }, [isOpen, initialMode]);
   const [isScanning, setIsScanning] = useState(false);
   const [existingPatientId, setExistingPatientId] = useState('');
   const [selectedDentistId, setSelectedDentistId] = useState('');
@@ -201,25 +209,6 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
                 
                 {/* LEFT COLUMN: Info */}
                 <div className="w-full md:w-1/2 p-6 overflow-y-auto custom-scrollbar border-r border-outline-variant space-y-5">
-                  <div className="flex border border-outline-variant rounded-xl overflow-hidden shrink-0">
-                    {[
-                      { key: 'qr' as const, label: 'Quét QR' },
-                      { key: 'existing' as const, label: 'Bệnh nhân cũ' },
-                      { key: 'new' as const, label: 'Đăng ký mới' },
-                    ].map((option) => (
-                      <button
-                        key={option.key}
-                        type="button"
-                        onClick={() => setMode(option.key)}
-                        className={`flex-1 py-2.5 text-xs font-bold transition-all cursor-pointer ${
-                          mode === option.key ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:bg-surface-container-low'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-
                   {mode === 'qr' && (
                     <div className="p-6 flex flex-col items-center justify-center border-2 border-dashed border-primary/30 bg-primary/5 rounded-2xl space-y-4">
                       <div className="relative">
