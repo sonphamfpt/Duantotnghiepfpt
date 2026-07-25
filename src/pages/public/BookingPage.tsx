@@ -381,6 +381,8 @@ const formatLocalDateStr = (dateStr: string): string => {
     createAppointment(otpToken);
   };
 
+  const selectedService = services.find(s => s.id === selectedServiceId);
+
   const morningSlots = availableSlots.filter(slot => {
     const h = getVietnamHour(slot);
     return h >= 8 && h < 12;
@@ -680,7 +682,7 @@ const formatLocalDateStr = (dateStr: string): string => {
                     {/* Time slot */}
                     <div>
                       <label className="block text-xs font-bold uppercase text-[#475569] mb-2">
-                        Khung giờ hẹn *
+                        Khung giờ hẹn * {selectedService && <span className="normal-case text-[#005eb8] font-semibold">({selectedService.durationMin} phút khám + 15p chuẩn bị/ca)</span>}
                       </label>
                       <select
                         required

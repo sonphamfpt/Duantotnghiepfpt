@@ -70,6 +70,17 @@ export const otpHelper = {
       );
     }
 
+    // 1b. Kiểm tra 60s cooldown (không cho phép spam nút gửi liên tục)
+    const existingOtp = await redis.get(otpKey);
+    if (existingOtp) {
+      const ttl = await redis.ttl(otpKey);
+      throw new AppError(
+        429,
+        `Mã OTP vừa mới được gửi tới SĐT ${phoneTrim}. Vui lòng chờ ${ttl} giây trước khi yêu cầu mã mới.`,
+        'OTP_COOLDOWN'
+      );
+    }
+
     // 2. Kiểm tra rate-limit gửi
     const currentSendsStr = await redis.get(countKey);
     const currentSends = currentSendsStr ? parseInt(currentSendsStr, 10) : 0;

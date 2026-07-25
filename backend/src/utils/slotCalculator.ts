@@ -120,8 +120,9 @@ export function calculateAvailableSlots(
       }
     }
 
-    // Nếu không chồng chéo, đây là một mốc giờ khả dụng hợp lệ
-    if (!isOverlap && (!isToday || currentSlotStart > nowMs)) {
+    // Thêm Grace Period (15 phút): Chỉ cho phép chọn slot khám cách thời điểm hiện tại ít nhất 15 phút
+    const GRACE_PERIOD_MS = 15 * 60 * 1000;
+    if (!isOverlap && (!isToday || currentSlotStart >= nowMs + GRACE_PERIOD_MS)) {
       slots.push(new Date(currentSlotStart).toISOString());
     }
 

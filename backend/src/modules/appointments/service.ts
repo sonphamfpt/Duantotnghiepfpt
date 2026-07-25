@@ -355,8 +355,11 @@ export class AppointmentsService {
         },
       });
 
-      // 5. Sau khi đặt lịch thành công, xóa cache slots của bác sĩ trong ngày này
+      // 5. Sau khi đặt lịch thành công, xóa ngay lập tức cache slots của bác sĩ trong ngày này
       const dateStr = requestedDateStr;
+      const exactCacheKey = `slots:${dentistId}:${dateStr}:${serviceId}`;
+      await redis.del(exactCacheKey);
+
       const cachePattern = `slots:${dentistId}:${dateStr}:*`;
       const keys = await redis.keys(cachePattern);
       if (keys.length > 0) {
