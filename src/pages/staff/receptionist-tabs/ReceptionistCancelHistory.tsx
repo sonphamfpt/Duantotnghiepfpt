@@ -8,9 +8,60 @@ export const ReceptionistCancelHistory: React.FC = () => {
   const [filterReason, setFilterReason] = useState<'all' | 'auto' | 'manual'>('all');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
+  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('all');
+
+  // Helper bóc tách thời gian lịch hẹn bị hủy chính xác (hỗ trợ định dạng ISO, YYYY-MM-DD và DD/MM/YYYY @ HH:MM)
+  const parseAppointmentDate = (a?: any): Date => {
+    if (!a) return new Date();
+    if (a.cancelledAt) {
+      const d = new Date(a.cancelledAt);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (a.time) {
+      const timeStr = a.time.toString();
+      if (timeStr.includes('@')) {
+        const [datePart, timePart] = timeStr.split('@').map((s: string) => s.trim());
+        const parts = datePart.split('/').map(Number);
+        const times = timePart ? timePart.split(':').map(Number) : [0, 0];
+        if (parts.length === 3) {
+          return new Date(parts[2], parts[1] - 1, parts[0], times[0] || 0, times[1] || 0);
+        }
+      } else if (timeStr.includes('/')) {
+        const parts = timeStr.split('/').map(Number);
+        if (parts.length === 3) {
+          return new Date(parts[2], parts[1] - 1, parts[0]);
+        }
+      }
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (a.createdAt) {
+      const d = new Date(a.createdAt);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  };
+
+  // Helper kiểm tra ngày có nằm trong mốc lọc được chọn hay không
+  const isDateInFilter = (dateObj: Date, filter: 'today' | 'yesterday' | '7days' | '30days' | 'all'): boolean => {
+    if (filter === 'all') return true;
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfTarget = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()).getTime();
+
+    const diffDays = Math.round((startOfToday - startOfTarget) / (1000 * 3600 * 24));
+
+    if (filter === 'today') return diffDays === 0;
+    if (filter === 'yesterday') return diffDays === 1;
+    if (filter === '7days') return diffDays >= 0 && diffDays <= 7;
+    if (filter === '30days') return diffDays >= 0 && diffDays <= 30;
+    return true;
+  };
+
   // Lọc lịch hẹn đã bị hủy (Cancelled)
-  const cancelledAppointments = appointments
-    .filter(a => a.status === 'Cancelled')
+  const cancelledAppointments = (appointments || [])
+    .filter(a => a && a.status === 'Cancelled')
     .filter(a => {
       if (filterReason === 'auto') {
         return a.cancelReason?.includes('Tự động hủy') || a.cancelReason?.includes('đổi ca');
@@ -19,6 +70,10 @@ export const ReceptionistCancelHistory: React.FC = () => {
         return !a.cancelReason?.includes('Tự động hủy') && !a.cancelReason?.includes('đổi ca');
       }
       return true;
+    })
+    .filter(a => {
+      const dateObj = parseAppointmentDate(a);
+      return isDateInFilter(dateObj, dateFilter);
     })
     .filter(a => {
       if (!searchQuery.trim()) return true;
@@ -31,8 +86,8 @@ export const ReceptionistCancelHistory: React.FC = () => {
       );
     })
     .sort((a, b) => {
-      const dateA = a.cancelledAt ? new Date(a.cancelledAt).getTime() : 0;
-      const dateB = b.cancelledAt ? new Date(b.cancelledAt).getTime() : 0;
+      const dateA = parseAppointmentDate(a).getTime();
+      const dateB = parseAppointmentDate(b).getTime();
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
     });
 
@@ -47,7 +102,7 @@ export const ReceptionistCancelHistory: React.FC = () => {
   const getCancelTypeInfo = (reason?: string) => {
     if (reason?.includes('Tự động hủy') || reason?.includes('đổi ca')) {
       return {
-        label: 'Tự động hủy (Đổi ca)',
+        label: 'Tự động hủy',
         color: 'text-orange-700',
         bg: 'bg-orange-50 border-orange-200',
         icon: 'no_accounts',
@@ -61,17 +116,25 @@ export const ReceptionistCancelHistory: React.FC = () => {
     };
   };
 
-  const formatCancelledAt = (dateStr?: string) => {
-    if (!dateStr) return 'Không rõ thời gian';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
+  const formatCancelledAt = (appt?: any) => {
+    if (!appt) return 'Không rõ thời gian';
+    const dateStr = appt.cancelledAt || appt.createdAt;
+    if (dateStr) {
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleString('vi-VN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        });
+      }
+    }
+    if (appt.time) {
+      return appt.time;
+    }
+    return 'Vừa xong';
   };
 
   return (
@@ -99,7 +162,7 @@ export const ReceptionistCancelHistory: React.FC = () => {
             color: 'text-red-700 bg-red-50 border-red-200',
           },
           {
-            label: 'Tự động hủy (Do bác sĩ nghỉ/đổi ca)',
+            label: 'Tự động hủy',
             value: stats.auto,
             icon: 'no_accounts',
             color: 'text-orange-700 bg-orange-50 border-orange-200',
@@ -141,11 +204,26 @@ export const ReceptionistCancelHistory: React.FC = () => {
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          {/* Date Filter Dropdown */}
+          <div className="relative shrink-0">
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value as any)}
+              className="bg-slate-50 border border-outline-variant/60 hover:border-slate-400 rounded-xl px-3.5 py-2 text-xs font-bold text-on-surface-variant outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 transition-all cursor-pointer shadow-2xs font-headline text-left pr-7"
+            >
+              <option value="today">Hôm nay</option>
+              <option value="yesterday">Hôm qua</option>
+              <option value="7days">7 ngày trước</option>
+              <option value="30days">30 ngày trước</option>
+              <option value="all">Tất cả lịch sử</option>
+            </select>
+          </div>
+
           {/* Sort toggle */}
           <button
             onClick={() => setSortOrder(prev => prev === 'newest' ? 'oldest' : 'newest')}
-            className="px-3 py-2 bg-surface-container hover:bg-slate-200 rounded-xl text-xs font-bold text-on-surface-variant transition-all flex items-center gap-1.5 cursor-pointer border border-outline-variant/50"
+            className="px-3 py-2 bg-surface-container hover:bg-slate-200 rounded-xl text-xs font-bold text-on-surface-variant transition-all flex items-center gap-1.5 cursor-pointer border border-outline-variant/50 shrink-0"
             title={sortOrder === 'newest' ? 'Đang sắp xếp: Mới nhất trước' : 'Đang sắp xếp: Cũ nhất trước'}
           >
             <Icon name={sortOrder === 'newest' ? 'arrow_downward' : 'arrow_upward'} className="text-[14px]" />
@@ -206,7 +284,7 @@ export const ReceptionistCancelHistory: React.FC = () => {
                           <p className="text-xs font-bold text-on-surface">{appt.dentistName.replace('Bác sĩ ', 'BS. ')}</p>
                           <p className="text-[10px] text-on-surface-variant mt-0.5">
                             <Icon name="schedule" className="text-[10px] inline mr-0.5 align-middle" />
-                            Hủy: {formatCancelledAt(appt.cancelledAt)}
+                            Hủy: {formatCancelledAt(appt)}
                           </p>
                         </div>
                         <span className={`inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-bold border ${
@@ -235,7 +313,7 @@ export const ReceptionistCancelHistory: React.FC = () => {
                       <span>{appt.dentistName.replace('Bác sĩ ', 'BS. ')}</span>
                       <span>
                         <Icon name="schedule" className="text-[10px] inline mr-0.5 align-middle" />
-                        Hủy: {formatCancelledAt(appt.cancelledAt)}
+                        Hủy: {formatCancelledAt(appt)}
                       </span>
                     </div>
 

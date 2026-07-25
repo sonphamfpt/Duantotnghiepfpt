@@ -80,7 +80,7 @@ export const ReceptionistAppointments: React.FC = () => {
   const { showConfirm, showAlert } = useConfirm();
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [filterDentist, setFilterDentist] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('pending');
+  const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewDay, setViewDay] = useState<'today' | 'tomorrow' | 'week' | 'custom'>('today');
   const [customDate, setCustomDate] = useState('');
@@ -373,13 +373,15 @@ export const ReceptionistAppointments: React.FC = () => {
         </select>
 
         {/* Clear filters */}
-        {(filterDentist !== 'all' || filterStatus !== 'pending' || searchQuery || showOnlyLate) && (
+        {(filterDentist !== 'all' || filterStatus !== 'all' || searchQuery || showOnlyLate || viewDay !== 'today' || customDate !== '') && (
           <button
             onClick={() => {
               setFilterDentist('all');
               setFilterStatus('all');
               setSearchQuery('');
               setShowOnlyLate(false);
+              setViewDay('today');
+              setCustomDate('');
             }}
             className="text-xs text-on-surface-variant border border-outline-variant rounded-xl px-3 py-2 hover:bg-surface-container cursor-pointer flex items-center gap-1"
           >
