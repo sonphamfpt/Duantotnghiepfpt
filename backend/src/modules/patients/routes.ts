@@ -245,4 +245,35 @@ router.patch('/:id/unlock', authGuard, requireRole('receptionist', 'manager'), a
   }
 });
 
+// ─── GET /api/patients/tiers ──────────────────────────────────────────────────
+router.get('/tiers', authGuard, requireRole('manager'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tiers = await prisma.membershipTier.findMany({
+      orderBy: { minPoints: 'asc' },
+    });
+    return res.status(200).json({ success: true, data: tiers });
+  } catch (err) { return next(err); }
+});
+
+// ─── PATCH /api/patients/tiers/:id ───────────────────────────────────────────
+router.patch('/tiers/:id', authGuard, requireRole('manager'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const tierId = parseInt(req.params.id);
+    if (isNaN(tierId)) throw new AppError(400, 'ID hạng không hợp lệ.', 'VALIDATION_ERROR');
+
+    const { discountPercent, minPoints, name } = req.body;
+    const data: { discountPercent?: number; minPoints?: number; name?: string } = {};
+    if (discountPercent !== undefined) data.discountPercent = Number(discountPercent);
+    if (minPoints !== undefined) data.minPoints = Number(minPoints);
+    if (name !== undefined) data.name = String(name).trim();
+
+    const tier = await prisma.membershipTier.update({
+      where: { tierId },
+      data,
+    });
+    return res.status(200).json({ success: true, data: tier });
+  } catch (err) { return next(err); }
+});
+
 export default router;
+

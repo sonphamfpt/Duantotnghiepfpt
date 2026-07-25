@@ -8,10 +8,37 @@ import { requireRole } from '../../middlewares/roleGuard';
 const router = Router();
 
 // ─── GET /api/services ─────────────────────────────────────────────────────────
+// Dùng cho trang public/booking: chỉ trả về dịch vụ đang hoạt động
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const list = await prisma.service.findMany({
       where: { isActive: true },
+      include: { category: true },
+      orderBy: { serviceId: 'asc' },
+    });
+
+    const formatted = list.map(s => ({
+      id: `S-${s.serviceId.toString().padStart(2, '0')}`,
+      name: s.name,
+      price: Number(s.price),
+      duration: `${s.durationMinutes} phút`,
+      durationMin: s.durationMinutes,
+      category: s.category?.name || 'Điều trị chung',
+      isActive: s.isActive,
+      description: s.description || 'Dịch vụ điều trị răng miệng chất lượng cao.',
+    }));
+
+    return res.status(200).json({ success: true, data: formatted });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ─── GET /api/services/all ─────────────────────────────────────────────────────
+// Dùng cho trang quản lý (Manager Settings): trả về TẤT CẢ dịch vụ (bao gồm cả đã tắt)
+router.get('/all', authGuard, requireRole('manager'), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const list = await prisma.service.findMany({
       include: { category: true },
       orderBy: { serviceId: 'asc' },
     });

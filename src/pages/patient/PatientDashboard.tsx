@@ -74,7 +74,7 @@ const PatientHome: React.FC = () => {
   const recordsCount = records.length;
 
   // 4. Số hóa đơn đã thanh toán / hoàn tất
-  const paidInvoicesCount = patientInvoices.filter(i => i.status === 'Paid' || i.status === 'Completed' || i.status === 'Partially Paid').length;
+  const paidInvoicesCount = patientInvoices.filter(i => i.status === 'Paid' || (i.status as string) === 'Completed' || i.status === 'Partially Paid').length;
 
   // Tổng hợp số lượt khám cao nhất từ tất cả nguồn dữ liệu thực tế
   const completedCount = Math.max(completedApptCount, completedQueueCount, recordsCount, paidInvoicesCount);

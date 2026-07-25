@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useClinic } from '../../../context/ClinicContext';
 import { Icon } from '../../../components/Icon';
 import { useConfirm } from '../../../context/ConfirmContext';
+import { exportToExcel } from '../../../utils/exportToExcel';
 
 // Dynamic helper to calculate patient ranking/tier based on visit frequency (number of medical records)
 export const getPatientTier = (recordCount: number) => {
@@ -69,6 +70,36 @@ export const ManagerPatients: React.FC = () => {
     return matchesSearch && matchesTier && matchesFrequency && matchesStatus;
   });
 
+  const handleExportExcel = () => {
+    const exportData = filteredPatients.map((p) => {
+      const stats = getPatientStats(p.id);
+      const tierObj = getPatientTier(stats.recordCount);
+      return {
+        id: p.id,
+        name: p.name,
+        phone: p.phone,
+        gender: (p as any).gender || 'Chưa rõ',
+        recordCount: stats.recordCount,
+        cancelCount: stats.cancelCount,
+        balance: (p as any).balance || 0,
+        tier: tierObj.code,
+        status: stats.isLocked ? 'Đã bị khóa' : 'Bình thường',
+      };
+    });
+
+    exportToExcel(exportData, 'Danh_Sach_Benh_Nhan_GoodSmile', {
+      id: 'Mã bệnh nhân',
+      name: 'Họ tên',
+      phone: 'Số điện thoại',
+      gender: 'Giới tính',
+      recordCount: 'Số lần khám',
+      cancelCount: 'Số lần hủy lịch',
+      balance: 'Số dư ví (VND)',
+      tier: 'Hạng thành viên',
+      status: 'Trạng thái tài khoản',
+    });
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Title */}
@@ -82,9 +113,18 @@ export const ManagerPatients: React.FC = () => {
             <p className="text-xs text-on-surface-variant">Thống kê số lần khám, phân hạng VIP và quản lý khóa/mở khóa tài khoản bảo vệ</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant bg-slate-50 border border-outline-variant/60 rounded-xl px-4 py-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-purple-600 animate-pulse"></span>
-          Tổng số: {patients.length} khách hàng
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportExcel}
+            className="px-4 py-2 rounded-xl bg-green-700 text-white font-bold text-xs flex items-center gap-2 hover:bg-green-800 transition-colors cursor-pointer shadow-sm"
+          >
+            <Icon name="description" className="text-[18px]" />
+            Xuất File Excel
+          </button>
+          <div className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant bg-slate-50 border border-outline-variant/60 rounded-xl px-4 py-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-600 animate-pulse"></span>
+            Tổng số: {patients.length} khách hàng
+          </div>
         </div>
       </div>
 

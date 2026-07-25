@@ -56,13 +56,10 @@ model Room {
   isActive       Boolean         @default(true) @map("is_active")
   appointments   Appointment[]
   dentistShifts  DentistShift[]
-   dentists       Dentist[]
+  dentists       Dentist[]
   invoices       Invoice[]
   medicalRecords MedicalRecord[]
-   dentists       Dentist[]
-  invoices       Invoice[]
-  medicalRecords MedicalRecord[]
-   queueTickets   QueueTicket[]
+  queueTickets   QueueTicket[]
 
   @@map("rooms")
 }

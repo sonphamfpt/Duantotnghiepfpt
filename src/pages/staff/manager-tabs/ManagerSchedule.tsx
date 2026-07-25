@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { exportToExcel } from '../../../utils/exportToExcel';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const SHIFT_CONFIG = {
-  Morning:   { label: 'Ca sáng',  time: '08:00 – 14:00', color: 'bg-sky-50 border-sky-200 text-sky-800',       dot: 'bg-sky-400',     dotRing: 'ring-sky-200' },
+  Morning: { label: 'Ca sáng', time: '08:00 – 14:00', color: 'bg-sky-50 border-sky-200 text-sky-800', dot: 'bg-sky-400', dotRing: 'ring-sky-200' },
   Afternoon: { label: 'Ca chiều', time: '14:00 – 20:00', color: 'bg-emerald-50 border-emerald-200 text-emerald-800', dot: 'bg-emerald-400', dotRing: 'ring-emerald-200' },
-  Full:      { label: 'Cả ngày',  time: '08:00 – 20:00', color: 'bg-amber-50 border-amber-200 text-amber-800',  dot: 'bg-amber-400',   dotRing: 'ring-amber-200' },
+  Full: { label: 'Cả ngày', time: '08:00 – 20:00', color: 'bg-amber-50 border-amber-200 text-amber-800', dot: 'bg-amber-400', dotRing: 'ring-amber-200' },
 };
 
 const DENTIST_ACCENT: Record<string, string> = {
@@ -250,17 +251,38 @@ export const ManagerSchedule: React.FC = () => {
     alert('Đã đổi ca và gửi thông báo đến lễ tân thành công!');
   };
 
+  const handleExportScheduleExcel = () => {
+    const exportData = doctorShifts.map((s) => {
+      const dentist = dentists.find((d) => d.id === s.dentistId);
+      const shiftConfig = SHIFT_CONFIG[s.shiftType as keyof typeof SHIFT_CONFIG];
+      return {
+        id: s.id,
+        date: s.date,
+        dentistName: dentist?.name || s.dentistName || 'Bác sĩ',
+        room: s.room || dentist?.room || 'Chưa xếp',
+        shiftType: shiftConfig ? shiftConfig.label : s.shiftType,
+        time: shiftConfig ? shiftConfig.time : 'Không xác định',
+      };
+    });
+
+    exportToExcel(exportData, 'Lich_Lam_Viec_Bac_Si_GoodSmile', {
+      id: 'Mã ca trực',
+      date: 'Ngày trực',
+      dentistName: 'Họ tên bác sĩ',
+      room: 'Phòng khám',
+      shiftType: 'Ca làm việc',
+      time: 'Khung giờ',
+    });
+  };
+
   return (
-    <div className="space-y-5 animate-in fade-in duration-200">
+    <div className="space-y-6 animate-in fade-in duration-200">
 
       {/* ── Page Header ── */}
-      <div className="flex flex-wrap gap-4 items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-outline-variant shadow-sm">
         <div>
-          <h2 className="font-headline-md text-headline-md text-on-surface flex items-center gap-2">
-            <Icon name="calendar_month" className="text-purple-500" />
-            Quản Lý Lịch Làm Việc Bác Sĩ
-          </h2>
-          <p className="text-sm text-on-surface-variant mt-0.5">Phân công, chỉnh sửa và quản lý lịch trực của đội ngũ bác sĩ</p>
+          <h2 className="font-bold text-headline-sm text-on-surface">Lịch Làm Việc Bác Sĩ</h2>
+          <p className="text-xs text-on-surface-variant mt-0.5">Phân ca trực, xếp phòng khám và xử lý xung đột đổi ca thời gian thực</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -277,7 +299,7 @@ export const ManagerSchedule: React.FC = () => {
               onClick={goToToday}
               className="px-4 py-2 text-sm font-bold text-on-surface hover:bg-purple-50 hover:text-purple-700 cursor-pointer transition-colors"
             >
-              {weekDays[0].dayNum.toString().padStart(2,'0')}/{weekDays[0].month.toString().padStart(2,'0')} – {weekDays[6].dayNum.toString().padStart(2,'0')}/{weekDays[6].month.toString().padStart(2,'0')}/{weekStart.getFullYear()}
+              {weekDays[0].dayNum.toString().padStart(2, '0')}/{weekDays[0].month.toString().padStart(2, '0')} – {weekDays[6].dayNum.toString().padStart(2, '0')}/{weekDays[6].month.toString().padStart(2, '0')}/{weekStart.getFullYear()}
             </button>
             <button
               onClick={goToNextWeek}
@@ -294,6 +316,15 @@ export const ManagerSchedule: React.FC = () => {
             className="px-4 py-2.5 bg-white border border-outline-variant hover:bg-purple-50 hover:text-purple-700 text-on-surface rounded-xl font-bold text-xs cursor-pointer transition-all shadow-sm"
           >
             Hôm nay
+          </button>
+
+          {/* Export Excel button */}
+          <button
+            onClick={handleExportScheduleExcel}
+            className="px-4 py-2.5 bg-green-700 hover:bg-green-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer transition-all"
+          >
+            <Icon name="description" className="text-[16px]" />
+            Xuất File Excel
           </button>
 
           {/* Add new shift button */}
@@ -372,11 +403,10 @@ export const ManagerSchedule: React.FC = () => {
             <div className="space-y-1.5">
               <button
                 onClick={() => setFilterDentistId('ALL')}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  filterDentistId === 'ALL'
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${filterDentistId === 'ALL'
                     ? 'bg-purple-50 text-purple-700 border border-purple-200'
                     : 'text-on-surface-variant hover:bg-surface-container border border-transparent'
-                }`}
+                  }`}
               >
                 <Icon name="groups" className="text-sm" />
                 Tất cả bác sĩ
@@ -385,11 +415,10 @@ export const ManagerSchedule: React.FC = () => {
                 <button
                   key={doc.id}
                   onClick={() => setFilterDentistId(doc.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border-l-4 ${DENTIST_ACCENT[doc.id] || 'border-l-outline-variant'} ${
-                    filterDentistId === doc.id
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border-l-4 ${DENTIST_ACCENT[doc.id] || 'border-l-outline-variant'} ${filterDentistId === doc.id
                       ? 'bg-surface-container border border-outline-variant'
                       : 'text-on-surface-variant hover:bg-surface-container border border-transparent'
-                  }`}
+                    }`}
                 >
                   <img src={doc.avatar} alt={doc.name} className="w-6 h-6 rounded-full object-cover shrink-0" />
                   <span className="truncate">{doc.name.replace('Bác sĩ ', 'BS. ')}</span>
@@ -426,7 +455,7 @@ export const ManagerSchedule: React.FC = () => {
                         className={`py-3 px-2 text-center border-l border-outline-variant/30 ${isToday ? 'bg-purple-50 text-purple-600' : isWeekend ? 'text-red-400' : ''}`}
                       >
                         <div>{day.dayOfWeek}</div>
-                        <div className="text-[10px] font-bold opacity-70 mt-0.5">{day.dayNum.toString().padStart(2,'0')}/{day.month.toString().padStart(2,'0')}</div>
+                        <div className="text-[10px] font-bold opacity-70 mt-0.5">{day.dayNum.toString().padStart(2, '0')}/{day.month.toString().padStart(2, '0')}</div>
                         {isToday && <div className="text-[8px] font-black bg-purple-600 text-white px-1.5 py-0.5 rounded-full mt-0.5 inline-block">HÔM NAY</div>}
                       </th>
                     );
@@ -550,8 +579,8 @@ export const ManagerSchedule: React.FC = () => {
             <div className="space-y-2">
               {[
                 { icon: 'calendar_today', label: 'Ngày trực', value: new Date(selectedShift.date).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) },
-                { icon: 'schedule',       label: 'Ca làm việc', value: `${SHIFT_CONFIG[selectedShift.shiftType].label} (${SHIFT_CONFIG[selectedShift.shiftType].time})` },
-                { icon: 'meeting_room',   label: 'Phòng khám',  value: selectedShift.room },
+                { icon: 'schedule', label: 'Ca làm việc', value: `${SHIFT_CONFIG[selectedShift.shiftType].label} (${SHIFT_CONFIG[selectedShift.shiftType].time})` },
+                { icon: 'meeting_room', label: 'Phòng khám', value: selectedShift.room },
               ].map(row => (
                 <div key={row.label} className="flex items-center gap-3 text-sm">
                   <Icon name={row.icon} className="text-on-surface-variant text-[18px] shrink-0" />
@@ -645,11 +674,10 @@ export const ManagerSchedule: React.FC = () => {
                       key={key}
                       type="button"
                       onClick={() => setAddForm(prev => ({ ...prev, shiftType: key as 'Morning' | 'Afternoon' | 'Full' }))}
-                      className={`p-2.5 rounded-xl border-2 text-center cursor-pointer transition-all ${
-                        addForm.shiftType === key
+                      className={`p-2.5 rounded-xl border-2 text-center cursor-pointer transition-all ${addForm.shiftType === key
                           ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm'
                           : 'border-outline-variant bg-white text-on-surface-variant hover:border-purple-300'
-                      }`}
+                        }`}
                     >
                       <span className={`w-2 h-2 rounded-full inline-block mb-1 ${cfg.dot}`} />
                       <p className="text-xs font-bold">{cfg.label}</p>
@@ -734,9 +762,8 @@ export const ManagerSchedule: React.FC = () => {
                     key={opt.id}
                     type="button"
                     onClick={() => setEditAction(opt.id)}
-                    className={`flex-1 min-w-[100px] py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                      editAction === opt.id ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
+                    className={`flex-1 min-w-[100px] py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${editAction === opt.id ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
                   >
                     {opt.label}
                   </button>

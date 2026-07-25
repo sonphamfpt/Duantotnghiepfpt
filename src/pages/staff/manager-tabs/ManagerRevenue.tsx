@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { ToothState } from '../../../types/clinic';
+import { exportToExcel } from '../../../utils/exportToExcel';
 
 // Helper to extract date components timezone-independently
 const getDateParts = (dStr: any) => {
@@ -249,7 +250,56 @@ export const ManagerRevenue: React.FC = () => {
   };
 
   const handleExportExcel = () => {
-    alert(`Đã xuất báo cáo [${activeSubTab === 'financial' ? 'Doanh Thu' : 'Chấm Công Bác Sĩ'}] (${getFilterDescription()}) sang định dạng Excel (.xlsx)!`);
+    if (activeSubTab === 'financial') {
+      const exportData = filteredInvoices.map((inv) => ({
+        invoiceId: inv.id,
+        patientName: inv.patientName,
+        patientPhone: inv.patientPhone,
+        totalPrice: inv.totalPrice,
+        memberDiscount: inv.memberDiscount,
+        netPrice: inv.netPrice,
+        status: inv.status === 'Paid' ? 'Đã thanh toán' : 'Chờ thanh toán',
+        paymentMethod: inv.paymentMethod || 'Tiền mặt',
+        createdAt: new Date(inv.createdAt).toLocaleString('vi-VN'),
+      }));
+
+      exportToExcel(
+        exportData,
+        `Bao_Cao_Doanh_Thu_${getFilterDescription().replace(/[^a-zA-Z0-9]/g, '_')}`,
+        {
+          invoiceId: 'Mã hóa đơn',
+          patientName: 'Bệnh nhân',
+          patientPhone: 'Số điện thoại',
+          totalPrice: 'Tổng tiền (VND)',
+          memberDiscount: 'Giảm giá (VND)',
+          netPrice: 'Thực thu (VND)',
+          status: 'Trạng thái',
+          paymentMethod: 'Phương thức thanh toán',
+          createdAt: 'Thời gian lập',
+        }
+      );
+    } else {
+      const exportData = timesheetData.map((d) => ({
+        name: d.name,
+        role: d.role,
+        totalShifts: d.totalShifts,
+        totalHours: d.totalHours,
+        treatmentsCompleted: d.treatmentsCompleted,
+        revenueGenerated: d.revenueGenerated,
+      }));
+
+      exportToExcel(
+        exportData,
+        `Bao_Cao_Cham_Cong_Bac_Si_${getFilterDescription().replace(/[^a-zA-Z0-9]/g, '_')}`,
+        {
+          name: 'Họ tên bác sĩ',
+          role: 'Chức danh',
+          room: 'Phòng làm việc',
+          totalCases: 'Số ca khám hoàn thành',
+          totalRevenue: 'Tổng doanh số mang lại (VND)',
+        }
+      );
+    }
   };
 
   return (

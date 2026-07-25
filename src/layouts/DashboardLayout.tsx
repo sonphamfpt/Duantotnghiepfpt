@@ -84,8 +84,10 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Doanh thu phòng khám', icon: 'receipt_long', path: '/dashboard/manager?tab=revenue' },
           { label: 'Lịch làm việc bác sĩ', icon: 'calendar_month', path: '/dashboard/manager?tab=schedule' },
           { label: 'Nhân sự & Phân quyền', icon: 'groups', path: '/dashboard/manager?tab=rbac' },
-          { label: 'Cấu hình giá dịch vụ', icon: 'settings', path: '/dashboard/manager?tab=settings' },
+          { label: 'Cấu hình & Cài đặt', icon: 'settings', path: '/dashboard/manager?tab=settings' },
           { label: 'Đánh giá & AI Phản hồi', icon: 'rate_review', path: '/dashboard/manager?tab=reviews' },
+          { label: 'Nhật ký Hệ thống', icon: 'history', path: '/dashboard/manager?tab=logs' },
+          { label: 'Trợ lý AI', icon: 'smart_toy', path: '/dashboard/manager?tab=aichat' },
         ];
       default:
         return [];

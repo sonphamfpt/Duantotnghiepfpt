@@ -15,9 +15,14 @@ export interface PatientLookupResult {
 
 export const clinicApi = {
   /**
-   * Lấy danh sách tất cả dịch vụ
+   * Lấy danh sách tất cả dịch vụ (chỉ dịch vụ đang hoạt động - dùng cho trang public)
    */
   getServices: () => request<Service[]>('/services'),
+
+  /**
+   * Lấy TẤT CẢ dịch vụ bao gồm đã tắt (dùng cho trang quản lý Manager Settings)
+   */
+  getAllServices: () => request<Service[]>('/services/all'),
 
   /**
    * Lấy danh sách tất cả bác sĩ
@@ -139,5 +144,62 @@ export const clinicApi = {
   deleteDentist: (id: string) =>
     request<any>(`/dentists/${id}`, {
       method: 'DELETE',
+    }),
+
+  /**
+   * Lấy danh sách phòng khám
+   */
+  getRooms: () => request<any[]>('/rooms'),
+
+  /**
+   * Cập nhật phòng khám (tên, trạng thái)
+   */
+  updateRoom: (roomId: number, data: { name?: string; isActive?: boolean }) =>
+    request<any>(`/rooms/${roomId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * Tạo phòng khám mới
+   */
+  createRoom: (data: { name: string }) =>
+    request<any>('/rooms', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * Lấy giờ hoạt động phòng khám (7 ngày trong tuần)
+   */
+  getOperatingHours: () => request<any[]>('/rooms/operating-hours'),
+
+  /**
+   * Cập nhật giờ hoạt động của 1 ngày
+   */
+  updateOperatingHour: (weekday: number, data: {
+    openTime?: string;
+    closeTime?: string;
+    lunchStart?: string | null;
+    lunchEnd?: string | null;
+    isClosed?: boolean;
+  }) =>
+    request<any>(`/rooms/operating-hours/${weekday}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * Lấy danh sách hạng thành viên
+   */
+  getMembershipTiers: () => request<any[]>('/patients/tiers'),
+
+  /**
+   * Cập nhật hạng thành viên (% giảm giá, ngưỡng điểm)
+   */
+  updateMembershipTier: (tierId: number, data: { discountPercent?: number; minPoints?: number; name?: string }) =>
+    request<any>(`/patients/tiers/${tierId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }),
 };
