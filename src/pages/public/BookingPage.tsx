@@ -172,13 +172,39 @@ export const BookingPage: React.FC = () => {
 
     try {
       const response = await appointmentApi.getAvailableSlots(dentistId, dateStr, serviceId);
-      const slots = response.data || [];
+      const rawSlots = response.data || [];
+
+      // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế của bác sĩ trong ngày
+      const activeShiftsForDoc = doctorShifts.filter(s => s.dentistId === dentistId && s.date === dateStr);
+
+      const slots = rawSlots.filter(slotIso => {
+        if (activeShiftsForDoc.length === 0) return true;
+
+        const slotDate = new Date(slotIso);
+        const vnDate = new Date(slotDate.getTime() + 7 * 60 * 60 * 1000);
+        const hour = vnDate.getUTCHours();
+        const min = vnDate.getUTCMinutes();
+        const slotMinutes = hour * 60 + min;
+
+        return activeShiftsForDoc.some(shift => {
+          if (shift.shiftType === 'Morning') {
+            return slotMinutes >= 480 && slotMinutes < 840;
+          }
+          if (shift.shiftType === 'Afternoon') {
+            return slotMinutes >= 840 && slotMinutes < 1200;
+          }
+          if (shift.shiftType === 'Full') {
+            return slotMinutes >= 480 && slotMinutes < 1200;
+          }
+          return true;
+        });
+      });
 
       if (slots.length > 0) {
         setAvailableSlots(slots);
         setSelectedTimeIso((prev) => slots.includes(prev) ? prev : (slots[0] || ''));
       } else {
-        setSlotsError('Không có khung giờ trống. Vui lòng chọn bác sĩ hoặc ngày khác.');
+        setSlotsError('Không có khung giờ trống trong ca trực của bác sĩ. Vui lòng chọn ngày khác.');
         setAvailableSlots([]);
         setSelectedTimeIso('');
       }
@@ -376,12 +402,26 @@ const formatLocalDateStr = (dateStr: string): string => {
     createAppointment(otpToken);
   };
 
-  const morningSlots = availableSlots.filter(slot => new Date(slot).getHours() < 12);
+  // Helper lấy giờ chuẩn Việt Nam (UTC+7) từ ISO string
+  const getVietnamHour = (isoStr: string): number => {
+    const dateObj = new Date(isoStr);
+    if (isNaN(dateObj.getTime())) return 0;
+    const vnDate = new Date(dateObj.getTime() + 7 * 60 * 60 * 1000);
+    return vnDate.getUTCHours();
+  };
+
+  const morningSlots = availableSlots.filter(slot => {
+    const h = getVietnamHour(slot);
+    return h >= 8 && h < 12;
+  });
   const afternoonSlots = availableSlots.filter(slot => {
-    const h = new Date(slot).getHours();
+    const h = getVietnamHour(slot);
     return h >= 12 && h < 17;
   });
-  const eveningSlots = availableSlots.filter(slot => new Date(slot).getHours() >= 17);
+  const eveningSlots = availableSlots.filter(slot => {
+    const h = getVietnamHour(slot);
+    return h >= 17 && h < 21;
+  });
 
   return (
     <div className="bg-[#f8fafc] min-h-screen font-body-md pb-20">
@@ -632,11 +672,18 @@ const formatLocalDateStr = (dateStr: string): string => {
                         </option>
                         {dentists.filter(d => 
                           doctorShifts.some(s => s.dentistId === d.id && s.date === date)
-                        ).map(d => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
+                        ).map(d => {
+                          const dayShifts = doctorShifts.filter(s => s.dentistId === d.id && s.date === date);
+                          const shiftLabel = dayShifts.map(s => 
+                            s.shiftType === 'Morning' ? '☀️ Ca sáng' : s.shiftType === 'Afternoon' ? '🌙 Ca chiều' : '📅 Cả ngày'
+                          ).join(' & ');
+
+                          return (
+                            <option key={d.id} value={d.id}>
+                              {d.name.replace(/^bác sĩ\s+/i, 'BS. ')} ({d.room} — {shiftLabel})
+                            </option>
+                          );
+                        })}
                       </select>
                       {dentistError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{dentistError}</p>}
                     </div>
