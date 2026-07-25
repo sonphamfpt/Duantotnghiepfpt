@@ -756,7 +756,6 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         fetchPublicReviews,
         fetchManageReviews,
         refreshAllData,
-        addLog,
       }}
     >
       {children}
