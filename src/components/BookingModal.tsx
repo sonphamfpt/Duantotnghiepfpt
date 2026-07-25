@@ -5,6 +5,7 @@ import { Icon } from './Icon';
 import { OtpVerificationModal } from './OtpVerificationModal';
 import { AlertModal } from './AlertModal';
 import { appointmentApi, BookingChannel } from '../services/api';
+import { isSameDentistId, getVietnamHour, isSlotInDoctorShifts } from '../utils/shiftUtils';
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -127,13 +128,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [defaultDentistName, dentists, selectedDentistId]);
 
-  const isSameDentistId = (id1?: string, id2?: string): boolean => {
-    if (!id1 || !id2) return false;
-    const num1 = id1.toString().replace(/^[A-Za-z]+-?/g, '');
-    const num2 = id2.toString().replace(/^[A-Za-z]+-?/g, '');
-    return parseInt(num1, 10) === parseInt(num2, 10);
-  };
-
   useEffect(() => {
     if (selectedDentistId && date) {
       const isStillOnDuty = doctorShifts.some(
@@ -169,37 +163,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
         const rawSlots = response.data || [];
 
-        // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế của bác sĩ trong ngày (chuẩn hóa ID D-01 = D-1)
+        // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế của bác sĩ trong ngày
         const activeShiftsForDoc = doctorShifts.filter(
           s => isSameDentistId(s.dentistId, selectedDentistId) && s.date === date
         );
 
-        const slots = rawSlots.filter(slotIso => {
-          if (activeShiftsForDoc.length === 0) return false; // Không có ca trực -> không giữ slot nào
-
-          const slotDate = new Date(slotIso);
-          // Chuyển đổi giờ theo múi giờ Việt Nam (UTC+7)
-          const vnDate = new Date(slotDate.getTime() + 7 * 60 * 60 * 1000);
-          const hour = vnDate.getUTCHours();
-          const min = vnDate.getUTCMinutes();
-          const slotMinutes = hour * 60 + min;
-
-          return activeShiftsForDoc.some(shift => {
-            if (shift.shiftType === 'Morning') {
-              // Ca Sáng: 08:00 (480p) đến 14:00 (840p)
-              return slotMinutes >= 480 && slotMinutes < 840;
-            }
-            if (shift.shiftType === 'Afternoon') {
-              // Ca Chiều: 14:00 (840p) đến 20:00 (1200p)
-              return slotMinutes >= 840 && slotMinutes < 1200;
-            }
-            if (shift.shiftType === 'Full') {
-              // Cả Ngày: 08:00 (480p) đến 20:00 (1200p)
-              return slotMinutes >= 480 && slotMinutes < 1200;
-            }
-            return false;
-          });
-        });
+        const slots = rawSlots.filter(slotIso => isSlotInDoctorShifts(slotIso, activeShiftsForDoc));
 
         setAvailableSlots(slots);
         setTimeSlot((prev) => slots.includes(prev) ? prev : '');

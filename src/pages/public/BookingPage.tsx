@@ -6,6 +6,7 @@ import { Icon } from '../../components/Icon';
 import { OtpVerificationModal } from '../../components/OtpVerificationModal';
 import { AlertModal } from '../../components/AlertModal';
 import { appointmentApi, request } from '../../services/api';
+import { isSameDentistId, getVietnamHour, isSlotInDoctorShifts } from '../../utils/shiftUtils';
 import { socket } from '../../services/socketClient';
 
 export const BookingPage: React.FC = () => {
@@ -174,31 +175,9 @@ export const BookingPage: React.FC = () => {
       const response = await appointmentApi.getAvailableSlots(dentistId, dateStr, serviceId);
       const rawSlots = response.data || [];
 
-      // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế của bác sĩ trong ngày
-      const activeShiftsForDoc = doctorShifts.filter(s => s.dentistId === dentistId && s.date === dateStr);
-
-      const slots = rawSlots.filter(slotIso => {
-        if (activeShiftsForDoc.length === 0) return true;
-
-        const slotDate = new Date(slotIso);
-        const vnDate = new Date(slotDate.getTime() + 7 * 60 * 60 * 1000);
-        const hour = vnDate.getUTCHours();
-        const min = vnDate.getUTCMinutes();
-        const slotMinutes = hour * 60 + min;
-
-        return activeShiftsForDoc.some(shift => {
-          if (shift.shiftType === 'Morning') {
-            return slotMinutes >= 480 && slotMinutes < 840;
-          }
-          if (shift.shiftType === 'Afternoon') {
-            return slotMinutes >= 840 && slotMinutes < 1200;
-          }
-          if (shift.shiftType === 'Full') {
-            return slotMinutes >= 480 && slotMinutes < 1200;
-          }
-          return true;
-        });
-      });
+      // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế của bác sĩ trong ngày (chuẩn hóa ID D-01 = D-1)
+      const activeShiftsForDoc = doctorShifts.filter(s => isSameDentistId(s.dentistId, dentistId) && s.date === dateStr);
+      const slots = rawSlots.filter(slotIso => isSlotInDoctorShifts(slotIso, activeShiftsForDoc));
 
       if (slots.length > 0) {
         setAvailableSlots(slots);
@@ -400,14 +379,6 @@ const formatLocalDateStr = (dateStr: string): string => {
   const handleOtpVerified = (otpToken: string) => {
     setShowOtpModal(false);
     createAppointment(otpToken);
-  };
-
-  // Helper lấy giờ chuẩn Việt Nam (UTC+7) từ ISO string
-  const getVietnamHour = (isoStr: string): number => {
-    const dateObj = new Date(isoStr);
-    if (isNaN(dateObj.getTime())) return 0;
-    const vnDate = new Date(dateObj.getTime() + 7 * 60 * 60 * 1000);
-    return vnDate.getUTCHours();
   };
 
   const morningSlots = availableSlots.filter(slot => {
@@ -663,7 +634,7 @@ const formatLocalDateStr = (dateStr: string): string => {
                         <option value="">
                           {(() => {
                             const activeDentists = dentists.filter(d => 
-                              doctorShifts.some(s => s.dentistId === d.id && s.date === date)
+                              doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
                             );
                             return activeDentists.length === 0 
                               ? "-- Không có bác sĩ trực ngày này --" 
@@ -671,9 +642,9 @@ const formatLocalDateStr = (dateStr: string): string => {
                           })()}
                         </option>
                         {dentists.filter(d => 
-                          doctorShifts.some(s => s.dentistId === d.id && s.date === date)
+                          doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
                         ).map(d => {
-                          const dayShifts = doctorShifts.filter(s => s.dentistId === d.id && s.date === date);
+                          const dayShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === date);
                           const shiftLabel = dayShifts.map(s => 
                             s.shiftType === 'Morning' ? '☀️ Ca sáng' : s.shiftType === 'Afternoon' ? '🌙 Ca chiều' : '📅 Cả ngày'
                           ).join(' & ');
