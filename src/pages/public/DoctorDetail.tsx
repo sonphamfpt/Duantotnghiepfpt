@@ -13,6 +13,12 @@ export const DoctorDetail: React.FC = () => {
   const dentist = dentists.find(d => d.id === id);
   const profile = dentist;
 
+  React.useEffect(() => {
+    if (dentist) {
+      document.title = `${dentist.name} - GoodSmile Clinic`;
+    }
+  }, [dentist]);
+
   // Get other doctors (excluding the current one)
   const otherDoctors = dentists.filter(d => d.id !== id);
 

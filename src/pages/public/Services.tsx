@@ -201,6 +201,10 @@ export const Services: React.FC = () => {
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  useEffect(() => {
+    document.title = 'Dịch Vụ Nha Khoa - GoodSmile Clinic';
+  }, []);
+
   const enriched = services.map(s => ({
     ...s,
     meta: SERVICE_META[s.id] ?? {

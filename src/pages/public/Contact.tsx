@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '../../components/Icon';
+import { useClinic } from '../../context/ClinicContext';
 
 export const Contact: React.FC = () => {
+  const { addLog } = useClinic();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
+
+  useEffect(() => {
+    document.title = 'Liên Hệ - GoodSmile Clinic';
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -15,7 +21,13 @@ export const Contact: React.FC = () => {
       return;
     }
     
-    // Simulate API request
+    // Ghi nhận yêu cầu tư vấn mới vào hệ thống nhật ký Lễ tân
+    addLog(
+      'RECEPTION',
+      'INFO',
+      `Yêu cầu tư vấn mới từ ${name.trim()} (SĐT: ${phone.trim()}${email ? `, Email: ${email.trim()}` : ''}): "${message.trim()}"`
+    );
+
     setIsSubmitted(true);
     setName('');
     setPhone('');
@@ -96,16 +108,19 @@ export const Contact: React.FC = () => {
               </div>
             </div>
 
-            {/* Map Placeholder */}
-            <div className="bg-surface-container rounded-xl border border-outline-variant h-64 relative overflow-hidden flex flex-col justify-end p-4 shadow-inner">
-              <div className="absolute inset-0 flex items-center justify-center text-on-surface-variant/40 flex-col gap-2">
-                <Icon name="map" className="text-[64px]" />
-                <span className="text-xs font-bold uppercase tracking-wider">Bản đồ vị trí phòng khám</span>
-              </div>
-              <div className="bg-white/90 p-3 rounded-lg border border-outline-variant relative z-10 text-xs shadow">
-                <p className="font-bold text-primary">Nha Khoa GoodSmile</p>
-                <p className="text-on-surface-variant">Kiều Mai, Phúc Diễn, Bắc Từ Liêm, Hà Nội</p>
-              </div>
+            {/* Interactive Google Maps Embed */}
+            <div className="bg-surface-container rounded-xl border border-outline-variant h-64 relative overflow-hidden shadow-sm flex flex-col">
+              <iframe
+                title="Bản đồ chỉ đường Nha Khoa GoodSmile"
+                src="https://maps.google.com/maps?q=Tr%C6%B0%E1%BB%9Dng%20Cao%20%C4%91%E1%BA%B3ng%20FPT%20Polytechnic%20H%C3%A0%20N%E1%BB%99i%20Ki%E1%BB%81u%20Mai%20Ph%C3%BAc%20Di%E1%BB%85n%20B%E1%BA%AFc%20T%E1%BB%AB%20Li%C3%AAm&t=&z=15&ie=UTF8&iwloc=&output=embed"
+                width="100%"
+                height="100%"
+                style={{ border: 0 }}
+                allowFullScreen={false}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                className="w-full h-full rounded-xl"
+              ></iframe>
             </div>
           </div>
 

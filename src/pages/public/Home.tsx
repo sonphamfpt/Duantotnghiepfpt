@@ -120,7 +120,7 @@ const PromoBanner: React.FC<{ onClose: () => void; onBookNow: () => void }> = ({
         }
       `}</style>
 
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-300 relative flex flex-col md:flex-row border border-slate-100">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-300 relative flex flex-col md:flex-row border border-slate-100">
         
         {/* Left Pane (Visual Graphic - Hidden on Mobile) */}
         <div className="hidden md:flex flex-col justify-between p-8 bg-gradient-to-br from-[#00478d] via-[#005fa8] to-[#006d33] text-white relative overflow-hidden w-[280px] shrink-0 select-none">
@@ -283,6 +283,10 @@ export const Home: React.FC = () => {
   const navigate = useNavigate();
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
+
+  useEffect(() => {
+    document.title = 'Nha Khoa GoodSmile - Hệ Thống Phòng Khám Nha Khoa Uy Tín Hàng Đầu';
+  }, []);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
   // Hiện banner sau 2 giây

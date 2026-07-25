@@ -1,49 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
 import { Icon } from '../../components/Icon';
 
 const CATEGORIES = ['Tất cả chuyên khoa', 'Bảo tồn & Vi Phẫu', 'Phẫu thuật Hàm Mặt & Implant', 'Phục Hình Thẩm Mỹ', 'Chỉnh Nha & Niềng Răng'];
+const DEFAULT_DOCTOR_AVATAR = 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=600&h=800&fit=crop';
 
 export const Doctors: React.FC = () => {
   const { dentists } = useClinic();
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState('Tất cả chuyên khoa');
 
-  // Merge context data từ CSDL
-  const enrichedDentists = dentists.map(d => {
-    return {
-      ...d,
-      displayTitle: d.degree || 'Bác sĩ nha khoa',
-      displayName: d.name,
-      shortBio: d.bio || d.specialty || d.role,
-      profile: {
-        specialty: d.specialty || 'Bác sĩ Răng Hàm Mặt',
-        degree: d.degree || 'Bác sĩ',
-        education: d.education || [],
-        experience: d.experience || 5,
-        cases: d.cases || '500+ ca',
-        clinicalStrengths: d.clinicalStrengths || [],
-        certifications: d.certifications || [],
-        universityLogo: 'school',
-        bio: d.bio || '',
-        motto: d.motto || '',
-        workHistory: d.workHistory || []
-      }
-    };
-  });
+  useEffect(() => {
+    document.title = 'Đội Ngũ Bác Sĩ - GoodSmile Clinic';
+  }, []);
+
+  const enrichedDentists = dentists.map(d => ({
+    ...d,
+    displayTitle: d.degree || 'Bác sĩ nha khoa',
+    displayName: d.name,
+    shortBio: d.bio || d.specialty || d.role,
+    profile: {
+      specialty: d.specialty || 'Bác sĩ Răng Hàm Mặt',
+      degree: d.degree || 'Bác sĩ',
+      education: d.education || [],
+      experience: d.experience || 5,
+      cases: d.cases || '500+ ca',
+      clinicalStrengths: d.clinicalStrengths || [],
+      certifications: d.certifications || [],
+      universityLogo: 'school',
+      bio: d.bio || '',
+      motto: d.motto || '',
+      workHistory: d.workHistory || []
+    }
+  }));
 
   const filtered = enrichedDentists.filter(doc => {
     if (activeCategory === 'Tất cả chuyên khoa') return true;
-    // Match based on specialty name
-    return doc.profile.specialty.toLowerCase().includes(activeCategory.replace('Tất cả ', '').toLowerCase()) ||
-           doc.role.toLowerCase().includes(activeCategory.replace('Tất cả ', '').toLowerCase());
+    const specLower = (doc.profile.specialty + ' ' + doc.role + ' ' + doc.shortBio).toLowerCase();
+    if (activeCategory === 'Bảo tồn & Vi Phẫu') {
+      return specLower.includes('bảo tồn') || specLower.includes('vi phẫu') || specLower.includes('nội nha') || specLower.includes('tủy') || specLower.includes('sâu');
+    }
+    if (activeCategory === 'Phẫu thuật Hàm Mặt & Implant') {
+      return specLower.includes('phẫu thuật') || specLower.includes('implant') || specLower.includes('hàm mặt') || specLower.includes('răng khôn');
+    }
+    if (activeCategory === 'Phục Hình Thẩm Mỹ') {
+      return specLower.includes('phục hình') || specLower.includes('thẩm mỹ') || specLower.includes('sứ') || specLower.includes('tẩy trắng');
+    }
+    if (activeCategory === 'Chỉnh Nha & Niềng Răng') {
+      return specLower.includes('chỉnh nha') || specLower.includes('niềng');
+    }
+    return specLower.includes(activeCategory.toLowerCase());
   });
 
   return (
     <div className="bg-[#f8fafc] min-h-screen font-body-md">
-      
-      {/* ── Premium Hero Banner (Consistent across public pages) ── */}
+      {/* Hero Banner */}
       <section className="relative overflow-hidden bg-gradient-to-br from-[#00478d] via-[#005fa8] to-[#006d33] py-20 px-6 md:px-16">
         <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
         <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full bg-white/5 translate-y-1/2 -translate-x-1/4 pointer-events-none"></div>
@@ -61,7 +73,7 @@ export const Doctors: React.FC = () => {
         </div>
       </section>
 
-      {/* ── Filter Bar ── */}
+      {/* Filter Bar */}
       <div className="bg-white border-b border-[#e2e8f0] sticky top-0 z-30 shadow-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 overflow-x-auto custom-scrollbar flex gap-2 justify-start md:justify-center">
           {CATEGORIES.map(cat => (
@@ -80,7 +92,7 @@ export const Doctors: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Main Content: Grid of Vertical Cards ── */}
+      {/* Main Content: Grid of Vertical Cards */}
       <section className="py-16 px-6">
         <div className="max-w-6xl mx-auto">
           {filtered.length === 0 ? (
@@ -96,14 +108,15 @@ export const Doctors: React.FC = () => {
                   key={doc.id}
                   className="bg-white border-2 border-slate-200 hover:border-amber-400 hover:scale-[1.02] transition-all duration-300 shadow-sm hover:shadow-md flex flex-col overflow-hidden text-center group cursor-pointer"
                 >
-                  {/* Photo Section with Zoom Effect */}
                   <div className="aspect-[4/5] bg-slate-50 overflow-hidden relative border-b border-slate-100">
                     <img 
                       src={doc.avatar} 
                       alt={doc.name} 
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = DEFAULT_DOCTOR_AVATAR;
+                      }}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                     />
-                    {/* Hover Overlay */}
                     <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-4">
                       <span className="bg-[#005eb8] text-white text-xs font-bold px-3 py-1.5 flex items-center gap-1 shadow-sm">
                         Xem hồ sơ chi tiết
@@ -112,19 +125,15 @@ export const Doctors: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Info Section */}
                   <div className="p-5 flex flex-col flex-1">
-                    {/* Doctor Title / Degree */}
                     <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
                       {doc.displayTitle}
                     </span>
 
-                    {/* Doctor Name in Bold Blue */}
                     <h2 className="text-lg font-extrabold text-[#00478d] group-hover:text-[#005eb8] transition-colors mb-3 line-clamp-1">
                       {doc.displayName}
                     </h2>
 
-                    {/* Short Role / Bio */}
                     <p className="text-xs text-slate-600 leading-relaxed line-clamp-3 mt-auto">
                       {doc.shortBio}
                     </p>
@@ -136,7 +145,7 @@ export const Doctors: React.FC = () => {
         </div>
       </section>
 
-      {/* ── Section: Clinical Standards ── */}
+      {/* Clinical Standards */}
       <section className="py-16 bg-white border-t border-[#e2e8f0]">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-12">
@@ -152,7 +161,6 @@ export const Doctors: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Standard 1 */}
             <div className="bg-[#f8fafc] border border-[#e2e8f0] p-8 hover:shadow-sm transition-shadow">
               <div className="bg-[#eff6ff] text-[#1d4ed8] w-12 h-12 flex items-center justify-center mb-6">
                 <Icon name="verified" className="text-[28px]" />
@@ -163,7 +171,6 @@ export const Doctors: React.FC = () => {
               </p>
             </div>
 
-            {/* Standard 2 */}
             <div className="bg-[#f8fafc] border border-[#e2e8f0] p-8 hover:shadow-sm transition-shadow">
               <div className="bg-[#f0fdf4] text-[#15803d] w-12 h-12 flex items-center justify-center mb-6">
                 <Icon name="health_and_safety" className="text-[28px]" />
@@ -174,7 +181,6 @@ export const Doctors: React.FC = () => {
               </p>
             </div>
 
-            {/* Standard 3 */}
             <div className="bg-[#f8fafc] border border-[#e2e8f0] p-8 hover:shadow-sm transition-shadow">
               <div className="bg-[#fdf2f8] text-[#be185d] w-12 h-12 flex items-center justify-center mb-6">
                 <Icon name="psychology" className="text-[28px]" />
@@ -188,11 +194,8 @@ export const Doctors: React.FC = () => {
         </div>
       </section>
 
-      {/* ── Section: Call to Action Banner ── */}
+      {/* CTA Section */}
       <section className="relative overflow-hidden bg-gradient-to-r from-[#00478d] to-[#006d33] py-16 px-6 md:px-16 text-center text-white">
-        <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-white/5 translate-y-1/3 -translate-x-1/4 pointer-events-none"></div>
-
         <div className="relative z-10 max-w-4xl mx-auto space-y-6">
           <h2 className="text-3xl md:text-4xl font-extrabold leading-tight">
             Đăng Ký Tư Vấn Trực Tiếp Cùng Hội Đồng Y Khoa
