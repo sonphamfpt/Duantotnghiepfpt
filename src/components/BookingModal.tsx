@@ -127,10 +127,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [defaultDentistName, dentists, selectedDentistId]);
 
+  const isSameDentistId = (id1?: string, id2?: string): boolean => {
+    if (!id1 || !id2) return false;
+    const num1 = id1.toString().replace(/^[A-Za-z]+-?/g, '');
+    const num2 = id2.toString().replace(/^[A-Za-z]+-?/g, '');
+    return parseInt(num1, 10) === parseInt(num2, 10);
+  };
+
   useEffect(() => {
     if (selectedDentistId && date) {
       const isStillOnDuty = doctorShifts.some(
-        s => s.dentistId === selectedDentistId && s.date === date
+        s => isSameDentistId(s.dentistId, selectedDentistId) && s.date === date
       );
       if (!isStillOnDuty) {
         setSelectedDentistId('');
@@ -160,7 +167,40 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
       try {
         const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
-        const slots = response.data || [];
+        const rawSlots = response.data || [];
+
+        // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế của bác sĩ trong ngày (chuẩn hóa ID D-01 = D-1)
+        const activeShiftsForDoc = doctorShifts.filter(
+          s => isSameDentistId(s.dentistId, selectedDentistId) && s.date === date
+        );
+
+        const slots = rawSlots.filter(slotIso => {
+          if (activeShiftsForDoc.length === 0) return false; // Không có ca trực -> không giữ slot nào
+
+          const slotDate = new Date(slotIso);
+          // Chuyển đổi giờ theo múi giờ Việt Nam (UTC+7)
+          const vnDate = new Date(slotDate.getTime() + 7 * 60 * 60 * 1000);
+          const hour = vnDate.getUTCHours();
+          const min = vnDate.getUTCMinutes();
+          const slotMinutes = hour * 60 + min;
+
+          return activeShiftsForDoc.some(shift => {
+            if (shift.shiftType === 'Morning') {
+              // Ca Sáng: 08:00 (480p) đến 14:00 (840p)
+              return slotMinutes >= 480 && slotMinutes < 840;
+            }
+            if (shift.shiftType === 'Afternoon') {
+              // Ca Chiều: 14:00 (840p) đến 20:00 (1200p)
+              return slotMinutes >= 840 && slotMinutes < 1200;
+            }
+            if (shift.shiftType === 'Full') {
+              // Cả Ngày: 08:00 (480p) đến 20:00 (1200p)
+              return slotMinutes >= 480 && slotMinutes < 1200;
+            }
+            return false;
+          });
+        });
+
         setAvailableSlots(slots);
         setTimeSlot((prev) => slots.includes(prev) ? prev : '');
       } catch (err: any) {
@@ -337,15 +377,28 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     void createAppointment(otpToken);
   };
 
-  // Get blocked time ranges for the selected dentist on selected date
+  // Helper lấy giờ chuẩn Việt Nam (UTC+7) từ ISO string
+  const getVietnamHour = (isoStr: string): number => {
+    const dateObj = new Date(isoStr);
+    if (isNaN(dateObj.getTime())) return 0;
+    const vnDate = new Date(dateObj.getTime() + 7 * 60 * 60 * 1000);
+    return vnDate.getUTCHours();
+  };
+
   const selectedService = services.find(s => s.id === selectedServiceId);
 
-  const morningSlots = availableSlots.filter(slot => new Date(slot).getHours() < 12);
+  const morningSlots = availableSlots.filter(slot => {
+    const h = getVietnamHour(slot);
+    return h >= 8 && h < 12;
+  });
   const afternoonSlots = availableSlots.filter(slot => {
-    const h = new Date(slot).getHours();
+    const h = getVietnamHour(slot);
     return h >= 12 && h < 17;
   });
-  const eveningSlots = availableSlots.filter(slot => new Date(slot).getHours() >= 17);
+  const eveningSlots = availableSlots.filter(slot => {
+    const h = getVietnamHour(slot);
+    return h >= 17 && h < 21;
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -528,7 +581,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <option value="">
                     {(() => {
                       const activeDentists = dentists.filter(d => 
-                        doctorShifts.some(s => s.dentistId === d.id && s.date === date)
+                        doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
                       );
                       return activeDentists.length === 0 
                         ? "-- Không có bác sĩ trực ngày này --" 
@@ -536,12 +589,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     })()}
                   </option>
                   {dentists.filter(d => 
-                    doctorShifts.some(s => s.dentistId === d.id && s.date === date)
-                  ).map(d => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.room})
-                    </option>
-                  ))}
+                    doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
+                  ).map(d => {
+                    const dayShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === date);
+                    const shiftLabel = dayShifts.map(s => 
+                      s.shiftType === 'Morning' ? '☀️ Ca sáng' : s.shiftType === 'Afternoon' ? '🌙 Ca chiều' : '📅 Cả ngày'
+                    ).join(' & ');
+
+                    return (
+                      <option key={d.id} value={d.id}>
+                        {d.name.replace(/^bác sĩ\s+/i, 'BS. ')} ({d.room} — {shiftLabel})
+                      </option>
+                    );
+                  })}
                 </select>
                 {dentistError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{dentistError}</p>}
               </div>
@@ -580,7 +640,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   </div>
                 ) : slotsError || availableSlots.length === 0 ? (
                   <div className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-xs text-amber-800 font-medium">
-                    {slotsError || 'Không có khung giờ khả dụng. Vui lòng chọn bác sĩ hoặc ngày khác.'}
+                    {slotsError || 'Không có khung giờ khả dụng trong ca trực của bác sĩ.'}
                   </div>
                 ) : (
                   <>
@@ -608,6 +668,26 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {/* Time Slot Picker grouped by Morning / Afternoon / Evening */}
             {selectedDentistId && selectedServiceId && availableSlots.length > 0 && !loadingSlots && (
               <div className="space-y-3 pt-2">
+                {(() => {
+                  const currentDentist = dentists.find(d => isSameDentistId(d.id, selectedDentistId));
+                  const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, selectedDentistId) && s.date === date);
+                  const shiftDesc = activeShifts.map(s => 
+                    s.shiftType === 'Morning' ? '☀️ Ca Sáng (08:00 – 14:00)' : s.shiftType === 'Afternoon' ? '🌙 Ca Chiều (14:00 – 20:00)' : '📅 Cả Ngày (08:00 – 20:00)'
+                  ).join(' & ');
+
+                  return (
+                    <div className="bg-blue-50/90 border border-blue-200/90 rounded-xl p-3 text-xs text-blue-900 flex items-center justify-between font-medium shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <Icon name="info" className="text-blue-600 text-base shrink-0" />
+                        <span>
+                          <strong className="text-blue-950 font-bold">{currentDentist?.name.replace(/^bác sĩ\s+/i, 'BS. ')}</strong> trực ngày {formatLocalDateStr(date)}: {' '}
+                          <span className="font-extrabold text-blue-800">{shiftDesc || 'Theo lịch phân ca'}</span>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <label className="block text-xs font-extrabold uppercase tracking-wider text-[#0f172a] flex items-center gap-2">
                     <Icon name="schedule" className="text-[#005eb8] text-base" />
