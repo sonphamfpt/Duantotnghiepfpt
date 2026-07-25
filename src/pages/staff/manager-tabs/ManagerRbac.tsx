@@ -38,6 +38,16 @@ export const ManagerRbac: React.FC = () => {
   const [phoneError, setPhoneError] = useState('');
   const [copiedField, setCopiedField] = useState<'phone' | 'email' | 'password' | null>(null);
 
+  // Edit Staff Modal State
+  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editRole, setEditRole] = useState<'dentist' | 'receptionist' | 'cashier' | 'manager'>('receptionist');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editError, setEditError] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+
   // Form states
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<'dentist' | 'receptionist' | 'cashier' | 'manager'>('dentist');
@@ -76,6 +86,16 @@ export const ManagerRbac: React.FC = () => {
       setCopiedField(field);
       setTimeout(() => setCopiedField(null), 2000);
     });
+  };
+
+  // Tự động đồng bộ quyền khi thay đổi vai trò chính hoặc tích checkbox
+  const getPermissionsForRole = (role: 'dentist' | 'receptionist' | 'cashier' | 'manager') => {
+    switch (role) {
+      case 'receptionist': return { admission: true, clinical: false, checkout: false, settings: false };
+      case 'dentist': return { admission: false, clinical: true, checkout: false, settings: false };
+      case 'cashier': return { admission: false, clinical: false, checkout: true, settings: false };
+      case 'manager': return { admission: true, clinical: true, checkout: true, settings: true };
+    }
   };
 
   const togglePermission = async (id: string, key: keyof StaffMember['permissions']) => {
@@ -123,6 +143,89 @@ export const ManagerRbac: React.FC = () => {
     }
   };
 
+  // Open Edit Modal for any staff member
+  const handleOpenEditModal = (member: StaffMember) => {
+    setEditingStaff(member);
+    setEditName(member.name);
+    setEditRole(member.role);
+    setEditPhone(member.phone);
+    setEditEmail(member.email || '');
+    setEditPassword('');
+    setEditError('');
+  };
+
+  // Handle Edit Form Submit
+  const handleUpdateStaffSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStaff) return;
+    setEditError('');
+
+    if (!editName.trim() || !editPhone.trim()) {
+      setEditError('Họ tên và Số điện thoại không được để trống.');
+      return;
+    }
+
+    const cleanPhone = editPhone.trim().replace(/\s|-/g, '');
+    const PHONE_VN_REGEX = /^(0[3|5|7|8|9])[0-9]{8}$/;
+    if (!PHONE_VN_REGEX.test(cleanPhone)) {
+      setEditError('Số điện thoại không hợp lệ (10 chữ số, bắt đầu bằng 03, 05, 07, 08, 09).');
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      const updateData: any = {
+        name: editName.trim(),
+        role: editRole,
+        phone: cleanPhone,
+        email: editEmail.trim().toLowerCase(),
+      };
+      if (editPassword.trim()) {
+        updateData.password = editPassword.trim();
+      }
+
+      const res = await staffApi.updateStaff(editingStaff.id, updateData);
+      if (res.success) {
+        alert(`Đã cập nhật thông tin tài khoản ${editName} thành công!`);
+        setEditingStaff(null);
+        fetchStaffList();
+      } else {
+        setEditError(res.message || 'Cập nhật thất bại.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setEditError(err.message || 'Lỗi khi cập nhật tài khoản nhân sự.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Handle Safe Delete Staff
+  const handleDeleteStaff = async (member: StaffMember) => {
+    if (member.role === 'manager') {
+      alert('Không thể xóa tài khoản Quản trị viên tối cao của hệ thống!');
+      return;
+    }
+
+    const confirmFirst = window.confirm(
+      `CẢNH BÁO AN TOÀN:\n\nBạn có chắc chắn muốn XÓA TÀI KHOẢN nhân sự "${member.name}" (${member.roleName}) không?\n\nHành động này không thể hoàn tác!`
+    );
+    if (!confirmFirst) return;
+
+    try {
+      const res = await staffApi.deleteStaff(member.id);
+      if (res.success) {
+        alert(`Đã xóa tài khoản nhân sự "${member.name}" thành công!`);
+        fetchStaffList();
+      } else {
+        alert(`Không thể xóa tài khoản: ${res.message || 'Nhân viên này đang có dữ liệu giao dịch/lịch trực phụ thuộc trong hệ thống.'}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert('Lỗi hệ thống khi xóa tài khoản. Vui lòng thử tạm khóa thay vì xóa.');
+    }
+  };
+
   const handleAddStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPhoneError('');
@@ -132,9 +235,10 @@ export const ManagerRbac: React.FC = () => {
       return;
     }
 
-    const cleanPhone = newPhone.trim();
-    if (!/^[0-9]{9,11}$/.test(cleanPhone)) {
-      setPhoneError('Số điện thoại phải bao gồm 9-11 chữ số.');
+    const cleanPhone = newPhone.trim().replace(/\s|-/g, '');
+    const PHONE_VN_REGEX = /^(0[3|5|7|8|9])[0-9]{8}$/;
+    if (!PHONE_VN_REGEX.test(cleanPhone)) {
+      setPhoneError('Số điện thoại không hợp lệ. Phải bao gồm 10 chữ số và bắt đầu bằng 03, 05, 07, 08, hoặc 09.');
       return;
     }
 
@@ -281,6 +385,7 @@ export const ManagerRbac: React.FC = () => {
                       type="checkbox"
                       checked={member.permissions.admission}
                       onChange={() => togglePermission(member.id, 'admission')}
+                      title="Quyền Đón tiếp: Truy cập giao diện Lễ tân, Check-in QR & Đặt lịch"
                       className="w-4 h-4 text-purple-600 border-outline-variant rounded focus:ring-purple-600 focus:ring-1 cursor-pointer"
                     />
                   </td>
@@ -289,6 +394,7 @@ export const ManagerRbac: React.FC = () => {
                       type="checkbox"
                       checked={member.permissions.clinical}
                       onChange={() => togglePermission(member.id, 'clinical')}
+                      title="Quyền Lâm sàng: Truy cập bàn khám Bác sĩ & Bệnh án EMR"
                       className="w-4 h-4 text-purple-600 border-outline-variant rounded focus:ring-purple-600 focus:ring-1 cursor-pointer"
                     />
                   </td>
@@ -297,6 +403,7 @@ export const ManagerRbac: React.FC = () => {
                       type="checkbox"
                       checked={member.permissions.checkout}
                       onChange={() => togglePermission(member.id, 'checkout')}
+                      title="Quyền Tính tiền: Truy cập màn hình Thu ngân & Thu tiền hóa đơn"
                       className="w-4 h-4 text-purple-600 border-outline-variant rounded focus:ring-purple-600 focus:ring-1 cursor-pointer"
                     />
                   </td>
@@ -305,23 +412,47 @@ export const ManagerRbac: React.FC = () => {
                       type="checkbox"
                       checked={member.permissions.settings}
                       onChange={() => togglePermission(member.id, 'settings')}
+                      title="Quyền Cấu hình: Truy cập quản trị hệ thống Manager"
                       className="w-4 h-4 text-purple-600 border-outline-variant rounded focus:ring-purple-600 focus:ring-1 cursor-pointer"
                     />
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {/* Nút sửa hồ sơ y khoa dành riêng cho Bác sĩ */}
                       {member.role === 'dentist' && member.dentistId && (
                         <button
                           onClick={() => setSelectedDentistIdForEdit(member.dentistId!)}
-                          className="px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-lg transition-all cursor-pointer text-[10px] font-extrabold flex items-center gap-1"
+                          className="px-2 py-1 bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 rounded-lg transition-all cursor-pointer text-[10px] font-extrabold flex items-center gap-1"
                           title="Sửa thông tin học vấn, bằng cấp, kinh nghiệm bác sĩ"
                         >
                           <Icon name="edit_note" className="text-sm" />
-                          <span>Sửa Hồ Sơ ({member.dentistId})</span>
+                          <span>Hồ Sơ Y Khoa</span>
                         </button>
                       )}
+
+                      {/* Nút Sửa tài khoản chung (Tên, SĐT, Email, Mật khẩu) cho TẤT CẢ nhân sự */}
                       <button
-                        onClick={() => alert(`Lịch sử truy cập của ${member.name} đã được lưu tại log file của Manager.`)}
+                        onClick={() => handleOpenEditModal(member)}
+                        className="px-2.5 py-1 bg-purple-50 border border-purple-200 text-purple-700 hover:bg-purple-100 rounded-lg transition-all cursor-pointer text-[10px] font-extrabold flex items-center gap-1"
+                        title="Sửa tên, SĐT, email hoặc đổi mật khẩu"
+                      >
+                        <Icon name="edit" className="text-xs" />
+                        <span>Sửa</span>
+                      </button>
+
+                      {/* Nút Xóa tài khoản an toàn */}
+                      {member.role !== 'manager' && (
+                        <button
+                          onClick={() => handleDeleteStaff(member)}
+                          className="p-1 border border-red-200 text-red-600 hover:bg-red-50 rounded transition-all cursor-pointer"
+                          title="Xóa tài khoản nhân sự"
+                        >
+                          <Icon name="delete" className="text-sm block" />
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => alert(`Lịch sử truy cập của ${member.name} đã được lưu tại nhật ký hệ thống.`)}
                         className="p-1 border border-outline text-on-surface-variant hover:text-purple-600 rounded transition-all cursor-pointer"
                         title="Lịch sử đăng nhập"
                       >
@@ -490,6 +621,135 @@ export const ManagerRbac: React.FC = () => {
                 >
                   <Icon name="person_add" className="text-sm" />
                   Tạo Tài Khoản
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Staff Modal ── */}
+      {editingStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl border border-outline-variant max-w-md w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 bg-purple-700 text-white flex justify-between items-center">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Icon name="edit" />
+                Sửa Thông Tin Tài Khoản ({editingStaff.id})
+              </h3>
+              <button
+                onClick={() => setEditingStaff(null)}
+                className="p-1 hover:bg-white/20 rounded-full transition-colors cursor-pointer"
+              >
+                <Icon name="close" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateStaffSubmit} className="p-6 space-y-4">
+              {/* Name */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">
+                  Họ và tên nhân viên *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-purple-600"
+                />
+              </div>
+
+              {/* Role */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">
+                  Vai trò chính *
+                </label>
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as any)}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg p-2 text-xs font-bold focus:outline-none focus:border-purple-600 cursor-pointer"
+                >
+                  <option value="dentist">Bác sĩ nha khoa</option>
+                  <option value="receptionist">Lễ tân tiếp nhận</option>
+                  <option value="cashier">Nhân viên thu ngân</option>
+                  <option value="manager">Quản trị hệ thống / Giám đốc</option>
+                </select>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">
+                  Số điện thoại đăng nhập *
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={editPhone}
+                  onChange={(e) => { setEditPhone(e.target.value); setEditError(''); }}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-purple-600"
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">
+                  Email liên hệ
+                </label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-purple-600"
+                />
+              </div>
+
+              {/* New Password (Optional) */}
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">
+                  Mật khẩu mới (Bỏ trống nếu không muốn đổi)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Nhập mật khẩu mới để đổi..."
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-purple-600 font-mono"
+                />
+              </div>
+
+              {editError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                  <Icon name="error" className="text-sm shrink-0" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-outline-variant">
+                <button
+                  type="button"
+                  onClick={() => setEditingStaff(null)}
+                  className="px-4 py-2 border border-outline text-on-surface rounded-lg text-xs font-bold cursor-pointer hover:bg-surface-container transition-all"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdating}
+                  className="px-6 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isUpdating ? (
+                    <>
+                      <Icon name="progress_activity" className="text-sm animate-spin" />
+                      Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="save" className="text-sm" />
+                      Lưu Thay Đổi
+                    </>
+                  )}
                 </button>
               </div>
             </form>

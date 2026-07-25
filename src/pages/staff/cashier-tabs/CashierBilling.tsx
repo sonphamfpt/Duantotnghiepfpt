@@ -113,19 +113,18 @@ export const CashierBilling: React.FC = () => {
   const uniqueRooms = ['All', ...Array.from(new Set(pendingList.map(i => i.room).filter(Boolean) as string[]))];
   const uniqueDentists = ['All', ...Array.from(new Set(pendingList.map(i => i.dentistName).filter(Boolean) as string[]))];
 
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
     if (!selectedInvoiceId || !activeInvoice) return;
 
     const remainingToPay = activeInvoice.remainingAmount !== undefined ? activeInvoice.remainingAmount : activeInvoice.netPrice;
-    const paymentVal = isPartialPay ? (parseInt(payAmountInput) || 0) : remainingToPay;
+    const paymentVal = isPartialPay ? (parseInt(payAmountInput, 10) || 0) : remainingToPay;
 
     if (paymentVal <= 0 || paymentVal > remainingToPay) return;
 
     setIsProcessing(true);
 
-    setTimeout(() => {
-      processPayment(selectedInvoiceId, paymentMethod, paymentVal);
-      setIsProcessing(false);
+    try {
+      await processPayment(selectedInvoiceId, paymentMethod, paymentVal);
       setToastMessage(
         paymentVal === remainingToPay
           ? `Đã thanh toán thành công hóa đơn ${selectedInvoiceId}!`
@@ -137,7 +136,11 @@ export const CashierBilling: React.FC = () => {
       setTimeout(() => {
         setShowToast(false);
       }, 3000);
-    }, 1000);
+    } catch (err) {
+      console.error('Lỗi thanh toán:', err);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -684,8 +687,13 @@ export const CashierBilling: React.FC = () => {
                         <span className="absolute left-3 top-2 text-slate-500 font-bold text-xs">₫</span>
                         <input
                           type="number"
+                          min={1}
+                          max={remaining}
                           value={payAmountInput}
-                          onChange={(e) => setPayAmountInput(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9]/g, '');
+                            setPayAmountInput(val);
+                          }}
                           placeholder="Nhập số tiền..."
                           className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />

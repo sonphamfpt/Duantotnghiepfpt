@@ -473,12 +473,18 @@ const formatLocalDateStr = (dateStr: string): string => {
               <button
                 onClick={() => {
                   setIsSuccess(false);
-                  setPatientName('');
-                  setPatientPhone('');
+                  // BUG-H03: Chỉ xóa tên/SĐT nếu là khách vãng lai, bệnh nhân đã login giữ nguyên
+                  if (!(role === 'patient' && user?.id)) {
+                    setPatientName('');
+                    setPatientPhone('');
+                  }
                   setSelectedServiceId('');
                   setSelectedDentistId('');
+                  setSelectedTimeIso('');
                   setNotes('');
                   setAntiSpamError('');
+                  // Reset date về hôm nay
+                  setDate(minDateStr);
                 }}
                 className="bg-white text-[#005eb8] border border-[#005eb8] px-6 py-2.5 font-bold hover:bg-[#eff6ff] transition-colors cursor-pointer"
               >

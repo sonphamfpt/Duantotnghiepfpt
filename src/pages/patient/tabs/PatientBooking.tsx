@@ -305,6 +305,8 @@ export const PatientBooking: React.FC = () => {
     setBookedApptId('');
     setCreatedAppointment(null);
     setAntiSpamError('');
+    // BUG-H02: Reset date về hôm nay tránh dùng lại ngày cũ (có thể quá khứ)
+    setDate(minDateStr);
   };
 
   const selectedService = services.find(s => s.id === selectedServiceId);

@@ -169,7 +169,7 @@ const DentistHome: React.FC = () => {
     if (activePatient) {
       fetchPatientRecords(activePatient.id);
     }
-  }, [activePatient?.id]);
+  }, [activePatient?.id, fetchPatientRecords]);
 
   React.useEffect(() => {
     const activeItem = queue.find(q => q.id === selectedQueueId);
@@ -270,15 +270,17 @@ const DentistHome: React.FC = () => {
       setActiveTeethState(Object.values(consolidated));
     } else {
       setActiveTeethState([]);
+      setFormAllergy('Không');
+      setFormCondition('Bình thường');
+      setFormDOB('');
+      setFormGender('');
+      setFormAddress('');
     }
   }, [activePatient?.id, medicalRecords]);
 
   const handleSelectQueueItem = (id: string) => {
     setSelectedQueueId(id);
     const item = queue.find(q => q.id === id);
-    if (item && item.status === 'Waiting') {
-      startTreatment(id);
-    }
 
     // Autofill selected service
     let initialServices: string[] = [];
@@ -1032,9 +1034,10 @@ const DentistHome: React.FC = () => {
                         onChange={e => handleTemplateChange(e.target.value)}
                         className="w-full bg-surface-container border border-outline-variant rounded-lg p-2.5 text-xs focus:outline-none cursor-pointer"
                       >
-                        <option>Sau điều trị sâu răng / Hàn răng</option>
-                        <option>Chăm sóc sau nhổ răng khôn</option>
-                        <option>Sau điều trị tủy răng (Nội nha)</option>
+                        <option value="">-- Chọn mẫu đơn thuốc --</option>
+                        <option value="Sau điều trị sâu răng / Hàn răng">Sau điều trị sâu răng / Hàn răng</option>
+                        <option value="Chăm sóc sau nhổ răng khôn">Chăm sóc sau nhổ răng khôn</option>
+                        <option value="Sau điều trị tủy răng (Nội nha)">Sau điều trị tủy răng (Nội nha)</option>
                       </select>
                     </div>
                     <div>

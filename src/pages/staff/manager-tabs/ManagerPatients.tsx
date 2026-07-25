@@ -28,9 +28,9 @@ export const ManagerPatients: React.FC = () => {
     const patientAppointments = appointments.filter(a => a.patientId === patientId);
     const cancelCount = patientAppointments.filter(a => a.status === 'Cancelled').length;
     
-    // Status lock rule: Cancelled >= 3 OR manually locked by manager, unless manually unlocked
+    // Status lock rule: If patient is manually unlocked by manager, isLocked is false. Otherwise, locked if manually locked or cancelCount >= 3.
     const patient = patients.find(p => p.id === patientId);
-    const isLocked = (cancelCount >= 3 || patient?.isLocked) && !patient?.isUnlocked;
+    const isLocked = patient?.isUnlocked ? false : Boolean(patient?.isLocked || cancelCount >= 3);
     const isFrequent = recordCount >= 3;
 
     return {

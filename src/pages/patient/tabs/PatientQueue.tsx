@@ -25,7 +25,10 @@ export const PatientQueue: React.FC = () => {
     return () => clearInterval(t);
   }, []);
 
-  const myQueueItem = queue.find(q => q.patientId === patientId && q.status !== 'Completed');
+  // BUG-L01: Guard — patientId rỗng (chưa login) không được match bất kỳ queue item nào
+  const myQueueItem = patientId
+    ? queue.find(q => q.patientId === patientId && q.status !== 'Completed')
+    : undefined;
   const myDentistId = myQueueItem?.dentistId;
   const myDentistName = myQueueItem?.dentistName;
   

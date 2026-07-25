@@ -126,12 +126,21 @@ export const ManagerSchedule: React.FC = () => {
     const dentist = dentists.find(d => d.id === addForm.dentistId);
     if (!dentist) return;
 
-    // Check duplicate
+    // Check duplicate dentist shift
     const isDuplicate = doctorShifts.some(
       s => s.dentistId === addForm.dentistId && s.date === addForm.date && s.shiftType === addForm.shiftType
     );
     if (isDuplicate) {
       alert('Ca trực này đã tồn tại cho bác sĩ trong ngày đã chọn!');
+      return;
+    }
+
+    // Check room overlap conflict (2 doctors in same room on same shift and date)
+    const isRoomOccupied = doctorShifts.some(
+      s => s.room === addForm.room && s.date === addForm.date && (s.shiftType === addForm.shiftType || s.shiftType === 'Full' || addForm.shiftType === 'Full')
+    );
+    if (isRoomOccupied) {
+      alert(`Phòng khám ${addForm.room} đã có bác sĩ khác đăng ký trực trong ${addForm.shiftType === 'Morning' ? 'Ca sáng' : addForm.shiftType === 'Afternoon' ? 'Ca chiều' : 'Cả ngày'} ngày ${addForm.date}. Vui lòng chọn phòng khác!`);
       return;
     }
 

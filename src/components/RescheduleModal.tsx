@@ -40,7 +40,7 @@ export const RescheduleModal: React.FC<RescheduleModalProps> = ({
   // Initialize state when modal opens
   useEffect(() => {
     if (isOpen) {
-      if (appointmentId) {
+      if (appointmentId && appointmentId !== 'GLOBAL') {
         setIsGlobalMode(false);
         setSelectedApptId(appointmentId);
       } else {

@@ -33,12 +33,14 @@ export const ManagerOverview: React.FC = () => {
   const activeQueueCount = queue.filter((q) => q.status !== 'Completed').length;
 
   // Hóa đơn Pending quá 24h tính là "quá hạn"
-  const NOW = Date.now();
-  const overdueCount = invoices.filter((i) => {
-    if (i.status !== 'Pending') return false;
-    const createdMs = new Date(i.createdAt).getTime();
-    return (NOW - createdMs) > 24 * 60 * 60 * 1000;
-  }).length;
+  const overdueCount = React.useMemo(() => {
+    const now = Date.now();
+    return invoices.filter((i) => {
+      if (i.status !== 'Pending') return false;
+      const createdMs = new Date(i.createdAt).getTime();
+      return (now - createdMs) > 24 * 60 * 60 * 1000;
+    }).length;
+  }, [invoices]);
 
   // Thời gian chờ trung bình từ queue thực tế
   const waitingQueue = queue.filter((q) => q.status === 'Waiting');
@@ -233,8 +235,8 @@ export const ManagerOverview: React.FC = () => {
         </div>
 
         {/* Live Logs Terminal */}
-        <div className="col-span-12 lg:col-span-5 bg-inverse-surface text-inverse-on-surface rounded-xl p-6 overflow-hidden flex flex-col justify-between shadow-lg border border-slate-800">
-          <div className="flex items-center justify-between mb-4">
+        <div className="col-span-12 lg:col-span-5 bg-inverse-surface text-inverse-on-surface rounded-xl p-6 overflow-hidden flex flex-col justify-between shadow-lg border border-slate-800 h-[420px]">
+          <div className="flex items-center justify-between mb-3 shrink-0">
             <h3 className="font-bold text-xs uppercase text-white tracking-widest flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping"></span>
               Nhật Ký Hệ Thống Live
@@ -242,7 +244,7 @@ export const ManagerOverview: React.FC = () => {
             <span className="font-data-mono text-[9px] text-outline">AUTO SYNC</span>
           </div>
 
-          <div className="flex-1 font-data-mono text-[10px] space-y-2.5 text-primary-fixed-dim/80 overflow-y-auto pr-1 h-64 custom-scrollbar">
+          <div className="flex-1 font-data-mono text-[10px] space-y-2.5 text-primary-fixed-dim/80 overflow-y-auto pr-2 custom-scrollbar my-2">
             {logs.length > 0 ? (
               logs.map((log) => {
                 let typeColor = 'text-white/80';
@@ -263,7 +265,7 @@ export const ManagerOverview: React.FC = () => {
             )}
           </div>
 
-          <div className="mt-4 pt-3 border-t border-outline-variant/20 text-[9px] text-outline leading-normal">
+          <div className="mt-1 pt-2.5 border-t border-outline-variant/20 text-[9px] text-outline leading-normal shrink-0">
             Hệ thống đang giám sát thời gian thực các hành động Đón tiếp khách hàng, Lập bệnh án lâm sàng và Thu phí thanh toán.
           </div>
         </div>

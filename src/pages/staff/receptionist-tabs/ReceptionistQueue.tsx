@@ -63,8 +63,14 @@ export const ReceptionistQueue: React.FC = () => {
     { label: 'Chờ TB',          value: `${avgWait.toFixed(0)} phút`, icon: 'avg_pace',    color: 'text-on-surface bg-surface-container border-outline-variant' },
   ];
 
-  const [now] = useState(new Date());
-  const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  const [now, setNow] = useState(new Date());
+
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return (
     <div className="p-stack-lg">

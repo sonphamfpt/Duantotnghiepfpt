@@ -6,7 +6,8 @@ import { useAuth } from '../../../context/AuthContext';
 export const PatientBilling: React.FC = () => {
   const { invoices = [], patients = [], processPayment, appointments = [], medicalRecords = [] } = useClinic();
   const { user } = useAuth();
-  const patientId = user?.id || 'P-8821';
+  // BUG-C03: Không dùng hardcode fallback P-8821
+  const patientId = user?.id || '';
   const patientName = user?.name || 'Bệnh nhân';
   const cleanId = (id?: string) => (id ? id.toString().replace(/^P-/i, '') : '');
   const targetPatientId = cleanId(patientId);
@@ -26,11 +27,12 @@ export const PatientBilling: React.FC = () => {
   const pendingInvoices = patientInvoices.filter(i => i.status === 'Pending' || i.status === 'Partially Paid');
   const paidInvoices = patientInvoices.filter(i => i.status === 'Paid');
 
-  const [printInvoice, setPrintInvoice] = useState<any>(null); // State quản lý việc mở modal in
-  const [activePayInvoice, setActivePayInvoice] = useState<any>(null); // State quản lý modal thanh toán trực tuyến
+  const [printInvoice, setPrintInvoice] = useState<any>(null);
+  const [activePayInvoice, setActivePayInvoice] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  // BUG-M01: Thay slice cứng bằng phân trang đơn giản
+  const [showAllInvoices, setShowAllInvoices] = useState(false);
 
-  // Sắp xếp hóa đơn mới nhất lên đầu và chỉ lấy 5 giao dịch gần nhất
   const sortedPaidInvoices = [...paidInvoices].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   
   const filteredPaidInvoices = sortedPaidInvoices.filter(inv => {
@@ -38,7 +40,9 @@ export const PatientBilling: React.FC = () => {
            (inv.paymentMethod && inv.paymentMethod.toLowerCase().includes(searchQuery.toLowerCase()));
   });
 
-  const displayInvoices = filteredPaidInvoices.slice(0, 5);
+  const PAGE_SIZE = 5;
+  const displayInvoices = showAllInvoices ? filteredPaidInvoices : filteredPaidInvoices.slice(0, PAGE_SIZE);
+  const hasMoreInvoices = filteredPaidInvoices.length > PAGE_SIZE;
 
   return (
     <>
@@ -148,7 +152,8 @@ export const PatientBilling: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
               <Icon name="task_alt" className="text-secondary" />
-              Lịch sử giao dịch (5 gần nhất)
+              {/* BUG-M01: Hiển thị số lượng thực chứ không cố định "5 gần nhất" */}
+              Lịch sử giao dịch ({filteredPaidInvoices.length} hóa đơn)
             </h3>
             
             <div className="flex gap-2">
@@ -217,6 +222,19 @@ export const PatientBilling: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* BUG-M01: Nút xem thêm */}
+          {hasMoreInvoices && (
+            <button
+              onClick={() => setShowAllInvoices(prev => !prev)}
+              className="mt-4 w-full py-3 bg-surface-container border border-outline-variant rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-high transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Icon name={showAllInvoices ? 'expand_less' : 'expand_more'} />
+              {showAllInvoices
+                ? 'Rút gọn'
+                : `Xem thêm ${filteredPaidInvoices.length - PAGE_SIZE} giao dịch`}
+            </button>
+          )}
         </div>
 
       </div>
@@ -373,15 +391,20 @@ interface PayInvoiceModalProps {
 const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invoice, completedCount, onPaySuccess }) => {
   if (!isOpen) return null;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // BUG-L02: Thêm state cho phương thức thanh toán
+  const [paymentMethod, setPaymentMethod] = useState<'Transfer' | 'Cash' | 'Card'>('Transfer');
+
   const remainingAmt = invoice.remainingAmount !== undefined ? invoice.remainingAmount : invoice.netPrice;
   const isVip = completedCount >= 5;
-  const discount = isVip ? remainingAmt * 0.1 : 0;
-  const finalPayAmount = remainingAmt - discount;
+  // BUG-H04: Chiết khấu VIP tính trên tổng hóa đơn gốc (netPrice), không phải phần còn nợ (remainingAmt)
+  const discountBase = invoice.netPrice;
+  const discount = isVip ? Math.round(discountBase * 0.1) : 0;
+  const finalPayAmount = Math.max(0, remainingAmt - discount);
 
   const handlePaymentSubmit = async () => {
     setIsSubmitting(true);
     try {
-      await onPaySuccess('Transfer', finalPayAmount);
+      await onPaySuccess(paymentMethod, finalPayAmount);
       alert('Thanh toán hóa đơn thành công!');
       onClose();
     } catch (err: any) {
@@ -397,7 +420,7 @@ const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invo
         <div className="flex justify-between items-center">
           <h3 className="font-bold text-lg flex items-center gap-2">
             <Icon name="payments" className="text-primary" />
-            Thanh toán Chuyển khoản VietQR
+            Thanh toán hóa đơn
           </h3>
           <button onClick={onClose} className="hover:bg-slate-100 p-1 rounded-full cursor-pointer border-none bg-transparent">
             <Icon name="close" />
@@ -410,14 +433,22 @@ const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invo
           
           <div className="flex justify-between border-t border-slate-200/60 pt-2">
             <span>Giá trị hóa đơn gốc:</span>
-            <span>₫{remainingAmt.toLocaleString()}</span>
+            <span>₫{invoice.netPrice.toLocaleString()}</span>
           </div>
+
+          {remainingAmt !== invoice.netPrice && (
+            <div className="flex justify-between text-blue-600">
+              <span>Số tiền còn lại cần đóng:</span>
+              <span>₫{remainingAmt.toLocaleString()}</span>
+            </div>
+          )}
 
           {isVip ? (
             <div className="flex justify-between text-emerald-600 font-bold">
               <span className="flex items-center gap-1">
                 <Icon name="verified" className="text-xs" />
-                Khuyến mãi Hội viên VIP (Giảm 10%):
+                {/* BUG-H04: Ghi rõ % áp dụng trên tổng hóa đơn */}
+                Khuyến mãi Hội viên VIP (Giảm 10% tổng HD):
               </span>
               <span>-₫{discount.toLocaleString()}</span>
             </div>
@@ -433,22 +464,68 @@ const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invo
           </div>
         </div>
 
-        <div className="flex flex-col items-center bg-slate-50 p-4 rounded-xl border border-slate-200/50 space-y-2">
-          <img
-            src={`https://img.vietqr.io/image/techcombank-19074150102019-compact.png?amount=${finalPayAmount}&addInfo=GOODSMILE%20${invoice.id}&accountName=NHA%20KHOA%20GOODSMILE%20PRO`}
-            alt="VietQR Code"
-            className="w-40 h-40 border rounded-lg bg-white"
-          />
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider text-center">Quét mã QR Techcombank để thanh toán</p>
+        {/* BUG-L02: Cho phép chọn phương thức thanh toán */}
+        <div>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Phương thức thanh toán</p>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { value: 'Transfer', icon: 'qr_code', label: 'Chuyển khoản' },
+              { value: 'Cash', icon: 'payments', label: 'Tiền mặt' },
+              { value: 'Card', icon: 'credit_card', label: 'Thẻ/POS' },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setPaymentMethod(opt.value)}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-xs font-bold transition-all cursor-pointer ${
+                  paymentMethod === opt.value
+                    ? 'border-primary bg-primary-container text-on-primary-container'
+                    : 'border-outline-variant bg-surface-container text-on-surface-variant hover:border-primary/50'
+                }`}
+              >
+                <Icon name={opt.icon} className="text-[20px]" />
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {paymentMethod === 'Transfer' && (
+          <div className="flex flex-col items-center bg-slate-50 p-4 rounded-xl border border-slate-200/50 space-y-2">
+            <img
+              src={`https://img.vietqr.io/image/techcombank-19074150102019-compact.png?amount=${finalPayAmount}&addInfo=GOODSMILE%20${invoice.id}&accountName=NHA%20KHOA%20GOODSMILE%20PRO`}
+              alt="VietQR Code"
+              className="w-40 h-40 border rounded-lg bg-white"
+            />
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider text-center">Quét mã QR Techcombank để thanh toán</p>
+          </div>
+        )}
+
+        {paymentMethod === 'Cash' && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1">
+            <p className="font-bold flex items-center gap-1"><Icon name="info" className="text-[16px]" />Hướng dẫn thanh toán tiền mặt</p>
+            <p>Vui lòng đến <strong>Quầy Thu ngân</strong> của phòng khám và đưa mã hóa đơn: <strong className="font-mono">{invoice.id}</strong></p>
+          </div>
+        )}
+
+        {paymentMethod === 'Card' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 space-y-1">
+            <p className="font-bold flex items-center gap-1"><Icon name="credit_card" className="text-[16px]" />Thanh toán qua Thẻ/POS</p>
+            <p>Nhân viên thu ngân sẽ đến tận nơi hỗ trợ bạn thanh toán qua máy POS. Vui lòng giữ mã HD: <strong className="font-mono">{invoice.id}</strong></p>
+          </div>
+        )}
 
         <button
           type="button"
           onClick={handlePaymentSubmit}
           disabled={isSubmitting}
-          className="w-full py-3.5 bg-primary text-on-primary border-none rounded-xl font-bold hover:bg-primary-container disabled:opacity-50 transition-all text-xs cursor-pointer flex items-center justify-center gap-2"
+          className="w-full py-3.5 bg-primary text-on-primary border-none rounded-xl font-bold hover:opacity-90 disabled:opacity-50 transition-all text-xs cursor-pointer flex items-center justify-center gap-2"
         >
-          {isSubmitting ? 'Đang xác nhận...' : 'Tôi đã chuyển khoản thành công'}
+          {isSubmitting ? 'Đang xác nhận...' : (
+            paymentMethod === 'Transfer' ? 'Tôi đã chuyển khoản thành công' :
+            paymentMethod === 'Cash' ? 'Xác nhận đã thanh toán tiền mặt' :
+            'Xác nhận thanh toán qua Thẻ/POS'
+          )}
         </button>
       </div>
     </div>

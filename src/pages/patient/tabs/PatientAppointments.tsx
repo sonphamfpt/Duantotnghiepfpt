@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -62,9 +63,11 @@ const parseAppointmentTime = (timeStr: string) => {
 };
 
 export const PatientAppointments: React.FC = () => {
-  const { appointments, cancelAppointment } = useClinic();
+  const { appointments, cancelAppointment, dentists } = useClinic();
   const { user } = useAuth();
-  const patientId = user?.id || 'P-8821';
+  const navigate = useNavigate();
+  // BUG-C03: Không dùng hardcode fallback P-8821 — nếu chưa login thì id rỗng
+  const patientId = user?.id || '';
 
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [cancelId, setCancelId] = useState<string | null>(null);
@@ -80,7 +83,9 @@ export const PatientAppointments: React.FC = () => {
   const [historyFilter, setHistoryFilter] = useState<'All' | 'Completed' | 'Cancelled' | 'NoShow'>('All');
 
   // Filter appointments for the current logged-in patient
+  // BUG-C03: Guard — nếu không có user thì trả về [] thay vì match sai ID
   const myAppointments = React.useMemo(() => {
+    if (!patientId) return [];
     return appointments.filter(a => {
       const aPatientId = a.patientId.replace('P-', '');
       const currentPatientId = patientId.replace('P-', '');
@@ -89,15 +94,21 @@ export const PatientAppointments: React.FC = () => {
   }, [appointments, patientId]);
 
   // Parse time and add extra UI fields
+  // BUG-H01: Avatar bác sĩ lấy từ data thực thay vì hardcode Unsplash
   const mappedAppointments = React.useMemo(() => {
     const dbAppts = myAppointments.map(a => {
       const parsed = parseAppointmentTime(a.time);
+      const dentistData = dentists.find(d => d.id === a.dentistId || d.name === a.dentistName);
+      const avatarUrl = dentistData?.avatar
+        || dentistData?.imageUrl
+        || `https://ui-avatars.com/api/?name=${encodeURIComponent(a.dentistName || 'BS')}&background=005eb8&color=fff&size=150`;
       return {
         id: a.id,
         service: a.serviceName,
+        serviceId: a.serviceId || '',
         dentist: a.dentistName,
         room: 'Phòng khám',
-        avatar: 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=150&h=150&q=80',
+        avatar: avatarUrl,
         date: parsed.dateLabel,
         time: parsed.timeLabel,
         status: a.status,
@@ -109,9 +120,8 @@ export const PatientAppointments: React.FC = () => {
       };
     });
 
-
     return dbAppts;
-  }, [myAppointments]);
+  }, [myAppointments, dentists]);
 
   const upcomingAppointments = mappedAppointments.filter(
     a => a.status === 'Confirmed' || a.status === 'In-Progress' || a.status === 'Pending'
@@ -311,7 +321,11 @@ export const PatientAppointments: React.FC = () => {
             <div className="text-center py-20 bg-white rounded-2xl border border-outline-variant border-dashed">
               <Icon name="event_busy" className="text-[80px] text-outline" />
               <p className="text-on-surface-variant mt-4 text-body-lg">Bạn chưa có lịch hẹn nào sắp tới</p>
-              <button className="mt-4 px-6 py-2 bg-primary text-on-primary rounded-xl font-bold cursor-pointer">
+              {/* BUG-C01: Nút này từng là dead button — giờ navigate đến tab đặt lịch */}
+              <button
+                onClick={() => navigate('/patient?tab=booking')}
+                className="mt-4 px-6 py-2 bg-primary text-on-primary rounded-xl font-bold cursor-pointer hover:opacity-90 transition-opacity"
+              >
                 Đặt lịch khám ngay
               </button>
             </div>
@@ -402,8 +416,14 @@ export const PatientAppointments: React.FC = () => {
                       <p className="text-lg font-black text-primary">₫{appt.price.toLocaleString()}</p>
                     </div>
                   )}
+                  {/* BUG-C02: Thay alert() stub bằng điều hướng thực đến tab đặt lịch */}
                   <button
-                    onClick={() => alert(`Đang chuyển tới trang Đặt lịch cho dịch vụ: ${appt.service}`)}
+                    onClick={() => {
+                      const params = new URLSearchParams();
+                      params.set('tab', 'booking');
+                      if (appt.serviceId) params.set('serviceId', appt.serviceId);
+                      navigate(`/patient?${params.toString()}`);
+                    }}
                     className="px-6 py-2.5 bg-primary-container text-on-primary-container rounded-xl text-sm font-bold hover:opacity-80 transition-all cursor-pointer flex items-center gap-2 border border-primary/20"
                   >
                     <Icon name="replay" className="text-[18px]" />

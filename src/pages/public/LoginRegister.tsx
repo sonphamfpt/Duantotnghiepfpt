@@ -181,15 +181,22 @@ export const LoginRegister: React.FC = () => {
       } else {
         const birthDateObj = new Date(regBirthDate);
         const today = new Date();
-        const age = today.getFullYear() - birthDateObj.getFullYear();
         if (birthDateObj > today) {
           errs.birthDate = 'Ngày sinh không được ở tương lai.';
         } else if (birthDateObj.getFullYear() < 1900) {
           errs.birthDate = 'Năm sinh tối thiểu từ năm 1900.';
-        } else if (age < 1) {
-          errs.birthDate = 'Tuổi phải từ 1 trở lên.';
-        } else if (age > 120) {
-          errs.birthDate = 'Ngày sinh không hợp lệ.';
+        } else {
+          // BUG-M03: Tính tuổi đúng cách (so sánh cả tháng và ngày, không chỉ năm)
+          let age = today.getFullYear() - birthDateObj.getFullYear();
+          const monthDiff = today.getMonth() - birthDateObj.getMonth();
+          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDateObj.getDate())) {
+            age--;
+          }
+          if (age < 1) {
+            errs.birthDate = 'Tuổi phải từ 1 trở lên.';
+          } else if (age > 120) {
+            errs.birthDate = 'Ngày sinh không hợp lệ.';
+          }
         }
       }
 

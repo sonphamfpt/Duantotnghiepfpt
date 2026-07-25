@@ -20,7 +20,13 @@ const ReceptionistHome: React.FC = () => {
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [checkInInitialMode, setCheckInInitialMode] = useState<'existing' | 'new' | 'qr'>('qr');
 
-  const [now] = useState(new Date());
+  const [now, setNow] = useState(new Date());
+
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Chào buổi sáng' : hour < 18 ? 'Chào buổi chiều' : 'Chào buổi tối';
   const dayStr = now.toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });

@@ -37,4 +37,15 @@ export const staffApi = {
     request<{ id: string; status: 'Active' | 'Inactive' }>(`/staff/${id}/status`, {
       method: 'PATCH',
     }),
+
+  updateStaff: (id: string, data: { name?: string; role?: string; phone?: string; email?: string; password?: string }) =>
+    request<any>(`/staff/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteStaff: (id: string) =>
+    request<any>(`/staff/${id}`, {
+      method: 'DELETE',
+    }),
 };

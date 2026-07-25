@@ -18,7 +18,7 @@ const PatientHome: React.FC = () => {
   const { patients = [], medicalRecords = [], invoices = [], appointments = [], queue = [], fetchPatientRecords } = useClinic();
   const { user } = useAuth();
 
-  const rawPatientId = user?.id || 'P-8821';
+  const rawPatientId = user?.id || '';
   const cleanId = (id?: string) => (id ? id.toString().replace(/^P-/i, '') : '');
   const targetPatientId = cleanId(rawPatientId);
   const targetPhone = user?.phone || '';
@@ -133,8 +133,11 @@ const PatientHome: React.FC = () => {
     } else if (latestAppointment.status === 'Completed') {
       currentStep = 3; // Đã khám xong
       
+      // BUG-M02: Chỉ lên bước 4 khi thực sự CÓ hóa đơn đã thanh toán.
+      // Tránh bệnh nhân mới (invoices=[]) bị hiển thị sai là "Đã thanh toán"
+      const hasPaidInvoice = paidInvoicesCount > 0;
       const hasPendingInvoice = pendingInvoices.length > 0;
-      if (!hasPendingInvoice) {
+      if (hasPaidInvoice && !hasPendingInvoice) {
         currentStep = 4; // Đã thanh toán
       }
     }

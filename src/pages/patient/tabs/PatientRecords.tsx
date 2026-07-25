@@ -125,10 +125,12 @@ function parseEMRNotes(notes: string | undefined, recordId: string): ParsedNotes
 export const PatientRecords: React.FC = () => {
   const { patients = [], medicalRecords = [], fetchPatientRecords } = useClinic();
   const { user } = useAuth();
-  const patientId = user?.id || 'P-8821';
+  // BUG-C03: Không dùng hardcode fallback P-8821
+  const patientId = user?.id || '';
   const fetchedRef = React.useRef<string | null>(null);
 
   useEffect(() => {
+    // Guard: chỉ fetch khi có patientId thực
     if (patientId && fetchedRef.current !== patientId) {
       fetchedRef.current = patientId;
       fetchPatientRecords(patientId);

@@ -21,7 +21,7 @@ export const CashierReport: React.FC = () => {
     }
   });
 
-  // Reset shiftStartTime nếu đã sang ngày mới
+  // Reset shiftStartTime nếu đã sang ngày mới (chỉ chạy 1 lần khi mount)
   useEffect(() => {
     if (shiftStartTime) {
       const shiftDate = new Date(shiftStartTime).toDateString();
@@ -30,7 +30,7 @@ export const CashierReport: React.FC = () => {
         localStorage.removeItem('goodsmile_shift_start_time');
       }
     }
-  }, [todayDateStr, shiftStartTime]);
+  }, []);
 
   // Unified Revenue Statistics
   const todayFullStats = useMemo(() => {

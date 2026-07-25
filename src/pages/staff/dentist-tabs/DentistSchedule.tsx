@@ -41,11 +41,15 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
   // Success Toast Modal state
   const [successToast, setSuccessToast] = useState<{ title: string; message: string } | null>(null);
 
-  // Dùng ngày thực tế, không hardcode
-  const todayDateStr = new Date().toISOString().slice(0, 10);
-  const tomorrowDate = new Date();
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrowDateStr = tomorrowDate.toISOString().slice(0, 10);
+  // Dùng ngày thực tế, tính toán động trong render/useMemo
+  const getTodayStr = () => new Date().toISOString().slice(0, 10);
+  const getTomorrowStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  };
+  const todayDateStr = getTodayStr();
+  const tomorrowDateStr = getTomorrowStr();
 
   // Mini calendar — tháng/năm động
   const [calendarDate, setCalendarDate] = useState(() => {

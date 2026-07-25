@@ -26,22 +26,27 @@ export const CashierHistory: React.FC = () => {
 
     let matchesTime = true;
     const paymentDates = (inv.payments || []).map(p => new Date(p.date).getTime()).filter(t => !isNaN(t));
-    const invoiceDate = paymentDates.length > 0 ? new Date(Math.max(...paymentDates)) : new Date(inv.createdAt);
+    const invoiceDateMs = paymentDates.length > 0 ? Math.max(...paymentDates) : new Date(inv.createdAt).getTime();
+    const invDate = new Date(invoiceDateMs);
+
     const now = new Date();
-    
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
     if (timeFilter === 'TODAY') {
-      matchesTime = invoiceDate.toDateString() === now.toDateString();
+      matchesTime = invoiceDateMs >= todayStart && invoiceDateMs <= todayEnd;
     } else if (timeFilter === 'WEEK') {
-      const weekAgo = new Date();
-      weekAgo.setDate(now.getDate() - 7);
-      matchesTime = invoiceDate >= weekAgo;
+      const weekStart = todayStart - 6 * 24 * 60 * 60 * 1000;
+      matchesTime = invoiceDateMs >= weekStart && invoiceDateMs <= todayEnd;
     } else if (timeFilter === 'MONTH') {
-      matchesTime = invoiceDate.getMonth() === now.getMonth() && invoiceDate.getFullYear() === now.getFullYear();
+      matchesTime = invDate.getMonth() === now.getMonth() && invDate.getFullYear() === now.getFullYear();
     } else if (timeFilter === 'YEAR') {
-      matchesTime = invoiceDate.getFullYear() === now.getFullYear();
+      matchesTime = invDate.getFullYear() === now.getFullYear();
     } else if (timeFilter === 'CUSTOM') {
-      const selected = new Date(customDate);
-      matchesTime = invoiceDate.toDateString() === selected.toDateString();
+      const [cYear, cMonth, cDay] = customDate.split('-').map(Number);
+      const customStart = new Date(cYear, cMonth - 1, cDay).getTime();
+      const customEnd = customStart + 24 * 60 * 60 * 1000 - 1;
+      matchesTime = invoiceDateMs >= customStart && invoiceDateMs <= customEnd;
     }
 
     return isPaid && matchesSearch && matchesMethod && matchesTime;

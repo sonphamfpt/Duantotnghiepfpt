@@ -42,6 +42,8 @@ export const ManagerLogs: React.FC = () => {
   const [search, setSearch] = useState('');
   const [moduleFilter, setModuleFilter] = useState<string>('TẤT CẢ');
   const [typeFilter, setTypeFilter] = useState<string>('TẤT CẢ');
+  const [dateFilter, setDateFilter] = useState<string>('TODAY');
+  const [customDate, setCustomDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 15;
 
@@ -66,18 +68,58 @@ export const ManagerLogs: React.FC = () => {
 
   // Tính thống kê
   const totalLogs = logs.length;
-  const errCount = logs.filter(l => l.logType === 'ERR').length;
-  const warnCount = logs.filter(l => l.logType === 'WARN').length;
-  const successCount = logs.filter(l => l.logType === 'SUCCESS').length;
+  const errCount = logs.filter(l => (l.logType || (l as any).type) === 'ERR').length;
+  const warnCount = logs.filter(l => (l.logType || (l as any).type) === 'WARN').length;
+  const successCount = logs.filter(l => (l.logType || (l as any).type) === 'SUCCESS').length;
 
   // Lọc
   const filtered = logs.filter(log => {
-    const matchModule = moduleFilter === 'TẤT CẢ' || log.module === moduleFilter;
-    const matchType = typeFilter === 'TẤT CẢ' || log.logType === typeFilter;
+    const logModule = log.module || 'SYSTEM';
+    const logType = log.logType || (log as any).type || 'INFO';
+    const actor = log.actorName || (log as any).actor || '';
+
+    const matchModule = moduleFilter === 'TẤT CẢ' || logModule === moduleFilter;
+    const matchType = typeFilter === 'TẤT CẢ' || logType === typeFilter;
     const matchSearch = search === '' ||
       log.message.toLowerCase().includes(search.toLowerCase()) ||
-      log.actorName.toLowerCase().includes(search.toLowerCase());
-    return matchModule && matchType && matchSearch;
+      actor.toLowerCase().includes(search.toLowerCase());
+
+    // Lọc theo ngày
+    let matchDate = true;
+    const rawTime = log.createdAt || (log as any).time;
+    let logMs = 0;
+    if (rawTime) {
+      if (/^\d{2}:\d{2}:\d{2}$/.test(rawTime)) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        logMs = new Date(`${todayStr}T${rawTime}`).getTime();
+      } else {
+        logMs = new Date(rawTime).getTime();
+      }
+    }
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
+    if (dateFilter === 'TODAY') {
+      matchDate = logMs >= todayStart && logMs <= todayEnd;
+    } else if (dateFilter === 'YESTERDAY') {
+      const yestStart = todayStart - 24 * 60 * 60 * 1000;
+      matchDate = logMs >= yestStart && logMs < todayStart;
+    } else if (dateFilter === '7DAYS') {
+      const sevenDaysStart = todayStart - 6 * 24 * 60 * 60 * 1000;
+      matchDate = logMs >= sevenDaysStart && logMs <= todayEnd;
+    } else if (dateFilter === '30DAYS') {
+      const thirtyDaysStart = todayStart - 29 * 24 * 60 * 60 * 1000;
+      matchDate = logMs >= thirtyDaysStart && logMs <= todayEnd;
+    } else if (dateFilter === 'CUSTOM' && customDate) {
+      const [cYear, cMonth, cDay] = customDate.split('-').map(Number);
+      const customStart = new Date(cYear, cMonth - 1, cDay).getTime();
+      const customEnd = customStart + 24 * 60 * 60 * 1000 - 1;
+      matchDate = logMs >= customStart && logMs <= customEnd;
+    }
+
+    return matchModule && matchType && matchSearch && matchDate;
   });
 
   // Phân trang
@@ -86,16 +128,19 @@ export const ManagerLogs: React.FC = () => {
 
   const handleFilterChange = () => setPage(1);
 
-  const formatTime = (dateStr: string) => {
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleString('vi-VN', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-      });
-    } catch {
-      return dateStr;
+  const formatTime = (log: SystemLog) => {
+    const raw = log.createdAt || (log as any).time;
+    if (!raw) return '—';
+    if (/^\d{2}:\d{2}:\d{2}$/.test(raw)) {
+      const todayStr = new Date().toLocaleDateString('vi-VN');
+      return `${todayStr} ${raw}`;
     }
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return raw;
+    return d.toLocaleString('vi-VN', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
   };
 
   const handleExportExcel = () => {
@@ -179,6 +224,31 @@ export const ManagerLogs: React.FC = () => {
           />
         </div>
 
+        {/* Date Filter */}
+        <div className="flex items-center gap-2">
+          <select
+            value={dateFilter}
+            onChange={e => { setDateFilter(e.target.value); handleFilterChange(); }}
+            className="border border-outline-variant rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none bg-surface-container-low cursor-pointer"
+          >
+            <option value="TODAY">Hôm nay</option>
+            <option value="YESTERDAY">Hôm qua</option>
+            <option value="7DAYS">7 ngày qua</option>
+            <option value="30DAYS">30 ngày qua</option>
+            <option value="ALL">Tất cả thời gian</option>
+            <option value="CUSTOM">Tùy chọn ngày...</option>
+          </select>
+
+          {dateFilter === 'CUSTOM' && (
+            <input
+              type="date"
+              value={customDate}
+              onChange={e => { setCustomDate(e.target.value); handleFilterChange(); }}
+              className="border border-outline-variant rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none bg-surface-container-low cursor-pointer"
+            />
+          )}
+        </div>
+
         {/* Module Filter */}
         <div className="flex items-center gap-2">
           <Icon name="filter_list" className="text-outline text-[18px] shrink-0" />
@@ -243,13 +313,13 @@ export const ManagerLogs: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-outline-variant/30">
                 {paginated.map((log) => {
-                  const typeMeta = getLogTypeMeta(log.logType);
+                  const typeMeta = getLogTypeMeta(log.logType || (log as any).type);
                   const modMeta = getModuleMeta(log.module);
                   return (
-                    <tr key={log.logId} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={log.logId || (log as any).id} className="hover:bg-slate-50/70 transition-colors">
                       {/* Thời gian */}
                       <td className="px-4 py-3 font-data-mono text-[10px] text-outline whitespace-nowrap">
-                        {formatTime(log.createdAt)}
+                        {formatTime(log)}
                       </td>
 
                       {/* Module */}
