@@ -13,10 +13,8 @@ import { Services } from './pages/public/Services';
 import { Doctors } from './pages/public/Doctors';
 import { DoctorDetail } from './pages/public/DoctorDetail';
 import { BookingPage } from './pages/public/BookingPage';
-import { AboutUs } from './pages/public/AboutUs';
 import { Contact } from './pages/public/Contact';
 import { LoginRegister } from './pages/public/LoginRegister';
-import { AgentTeamWorkspace } from './pages/public/AgentTeamWorkspace';
 
 // Patient page
 import { PatientDashboard } from './pages/patient/PatientDashboard';
@@ -110,7 +108,6 @@ export default function App() {
               <Route path="/doctors/:id" element={<PublicRoute component={DoctorDetail} />} />
               <Route path="/contact" element={<PublicRoute component={Contact} />} />
               <Route path="/book" element={<PublicRoute component={BookingPage} />} />
-              <Route path="/team-workspace" element={<AgentTeamWorkspace />} />
 
               {/* Auth — redirect away if already logged in */}
               <Route path="/login" element={<GuestOnlyRoute component={LoginRegister} />} />

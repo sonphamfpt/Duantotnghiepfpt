@@ -95,20 +95,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             >
               Đặt lịch khám
             </Link>
-
-            <Link
-              to="/team-workspace"
-              className={`font-label-md text-sm px-3.5 py-2 rounded-xl font-extrabold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                isActive('/team-workspace')
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-blue-500/20 ring-2 ring-blue-400/40'
-                  : 'bg-gradient-to-r from-slate-900 to-indigo-950 text-indigo-300 border border-indigo-500/30 hover:border-indigo-400 hover:text-white'
-              }`}
-            >
-              <Icon name="smart_toy" className="text-base text-amber-400 animate-pulse" />
-              <span>⚡ Agent Workspace</span>
-            </Link>
-
           </nav>
+
         </div>
         
         <div className="flex items-center gap-stack-md">
