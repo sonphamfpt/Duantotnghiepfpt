@@ -7,7 +7,7 @@ export const ReceptionistCancelHistory: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterReason, setFilterReason] = useState<'all' | 'auto' | 'manual'>('all');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
-  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('today');
+  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('all');
 
   // Helper trích xuất Date an toàn từ appointment
   const parseAppointmentDate = (appt: any): Date => {
@@ -35,9 +35,22 @@ export const ReceptionistCancelHistory: React.FC = () => {
     return true;
   };
 
-  // Lọc lịch hẹn đã bị hủy (Cancelled)
-  const cancelledAppointments = (appointments || [])
-    .filter(a => a && a.status === 'Cancelled')
+  // Lọc tất cả ca hủy theo mốc thời gian trước
+  const cancelledByDate = (appointments || []).filter(a => {
+    if (!a || a.status !== 'Cancelled') return false;
+    const dateObj = parseAppointmentDate(a);
+    return isDateInFilter(dateObj, dateFilter);
+  });
+
+  // Thống kê nhanh theo mốc thời gian đang lọc
+  const stats = {
+    total: cancelledByDate.length,
+    auto: cancelledByDate.filter(a => a.cancelReason?.includes('Tự động hủy') || a.cancelReason?.includes('đổi ca')).length,
+    manual: cancelledByDate.filter(a => !a.cancelReason?.includes('Tự động hủy') && !a.cancelReason?.includes('đổi ca')).length,
+  };
+
+  // Lọc chi tiết danh sách theo lý do & tìm kiếm
+  const cancelledAppointments = cancelledByDate
     .filter(a => {
       if (filterReason === 'auto') {
         return a.cancelReason?.includes('Tự động hủy') || a.cancelReason?.includes('đổi ca');
@@ -46,10 +59,6 @@ export const ReceptionistCancelHistory: React.FC = () => {
         return !a.cancelReason?.includes('Tự động hủy') && !a.cancelReason?.includes('đổi ca');
       }
       return true;
-    })
-    .filter(a => {
-      const dateObj = parseAppointmentDate(a);
-      return isDateInFilter(dateObj, dateFilter);
     })
     .filter(a => {
       if (!searchQuery.trim()) return true;
@@ -66,14 +75,6 @@ export const ReceptionistCancelHistory: React.FC = () => {
       const dateB = parseAppointmentDate(b).getTime();
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
     });
-
-  // Thống kê nhanh
-  const allCancelled = appointments.filter(a => a.status === 'Cancelled');
-  const stats = {
-    total: allCancelled.length,
-    auto: allCancelled.filter(a => a.cancelReason?.includes('Tự động hủy') || a.cancelReason?.includes('đổi ca')).length,
-    manual: allCancelled.filter(a => !a.cancelReason?.includes('Tự động hủy') && !a.cancelReason?.includes('đổi ca')).length,
-  };
 
   const getCancelTypeInfo = (reason?: string) => {
     if (reason?.includes('Tự động hủy') || reason?.includes('đổi ca')) {
