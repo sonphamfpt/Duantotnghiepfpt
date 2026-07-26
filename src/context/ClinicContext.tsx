@@ -593,8 +593,9 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         addLog('SYSTEM', 'SUCCESS', `Hoán đổi ca trực thành công.`);
         await refreshAllData();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert(err?.message || 'Không thể hoán đổi ca trực. Vui lòng kiểm tra lại điều kiện.');
     }
   };
 
@@ -605,10 +606,12 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         addLog('SYSTEM', 'SUCCESS', `Chuyển giao ca trực thành công.`);
         await refreshAllData();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert(err?.message || 'Không thể chuyển giao ca trực.');
     }
   };
+
 
   // ── Resolve conflict: Bệnh nhân đồng ý → cập nhật bác sĩ mới trong appointment ──
   const resolveShiftConflict_Update = async (notifId: string, appointmentId: string) => {
@@ -743,10 +746,12 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               addLog('SYSTEM', 'WARN', `Xóa ca trực ${shiftId} thành công.`);
               await refreshAllData();
             }
-          } catch (err) {
+          } catch (err: any) {
             console.error('Lỗi xóa ca trực:', err);
+            alert(err?.message || 'Không thể xóa ca trực.');
           }
         },
+
         resolveShiftConflict_Update,
         resolveShiftConflict_Cancel,
         reviews,

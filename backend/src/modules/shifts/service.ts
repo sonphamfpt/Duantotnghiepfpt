@@ -473,6 +473,20 @@ export async function deleteShift(shiftId: bigint) {
   const shiftStartUtc = new Date(Date.UTC(year, month, day, startHours - VIETNAM_OFFSET_HOURS, startMinutes));
   const shiftEndUtc = new Date(Date.UTC(year, month, day, endHours - VIETNAM_OFFSET_HOURS, endMinutes));
 
+  const nowMs = Date.now();
+  const shiftStartMs = shiftStartUtc.getTime();
+  const shiftEndMs = shiftEndUtc.getTime();
+
+  // 1. Chặn xóa nếu ca trực đang trong giờ làm việc của bác sĩ
+  if (nowMs >= shiftStartMs && nowMs <= shiftEndMs) {
+    throw new AppError(
+      400,
+      'CURRENT_SHIFT_ACTIVE',
+      `Không thể xóa ca trực vì ca làm việc đang trong thời gian diễn ra (${shift.shiftType === 'Morning' ? '08:00 - 14:00' : shift.shiftType === 'Afternoon' ? '14:00 - 20:00' : '08:00 - 20:00'}). Bác sĩ đang trong ca trực.`
+    );
+  }
+
+  // 2. Chặn xóa nếu ca trực có lịch hẹn đang diễn ra hoặc đã xác nhận
   const activeAppointmentsCount = await prisma.appointment.count({
     where: {
       dentistId: shift.dentistId,
@@ -485,10 +499,11 @@ export async function deleteShift(shiftId: bigint) {
   if (activeAppointmentsCount > 0) {
     throw new AppError(
       400,
-      'Không thể xóa ca trực vì đã có lịch hẹn được đặt trong ca trực này. Vui lòng hoán đổi ca trực, chuyển ca trực hoặc xử lý các lịch hẹn trước.',
-      'SHIFT_HAS_APPOINTMENTS'
+      'SHIFT_HAS_APPOINTMENTS',
+      `Không thể xóa ca trực vì đã có ${activeAppointmentsCount} lịch hẹn đang chờ/đang khám trong ca này. Vui lòng hoán đổi ca trực hoặc chuyển ca trực trước.`
     );
   }
+
 
   const todayStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
   const shiftDateStr = shift.workDate.toISOString().split('T')[0];
