@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useConfirm } from '../../../context/ConfirmContext';
+
 
 const SHIFT_TYPES = {
   Morning: { label: 'Ca sáng', color: 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100/70', time: '08:00 - 14:00' },
@@ -161,9 +163,9 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
     setShowSwapModal(true);
   };
 
-  const handleConfirmAction = () => {
+  const handleConfirmAction = async () => {
     if (!originShiftId) {
-      alert('Vui lòng chọn ca làm việc gốc!');
+      showAlert({ title: 'Thiếu thông tin', message: 'Vui lòng chọn ca làm việc gốc!', type: 'warning' });
       return;
     }
 
@@ -171,11 +173,11 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
 
     if (actionType === 'swap') {
       if (!targetShiftId) {
-        alert('Vui lòng chọn ca làm việc muốn đổi!');
+        showAlert({ title: 'Thiếu thông tin', message: 'Vui lòng chọn ca làm việc muốn đổi!', type: 'warning' });
         return;
       }
       if (originShiftId === targetShiftId) {
-        alert('Không thể đổi ca làm việc với chính nó!');
+        showAlert({ title: 'Không hợp lệ', message: 'Không thể đổi ca làm việc với chính nó!', type: 'warning' });
         return;
       }
 
@@ -197,19 +199,28 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
           return;
         }
       }
-      swapShifts(originShiftId, targetShiftId);
-      setSuccessToast({
-        title: 'Hoán đổi ca trực thành công!',
-        message: 'Lịch làm việc đã được cập nhật và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
-      });
+      const res = await swapShifts(originShiftId, targetShiftId);
+      if (res && res.error) {
+        showAlert({ title: 'Không thể hoán đổi ca', message: res.error, type: 'error' });
+      } else {
+        setSuccessToast({
+          title: 'Hoán đổi ca trực thành công!',
+          message: 'Lịch làm việc đã được cập nhật và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
+        });
+        setShowSwapModal(false);
+        setOriginShiftId('');
+        setTargetShiftId('');
+        setTargetDentistId('');
+        setFormDentistId('');
+      }
 
     } else if (actionType === 'transfer') {
       if (!targetDentistId) {
-        alert('Vui lòng chọn bác sĩ nhận ca trực!');
+        showAlert({ title: 'Thiếu thông tin', message: 'Vui lòng chọn bác sĩ nhận ca trực!', type: 'warning' });
         return;
       }
       if (originShift && originShift.dentistId === targetDentistId) {
-        alert('Bác sĩ nhận ca phải khác bác sĩ hiện tại của ca trực!');
+        showAlert({ title: 'Không hợp lệ', message: 'Bác sĩ nhận ca phải khác bác sĩ hiện tại của ca trực!', type: 'warning' });
         return;
       }
 
@@ -231,11 +242,20 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
           return;
         }
       }
-      transferShift(originShiftId, targetDentistId);
-      setSuccessToast({
-        title: 'Nhờ trực thay thành công!',
-        message: 'Ca trực đã được chuyển giao và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
-      });
+      const res = await transferShift(originShiftId, targetDentistId);
+      if (res && res.error) {
+        showAlert({ title: 'Không thể nhờ trực thay', message: res.error, type: 'error' });
+      } else {
+        setSuccessToast({
+          title: 'Nhờ trực thay thành công!',
+          message: 'Ca trực đã được chuyển giao và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
+        });
+        setShowSwapModal(false);
+        setOriginShiftId('');
+        setTargetShiftId('');
+        setTargetDentistId('');
+        setFormDentistId('');
+      }
 
     } else {
       // actionType === 'change_room'

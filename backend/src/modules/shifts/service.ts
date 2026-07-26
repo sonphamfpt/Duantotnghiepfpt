@@ -108,8 +108,9 @@ export async function createShift(data: {
   const todayStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
   const workDateStr = data.workDate.toISOString().split('T')[0];
   if (workDateStr < todayStr) {
-    throw new AppError(400, 'PAST_SHIFT_INVALID', 'Không thể xếp ca trực cho ngày trong quá khứ.');
+    throw new AppError(400, 'Không thể xếp ca trực cho ngày trong quá khứ.', 'PAST_SHIFT_INVALID');
   }
+
 
   const shiftHours = {
     Morning: { start: '08:00', end: '14:00' },
