@@ -170,14 +170,27 @@ export const ManagerSchedule: React.FC = () => {
   };
 
   // ── Delete Handler ──
-  const handleDeleteShift = (shiftId: string) => {
-    deleteShift(shiftId);
+  const handleDeleteShift = async (shiftId: string) => {
+    const res = await deleteShift(shiftId);
     setShowDeleteConfirm(null);
     setSelectedShiftId(null);
+    if (res && res.error) {
+      showAlert({
+        title: 'Không thể xóa ca trực',
+        message: res.error,
+        type: 'danger',
+      });
+    } else if (res && res.success) {
+      showAlert({
+        title: 'Thành công',
+        message: res.message || 'Đã xóa ca trực thành công!',
+        type: 'success',
+      });
+    }
   };
 
   // ── Edit Action Handler ──
-  const handleEditAction = () => {
+  const handleEditAction = async () => {
     if (!selectedShiftId) return;
 
     const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
@@ -212,7 +225,12 @@ export const ManagerSchedule: React.FC = () => {
           return;
         }
       }
-      swapShifts(selectedShiftId, editTargetShiftId);
+      const res = await swapShifts(selectedShiftId, editTargetShiftId);
+      if (res && res.error) {
+        showAlert({ title: 'Không thể hoán đổi ca', message: res.error, type: 'danger' });
+      } else {
+        showAlert({ title: 'Thành công', message: 'Hoán đổi ca trực thành công!', type: 'success' });
+      }
 
     } else if (editAction === 'transfer') {
       if (!editTargetDentistId) {
@@ -239,7 +257,12 @@ export const ManagerSchedule: React.FC = () => {
           return;
         }
       }
-      transferShift(selectedShiftId, editTargetDentistId);
+      const res = await transferShift(selectedShiftId, editTargetDentistId);
+      if (res && res.error) {
+        showAlert({ title: 'Không thể nhờ trực thay', message: res.error, type: 'danger' });
+      } else {
+        showAlert({ title: 'Thành công', message: 'Chuyển giao ca trực thành công!', type: 'success' });
+      }
     }
 
     setShowEditModal(false);
@@ -248,6 +271,7 @@ export const ManagerSchedule: React.FC = () => {
     setEditTargetDentistId('');
     setEditTargetRoom('');
   };
+
 
 
   // ── Confirm Conflict Handler ──

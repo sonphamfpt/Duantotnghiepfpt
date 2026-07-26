@@ -592,10 +592,12 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (response.success) {
         addLog('SYSTEM', 'SUCCESS', `Hoán đổi ca trực thành công.`);
         await refreshAllData();
+        return { success: true };
       }
+      return { success: false, error: response.message || 'Không thể hoán đổi ca trực.' };
     } catch (err: any) {
       console.error(err);
-      alert(err?.message || 'Không thể hoán đổi ca trực. Vui lòng kiểm tra lại điều kiện.');
+      return { success: false, error: err?.message || 'Không thể hoán đổi ca trực. Vui lòng kiểm tra lại điều kiện.' };
     }
   };
 
@@ -605,12 +607,15 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (response.success) {
         addLog('SYSTEM', 'SUCCESS', `Chuyển giao ca trực thành công.`);
         await refreshAllData();
+        return { success: true };
       }
+      return { success: false, error: response.message || 'Không thể chuyển giao ca trực.' };
     } catch (err: any) {
       console.error(err);
-      alert(err?.message || 'Không thể chuyển giao ca trực.');
+      return { success: false, error: err?.message || 'Không thể chuyển giao ca trực.' };
     }
   };
+
 
 
   // ── Resolve conflict: Bệnh nhân đồng ý → cập nhật bác sĩ mới trong appointment ──
@@ -745,12 +750,15 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             if (res.success) {
               addLog('SYSTEM', 'WARN', `Xóa ca trực ${shiftId} thành công.`);
               await refreshAllData();
+              return { success: true, message: res.message };
             }
+            return { success: false, error: res.message || 'Không thể xóa ca trực.' };
           } catch (err: any) {
             console.error('Lỗi xóa ca trực:', err);
-            alert(err?.message || 'Không thể xóa ca trực.');
+            return { success: false, error: err?.message || 'Không thể xóa ca trực.' };
           }
         },
+
 
         resolveShiftConflict_Update,
         resolveShiftConflict_Cancel,
