@@ -9,12 +9,36 @@ export const ReceptionistCancelHistory: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('all');
 
-  // Helper trích xuất Date an toàn từ appointment
+  // Helper trích xuất Date chính xác tuyệt đối từ appointment
   const parseAppointmentDate = (appt: any): Date => {
-    const rawStr = appt.cancelledAt || appt.createdAt || appt.time;
-    if (!rawStr) return new Date();
-    const d = new Date(rawStr);
-    if (!isNaN(d.getTime())) return d;
+    // 1. Ưu tiên ISO date từ backend
+    const rawStr = appt.cancelledAt || appt.createdAt || appt.startTimeIso;
+    if (rawStr) {
+      const d = new Date(rawStr);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    // 2. Parse từ chuỗi định dạng "DD/MM/YYYY @ HH:mm" hoặc "HH:mm"
+    if (appt.time) {
+      if (appt.time.includes('@')) {
+        const parts = appt.time.split('@');
+        const dateParts = parts[0].trim().split('/');
+        const timeParts = parts[1].trim().split(':');
+        if (dateParts.length === 3 && timeParts.length >= 2) {
+          const day = parseInt(dateParts[0], 10);
+          const month = parseInt(dateParts[1], 10) - 1;
+          const year = parseInt(dateParts[2], 10);
+          const hour = parseInt(timeParts[0], 10);
+          const min = parseInt(timeParts[1], 10);
+          return new Date(year, month, day, hour, min);
+        }
+      } else if (/^\d{2}:\d{2}$/.test(appt.time.trim())) {
+        const [h, m] = appt.time.trim().split(':').map(Number);
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+      }
+    }
+
     return new Date();
   };
 

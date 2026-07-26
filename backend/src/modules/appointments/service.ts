@@ -617,10 +617,14 @@ export class AppointmentsService {
         dentistId: `D-${appt.dentistId.toString().padStart(2, '0')}`,
         dentistName: appt.dentist?.user?.fullName || 'Bác sĩ',
         time: formatDate(appt.startTime),
+        startTimeIso: appt.startTime.toISOString(),
+        createdAt: appt.createdAt ? appt.createdAt.toISOString() : undefined,
+        cancelledAt: appt.cancelledAt ? appt.cancelledAt.toISOString() : undefined,
         status: statusStr,
         cancelReason: appt.cancelReason || undefined,
       };
     });
   }
 }
+
 export const appointmentsService = new AppointmentsService();
