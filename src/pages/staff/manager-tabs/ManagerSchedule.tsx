@@ -614,25 +614,28 @@ export const ManagerSchedule: React.FC = () => {
             </div>
 
             {/* Action buttons */}
-            <div className="grid grid-cols-2 gap-2 pt-2">
-              <button
-                onClick={() => {
-                  setEditAction('swap');
-                  setShowEditModal(true);
-                }}
-                className="py-2.5 bg-primary text-white rounded-xl font-bold text-xs hover:bg-primary/90 cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95"
-              >
-                <Icon name="swap_horiz" className="text-[14px]" />
-                Đổi ca/phòng
-              </button>
+            <div className={`grid ${selectedShift.date < TODAY ? 'grid-cols-1' : 'grid-cols-2'} gap-2 pt-2`}>
+              {selectedShift.date >= TODAY && (
+                <button
+                  onClick={() => {
+                    setEditAction('swap');
+                    setShowEditModal(true);
+                  }}
+                  className="py-2.5 bg-primary text-white rounded-xl font-bold text-xs hover:bg-primary/90 cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                >
+                  <Icon name="swap_horiz" className="text-[14px]" />
+                  Đổi ca/phòng
+                </button>
+              )}
               <button
                 onClick={() => setShowDeleteConfirm(selectedShift.id)}
                 className="py-2.5 bg-error text-white rounded-xl font-bold text-xs hover:bg-error/90 cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95"
               >
                 <Icon name="delete" className="text-[14px]" />
-                Xóa ca trực
+                {selectedShift.date < TODAY ? 'Xóa mềm ca trực (Ẩn)' : 'Xóa ca trực'}
               </button>
             </div>
+
           </div>
         </div>
       )}
