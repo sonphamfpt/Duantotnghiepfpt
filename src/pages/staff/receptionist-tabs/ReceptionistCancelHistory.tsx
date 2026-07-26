@@ -7,7 +7,15 @@ export const ReceptionistCancelHistory: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterReason, setFilterReason] = useState<'all' | 'auto' | 'manual'>('all');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
-  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('all');
+  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'custom' | 'all'>('today');
+
+  const todayIso = React.useMemo(() => {
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }, []);
+
+  const [customDate, setCustomDate] = useState<string>(todayIso);
 
   // Helper trích xuất Date chính xác tuyệt đối từ appointment
   const parseAppointmentDate = (appt: any): Date => {
@@ -43,7 +51,7 @@ export const ReceptionistCancelHistory: React.FC = () => {
   };
 
   // Helper kiểm tra ngày có nằm trong mốc lọc được chọn hay không
-  const isDateInFilter = (dateObj: Date, filter: 'today' | 'yesterday' | '7days' | '30days' | 'all'): boolean => {
+  const isDateInFilter = (dateObj: Date, filter: 'today' | 'yesterday' | '7days' | '30days' | 'custom' | 'all'): boolean => {
     if (filter === 'all') return true;
 
     const now = new Date();
@@ -56,6 +64,11 @@ export const ReceptionistCancelHistory: React.FC = () => {
     if (filter === 'yesterday') return diffDays === 1;
     if (filter === '7days') return diffDays >= 0 && diffDays <= 7;
     if (filter === '30days') return diffDays >= 0 && diffDays <= 30;
+    if (filter === 'custom' && customDate) {
+      const [y, m, d] = customDate.split('-').map(Number);
+      const customTarget = new Date(y, m - 1, d).getTime();
+      return startOfTarget === customTarget;
+    }
     return true;
   };
 
@@ -207,7 +220,7 @@ export const ReceptionistCancelHistory: React.FC = () => {
 
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
           {/* Date Filter Dropdown */}
-          <div className="relative shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <select
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value as any)}
@@ -217,8 +230,18 @@ export const ReceptionistCancelHistory: React.FC = () => {
               <option value="yesterday">Hôm qua</option>
               <option value="7days">7 ngày trước</option>
               <option value="30days">30 ngày trước</option>
+              <option value="custom">Chọn ngày cụ thể...</option>
               <option value="all">Tất cả lịch sử</option>
             </select>
+
+            {dateFilter === 'custom' && (
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+                className="bg-slate-50 border border-outline-variant/60 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-red-200 cursor-pointer shadow-2xs"
+              />
+            )}
           </div>
 
           {/* Sort toggle */}

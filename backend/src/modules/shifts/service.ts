@@ -1,6 +1,7 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, ShiftType } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../middlewares/errorHandler';
+import { socketManager } from '../../config/socket';
 
 /**
  * Quét tự động các lịch hẹn bị xung đột trùng với khung ca trực được hoán đổi/chuyển giao
@@ -21,12 +22,10 @@ async function detectAndCreateConflicts(
   const endHours = shift.endTime.getUTCHours();
   const endMinutes = shift.endTime.getUTCMinutes();
 
-  // Phòng khám hoạt động ở Việt Nam (UTC+7), cần trừ 7 giờ để đổi giờ làm việc local sang giờ UTC lưu trong DB
   const VIETNAM_OFFSET_HOURS = 7;
   const shiftStartUtc = new Date(Date.UTC(year, month, day, startHours - VIETNAM_OFFSET_HOURS, startMinutes));
   const shiftEndUtc = new Date(Date.UTC(year, month, day, endHours - VIETNAM_OFFSET_HOURS, endMinutes));
 
-  // Tìm các lịch hẹn được đặt cho bác sĩ ban đầu nằm trong khung thời gian ca trực
   const affectedAppointments = await tx.appointment.findMany({
     where: {
       dentistId: originalDentistId,
@@ -40,7 +39,10 @@ async function detectAndCreateConflicts(
     },
   });
 
-  // Tạo thông báo đổi ca trực
+  // Không có lịch hẹn nào bị ảnh hưởng → không tạo thông báo
+  if (affectedAppointments.length === 0) return null;
+
+  // Tạo thông báo đổi ca trực (chỉ khi có lịch hẹn bị ảnh hưởng)
   const notif = await tx.shiftChangeNotification.create({
     data: {
       shiftDate: shift.workDate,
@@ -50,18 +52,14 @@ async function detectAndCreateConflicts(
     },
   });
 
-  if (affectedAppointments.length > 0) {
-    // Tạo liên kết các cuộc hẹn bị ảnh hưởng
-    await tx.shiftChangeAffectedItem.createMany({
-      data: affectedAppointments.map((appt) => ({
-        notifId: notif.notifId,
-        appointmentId: appt.appointmentId,
-        resolved: false,
-      })),
-    });
-  }
+  await tx.shiftChangeAffectedItem.createMany({
+    data: affectedAppointments.map((appt) => ({
+      notifId: notif.notifId,
+      appointmentId: appt.appointmentId,
+      resolved: false,
+    })),
+  });
 
-  // Ghi nhận log cảnh báo
   await tx.systemLog.create({
     data: {
       module: 'SYSTEM',
@@ -104,11 +102,57 @@ export async function createShift(data: {
   shiftType: 'Morning' | 'Afternoon' | 'Full';
   roomId: number | string;
 }) {
-  // Validate ca trong quá khứ
-  const todayStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
+  // 1. Validate ca trong quá khứ & real-time ngày hôm nay
+  const nowVn = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const todayStr = nowVn.toISOString().split('T')[0];
   const workDateStr = data.workDate.toISOString().split('T')[0];
   if (workDateStr < todayStr) {
     throw new AppError(400, 'Không thể xếp ca trực cho ngày trong quá khứ.', 'PAST_SHIFT_INVALID');
+  }
+
+  if (workDateStr === todayStr) {
+    const currentHourVn = nowVn.getUTCHours();
+    const startHour = data.shiftType === 'Afternoon' ? 14 : 8;
+    if (currentHourVn >= startHour) {
+      throw new AppError(
+        400,
+        `Ca trực (${data.shiftType === 'Morning' ? 'Ca sáng' : data.shiftType === 'Afternoon' ? 'Ca chiều' : 'Ca cả ngày'}) ngày hôm nay đã bắt đầu hoặc trôi qua (${startHour}:00). Không thể tạo ca mới.`,
+        'SHIFT_STARTED_REALTIME'
+      );
+    }
+  }
+
+  // 2. Validate xung đột ca trực của Bác sĩ trong cùng một ngày
+  const existingShifts = await prisma.dentistShift.findMany({
+    where: {
+      dentistId: data.dentistId,
+      workDate: data.workDate,
+      isActive: true,
+    },
+  });
+
+  const hasMorning = existingShifts.some(s => s.shiftType === 'Morning');
+  const hasAfternoon = existingShifts.some(s => s.shiftType === 'Afternoon');
+  const hasFull = existingShifts.some(s => s.shiftType === 'Full');
+
+  if (hasFull) {
+    throw new AppError(400, 'Bác sĩ đã có Ca cả ngày vào ngày này. Không thể xếp thêm ca trực khác.', 'DOCTOR_HAS_FULL_SHIFT');
+  }
+
+  if (hasMorning && hasAfternoon) {
+    throw new AppError(400, 'Bác sĩ đã có đủ cả Ca sáng và Ca chiều vào ngày này. Không thể thêm ca trực nữa.', 'DOCTOR_FULL_DAY_SCHEDULED');
+  }
+
+  if ((hasMorning || hasAfternoon) && data.shiftType === 'Full') {
+    throw new AppError(400, 'Bác sĩ đã có ca trực lẻ trong ngày. Không thể đăng ký thêm Ca cả ngày.', 'CANNOT_ADD_FULL_SHIFT');
+  }
+
+  if (data.shiftType === 'Morning' && hasMorning) {
+    throw new AppError(400, 'Bác sĩ đã có Ca sáng vào ngày này.', 'DUPLICATE_SHIFT');
+  }
+
+  if (data.shiftType === 'Afternoon' && hasAfternoon) {
+    throw new AppError(400, 'Bác sĩ đã có Ca chiều vào ngày này.', 'DUPLICATE_SHIFT');
   }
 
 
@@ -190,6 +234,18 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
       throw new AppError(404, 'Một trong hai ca trực không tồn tại.', 'SHIFT_NOT_FOUND');
     }
 
+    if (!shift1.isActive || !shift2.isActive) {
+      throw new AppError(400, 'Một trong hai ca trực đã bị hủy hoặc không còn hoạt động.', 'SHIFT_INACTIVE');
+    }
+
+    if (shift1.dentistId === shift2.dentistId) {
+      throw new AppError(400, 'Không thể hoán đổi ca trực với chính bản thân mình.', 'SAME_DOCTOR_SWAP_INVALID');
+    }
+
+    if (!shift1.dentist.isActive || shift1.dentist.user.status !== 'Active' || !shift2.dentist.isActive || shift2.dentist.user.status !== 'Active') {
+      throw new AppError(400, 'Một trong hai bác sĩ đã nghỉ việc hoặc tài khoản đã bị khóa.', 'DOCTOR_INACTIVE');
+    }
+
     // Kiểm tra quy chế: Phải gửi yêu cầu trước ít nhất 12 tiếng
     const nowMs = Date.now();
     const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
@@ -214,35 +270,33 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
     }
 
     // 2. Kiểm tra xung đột trùng ca trực: Bác sĩ 1 không được trùng ca với ca 2, Bác sĩ 2 không được trùng ca với ca 1
-    if (date1Str !== date2Str) {
-      const shift1OverlapTypes = shift1.shiftType === 'Full' ? ['Morning', 'Afternoon', 'Full'] : [shift1.shiftType, 'Full'];
-      const shift2OverlapTypes = shift2.shiftType === 'Full' ? ['Morning', 'Afternoon', 'Full'] : [shift2.shiftType, 'Full'];
+    const shift1OverlapTypes: ShiftType[] = shift1.shiftType === 'Full' ? [ShiftType.Morning, ShiftType.Afternoon, ShiftType.Full] : [shift1.shiftType as ShiftType, ShiftType.Full];
+    const shift2OverlapTypes: ShiftType[] = shift2.shiftType === 'Full' ? [ShiftType.Morning, ShiftType.Afternoon, ShiftType.Full] : [shift2.shiftType as ShiftType, ShiftType.Full];
 
-      const existingShiftDoc1OnDate2 = await tx.dentistShift.findFirst({
-        where: {
-          dentistId: shift1.dentistId,
-          workDate: shift2.workDate,
-          shiftType: { in: shift2OverlapTypes },
-          isActive: true,
-          shiftId: { notIn: [shiftId1, shiftId2] },
-        },
-      });
-      if (existingShiftDoc1OnDate2) {
-        throw new AppError(400, `Bác sĩ ${shift1.dentist.user.fullName} đã có ca trực trùng giờ vào ngày ${shift2.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_1');
-      }
+    const existingShiftDoc1OnDate2 = await tx.dentistShift.findFirst({
+      where: {
+        dentistId: shift1.dentistId,
+        workDate: shift2.workDate,
+        shiftType: { in: shift2OverlapTypes },
+        isActive: true,
+        shiftId: { notIn: [shiftId1, shiftId2] },
+      },
+    });
+    if (existingShiftDoc1OnDate2) {
+      throw new AppError(400, `Bác sĩ ${shift1.dentist.user.fullName} đã có ca trực trùng giờ vào ngày ${shift2.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_1');
+    }
 
-      const existingShiftDoc2OnDate1 = await tx.dentistShift.findFirst({
-        where: {
-          dentistId: shift2.dentistId,
-          workDate: shift1.workDate,
-          shiftType: { in: shift1OverlapTypes },
-          isActive: true,
-          shiftId: { notIn: [shiftId1, shiftId2] },
-        },
-      });
-      if (existingShiftDoc2OnDate1) {
-        throw new AppError(400, `Bác sĩ ${shift2.dentist.user.fullName} đã có ca trực trùng giờ vào ngày ${shift1.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_2');
-      }
+    const existingShiftDoc2OnDate1 = await tx.dentistShift.findFirst({
+      where: {
+        dentistId: shift2.dentistId,
+        workDate: shift1.workDate,
+        shiftType: { in: shift1OverlapTypes },
+        isActive: true,
+        shiftId: { notIn: [shiftId1, shiftId2] },
+      },
+    });
+    if (existingShiftDoc2OnDate1) {
+      throw new AppError(400, `Bác sĩ ${shift2.dentist.user.fullName} đã có ca trực trùng giờ vào ngày ${shift1.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_2');
     }
 
 
@@ -300,8 +354,20 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
     if (!shift) {
       throw new AppError(404, 'Ca trực không tồn tại.', 'SHIFT_NOT_FOUND');
     }
+    if (!shift.isActive) {
+      throw new AppError(400, 'Ca trực đã bị hủy hoặc không còn hoạt động.', 'SHIFT_INACTIVE');
+    }
+
     if (!targetDentist) {
       throw new AppError(404, 'Bác sĩ nhận ca trực không tồn tại.', 'DENTIST_NOT_FOUND');
+    }
+
+    if (shift.dentistId === targetDentistId) {
+      throw new AppError(400, 'Không thể chuyển giao ca trực cho chính bản thân mình.', 'SAME_DOCTOR_TRANSFER_INVALID');
+    }
+
+    if (!shift.dentist.isActive || shift.dentist.user.status !== 'Active' || !targetDentist.isActive || targetDentist.user.status !== 'Active') {
+      throw new AppError(400, 'Bác sĩ chuyển ca hoặc nhận ca đã nghỉ việc hoặc tài khoản đã bị khóa.', 'DOCTOR_INACTIVE');
     }
 
     // Kiểm tra quy chế: Phải gửi yêu cầu trước ít nhất 12 tiếng
@@ -317,9 +383,9 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
     // Ca Sáng (08:00-14:00) xung đột với Ca Sáng & Ca Cả Ngày.
     // Ca Chiều (14:00-20:00) xung đột với Ca Chiều & Ca Cả Ngày.
     // Ca Cả Ngày (08:00-20:00) xung đột với mọi ca trong ngày.
-    const overlappingShiftTypes = shift.shiftType === 'Full'
-      ? ['Morning', 'Afternoon', 'Full']
-      : [shift.shiftType, 'Full'];
+    const overlappingShiftTypes: ShiftType[] = shift.shiftType === 'Full'
+      ? [ShiftType.Morning, ShiftType.Afternoon, ShiftType.Full]
+      : [shift.shiftType as ShiftType, ShiftType.Full];
 
     const existingShiftTarget = await tx.dentistShift.findFirst({
       where: {
@@ -587,4 +653,5 @@ export async function updateShiftRoom(shiftId: bigint, roomId: number) {
     data: { roomId },
   });
 }
+
 

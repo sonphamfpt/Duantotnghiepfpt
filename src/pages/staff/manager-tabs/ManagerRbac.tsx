@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { staffApi, clinicApi } from '../../../services/api';
 import { EditDoctorModal } from '../../../components/EditDoctorModal';
+import { useConfirm } from '../../../context/ConfirmContext';
 
 interface StaffMember {
   id: string;
@@ -30,6 +31,7 @@ interface CreatedAccountInfo {
 }
 
 export const ManagerRbac: React.FC = () => {
+  const { showConfirm, showAlert } = useConfirm();
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
@@ -186,7 +188,7 @@ export const ManagerRbac: React.FC = () => {
 
       const res = await staffApi.updateStaff(editingStaff.id, updateData);
       if (res.success) {
-        alert(`Đã cập nhật thông tin tài khoản ${editName} thành công!`);
+        showAlert({ title: 'Cập nhật thành công', message: `Đã cập nhật thông tin tài khoản ${editName} thành công!`, type: 'success' });
         setEditingStaff(null);
         fetchStaffList();
       } else {
@@ -203,26 +205,31 @@ export const ManagerRbac: React.FC = () => {
   // Handle Safe Delete Staff
   const handleDeleteStaff = async (member: StaffMember) => {
     if (member.role === 'manager') {
-      alert('Không thể xóa tài khoản Quản trị viên tối cao của hệ thống!');
+      showAlert({ title: 'Không thể xóa', message: 'Không thể xóa tài khoản Quản trị viên tối cao của hệ thống!', type: 'warning' });
       return;
     }
 
-    const confirmFirst = window.confirm(
-      `CẢNH BÁO AN TOÀN:\n\nBạn có chắc chắn muốn XÓA TÀI KHOẢN nhân sự "${member.name}" (${member.roleName}) không?\n\nHành động này không thể hoàn tác!`
-    );
-    if (!confirmFirst) return;
+    const isConfirmed = await showConfirm({
+      title: 'CẢNH BÁO AN TOÀN - XÓA NGUYÊN TẮC',
+      message: `Bạn có chắc chắn muốn XÓA TÀI KHOẢN nhân sự "${member.name}" (${member.roleName}) không? Hành động này không thể hoàn tác!`,
+      type: 'error',
+      confirmLabel: 'Xác nhận xóa tài khoản',
+      cancelLabel: 'Hủy thao tác',
+    });
+
+    if (!isConfirmed) return;
 
     try {
       const res = await staffApi.deleteStaff(member.id);
       if (res.success) {
-        alert(`Đã xóa tài khoản nhân sự "${member.name}" thành công!`);
+        showAlert({ title: 'Đã xóa thành công', message: `Đã xóa tài khoản nhân sự "${member.name}" thành công!`, type: 'success' });
         fetchStaffList();
       } else {
-        alert(`Không thể xóa tài khoản: ${res.message || 'Nhân viên này đang có dữ liệu giao dịch/lịch trực phụ thuộc trong hệ thống.'}`);
+        showAlert({ title: 'Không thể xóa', message: res.message || 'Nhân viên này đang có dữ liệu giao dịch/lịch trực phụ thuộc trong hệ thống.', type: 'warning' });
       }
     } catch (err: any) {
       console.error(err);
-      alert('Lỗi hệ thống khi xóa tài khoản. Vui lòng thử tạm khóa thay vì xóa.');
+      showAlert({ title: 'Lỗi hệ thống', message: 'Lỗi hệ thống khi xóa tài khoản. Vui lòng thử tạm khóa thay vì xóa.', type: 'error' });
     }
   };
 
@@ -330,11 +337,7 @@ export const ManagerRbac: React.FC = () => {
                 <th className="px-6 py-3.5">Vai trò</th>
                 <th className="px-6 py-3.5">SĐT & Email đăng nhập</th>
                 <th className="px-6 py-3.5 text-center">Trạng thái</th>
-                <th className="px-6 py-3.5 text-center">Đón tiếp</th>
-                <th className="px-6 py-3.5 text-center">Lâm sàng</th>
-                <th className="px-6 py-3.5 text-center">Tính tiền</th>
-                <th className="px-6 py-3.5 text-center">Cấu hình</th>
-                <th className="px-6 py-3.5"></th>
+                <th className="px-6 py-3.5 text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant text-xs">
@@ -379,43 +382,6 @@ export const ManagerRbac: React.FC = () => {
                       {member.status === 'Active' ? 'HOẠT ĐỘNG' : 'TẠM KHOÁ'}
                     </button>
                   </td>
-                  {/* Permissions checkboxes */}
-                  <td className="px-6 py-4 text-center">
-                    <input
-                      type="checkbox"
-                      checked={member.permissions.admission}
-                      onChange={() => togglePermission(member.id, 'admission')}
-                      title="Quyền Đón tiếp: Truy cập giao diện Lễ tân, Check-in QR & Đặt lịch"
-                      className="w-4 h-4 text-purple-600 border-outline-variant rounded focus:ring-purple-600 focus:ring-1 cursor-pointer"
-                    />
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <input
-                      type="checkbox"
-                      checked={member.permissions.clinical}
-                      onChange={() => togglePermission(member.id, 'clinical')}
-                      title="Quyền Lâm sàng: Truy cập bàn khám Bác sĩ & Bệnh án EMR"
-                      className="w-4 h-4 text-purple-600 border-outline-variant rounded focus:ring-purple-600 focus:ring-1 cursor-pointer"
-                    />
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <input
-                      type="checkbox"
-                      checked={member.permissions.checkout}
-                      onChange={() => togglePermission(member.id, 'checkout')}
-                      title="Quyền Tính tiền: Truy cập màn hình Thu ngân & Thu tiền hóa đơn"
-                      className="w-4 h-4 text-purple-600 border-outline-variant rounded focus:ring-purple-600 focus:ring-1 cursor-pointer"
-                    />
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <input
-                      type="checkbox"
-                      checked={member.permissions.settings}
-                      onChange={() => togglePermission(member.id, 'settings')}
-                      title="Quyền Cấu hình: Truy cập quản trị hệ thống Manager"
-                      className="w-4 h-4 text-purple-600 border-outline-variant rounded focus:ring-purple-600 focus:ring-1 cursor-pointer"
-                    />
-                  </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       {/* Nút sửa hồ sơ y khoa dành riêng cho Bác sĩ */}
@@ -451,13 +417,6 @@ export const ManagerRbac: React.FC = () => {
                         </button>
                       )}
 
-                      <button
-                        onClick={() => alert(`Lịch sử truy cập của ${member.name} đã được lưu tại nhật ký hệ thống.`)}
-                        className="p-1 border border-outline text-on-surface-variant hover:text-purple-600 rounded transition-all cursor-pointer"
-                        title="Lịch sử đăng nhập"
-                      >
-                        <Icon name="history_edu" className="text-sm block" />
-                      </button>
                     </div>
                   </td>
                 </tr>

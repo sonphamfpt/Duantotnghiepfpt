@@ -152,18 +152,18 @@ export const clinicApi = {
   getRooms: () => request<any[]>('/rooms'),
 
   /**
-   * Cập nhật phòng khám (tên, trạng thái)
+   * Cập nhật phòng khám (tên, trạng thái, bác sĩ cố định)
    */
-  updateRoom: (roomId: number, data: { name?: string; isActive?: boolean }) =>
+  updateRoom: (roomId: number, data: { name?: string; isActive?: boolean; dentistId?: string; dentistName?: string }) =>
     request<any>(`/rooms/${roomId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
 
   /**
-   * Tạo phòng khám mới
+   * Tạo phòng khám mới (có thể gán bác sĩ cố định)
    */
-  createRoom: (data: { name: string }) =>
+  createRoom: (data: { name: string; dentistId?: string; dentistName?: string }) =>
     request<any>('/rooms', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -195,7 +195,7 @@ export const clinicApi = {
   getMembershipTiers: () => request<any[]>('/patients/tiers'),
 
   /**
-   * Cập nhật hạng thành viên (% giảm giá, ngưỡng điểm)
+   * Cập nhật hạng thành viên (% giảm giá, số lần khám tối thiểu)
    */
   updateMembershipTier: (tierId: number, data: { discountPercent?: number; minPoints?: number; name?: string }) =>
     request<any>(`/patients/tiers/${tierId}`, {

@@ -128,8 +128,9 @@ export const ManagerLogs: React.FC = () => {
 
   const handleFilterChange = () => setPage(1);
 
-  const formatTime = (log: SystemLog) => {
-    const raw = log.createdAt || (log as any).time;
+  const formatTime = (input?: string | SystemLog) => {
+    if (!input) return '—';
+    const raw = typeof input === 'string' ? input : (input.createdAt || (input as any).time);
     if (!raw) return '—';
     if (/^\d{2}:\d{2}:\d{2}$/.test(raw)) {
       const todayStr = new Date().toLocaleDateString('vi-VN');

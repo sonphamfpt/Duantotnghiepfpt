@@ -11,6 +11,9 @@ const router = Router();
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const list = await prisma.dentist.findMany({
+      where: {
+        user: { isDeleted: false }
+      },
       include: {
         user: true,
         education: { orderBy: { sortOrder: 'asc' } },
@@ -36,6 +39,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       clinicalStrengths: d.clinicalStrengths.map(s => s.description),
       certifications: d.certifications.map(c => c.description),
       workHistory: d.workHistory.map(w => w.periodText ? `${w.periodText}: ${w.description}` : w.description),
+      status: d.user?.status || (d.isActive ? 'Active' : 'Inactive'),
     }));
 
     return res.status(200).json({ success: true, data: formatted });

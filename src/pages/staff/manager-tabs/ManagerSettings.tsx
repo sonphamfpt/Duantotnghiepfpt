@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { clinicApi } from '../../../services/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface Room { roomId: number; name: string; isActive: boolean; }
+interface Room { roomId: number; name: string; isActive: boolean; dentistId?: string; }
 
 interface OperatingHour {
   weekday: number;
@@ -62,6 +62,19 @@ const ServicesTab: React.FC = () => {
 
   useEffect(() => { fetchAllServices(); }, [fetchAllServices]);
 
+  // Sắp xếp đưa dịch vụ mới thêm (ID/Ngày tạo mới nhất) lên ĐẦU TIÊN
+  const sortedServices = useMemo(() => {
+    return [...allServices].sort((a, b) => {
+      const numA = parseInt(a.id?.replace(/\D/g, '') || '0', 10);
+      const numB = parseInt(b.id?.replace(/\D/g, '') || '0', 10);
+      if (numA !== numB) return numB - numA;
+      if (a.created_at && b.created_at) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      return (b.id || '').localeCompare(a.id || '');
+    });
+  }, [allServices]);
+
   const handleSavePrice = async (id: string) => {
     const price = parseInt(editingPrice);
     if (isNaN(price) || price <= 0) { alert('Giá tiền không hợp lệ!'); return; }
@@ -104,7 +117,7 @@ const ServicesTab: React.FC = () => {
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {allServices.map(service => (
+        {sortedServices.map(service => (
           <div key={service.id} className={`bg-slate-50 p-4 rounded-xl border relative overflow-hidden flex flex-col justify-between transition-all ${service.isActive ? 'border-outline-variant/50 hover:border-purple-600' : 'border-outline-variant/30 opacity-60'}`}>
             <div className={`absolute left-0 top-0 bottom-0 w-1.5 transition-colors ${service.isActive ? 'bg-purple-600' : 'bg-slate-300'}`} />
             <div className="space-y-2">
@@ -185,12 +198,15 @@ const ServicesTab: React.FC = () => {
 // ─── Sub-Tab: Phòng khám ──────────────────────────────────────────────────────
 
 const RoomsTab: React.FC = () => {
+  const { dentists } = useClinic();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [editingDoctorId, setEditingDoctorId] = useState<string>('');
   const [showAdd, setShowAdd] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
+  const [newDoctorId, setNewDoctorId] = useState('');
   const [saving, setSaving] = useState(false);
 
   const fetchRooms = useCallback(async () => {
@@ -208,9 +224,14 @@ const RoomsTab: React.FC = () => {
     if (!editingName.trim()) return;
     setSaving(true);
     try {
-      await clinicApi.updateRoom(roomId, { name: editingName.trim() });
+      const docObj = dentists.find(d => d.id === editingDoctorId);
+      await clinicApi.updateRoom(roomId, {
+        name: editingName.trim(),
+        dentistId: editingDoctorId || undefined,
+        dentistName: docObj ? docObj.name : undefined,
+      });
       await fetchRooms();
-    } catch { alert('Lỗi khi cập nhật tên phòng.'); }
+    } catch { alert('Lỗi khi cập nhật phòng khám.'); }
     finally { setEditingId(null); setSaving(false); }
   };
 
@@ -226,8 +247,15 @@ const RoomsTab: React.FC = () => {
     if (!newRoomName.trim()) return;
     setSaving(true);
     try {
-      await clinicApi.createRoom({ name: newRoomName.trim() });
-      setNewRoomName(''); setShowAdd(false);
+      const docObj = dentists.find(d => d.id === newDoctorId);
+      await clinicApi.createRoom({
+        name: newRoomName.trim(),
+        dentistId: newDoctorId || undefined,
+        dentistName: docObj ? docObj.name : undefined,
+      });
+      setNewRoomName('');
+      setNewDoctorId('');
+      setShowAdd(false);
       await fetchRooms();
     } catch { alert('Lỗi khi thêm phòng mới.'); }
     finally { setSaving(false); }
@@ -246,57 +274,102 @@ const RoomsTab: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {rooms.map(room => (
-          <div key={room.roomId} className={`bg-white rounded-xl border p-5 shadow-sm transition-all ${room.isActive ? 'border-outline-variant hover:border-primary/50' : 'border-outline-variant/30 opacity-60'}`}>
-            <div className="flex items-center justify-between mb-3">
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${room.isActive ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                {room.isActive ? '● Hoạt động' : '○ Ngừng'}
-              </span>
-              <span className="text-[10px] font-data-mono text-outline">ID: {room.roomId}</span>
+        {rooms.map(room => {
+          const assignedDoc = dentists.find(d => d.id === room.dentistId || d.room === room.name);
+          return (
+            <div key={room.roomId} className={`bg-white rounded-xl border p-5 shadow-sm transition-all ${room.isActive ? 'border-outline-variant hover:border-primary/50' : 'border-outline-variant/30 opacity-60'}`}>
+              <div className="flex items-center justify-between mb-3">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${room.isActive ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                  {room.isActive ? '● Hoạt động' : '○ Ngừng'}
+                </span>
+                <span className="text-[10px] font-data-mono text-outline">ID: {room.roomId}</span>
+              </div>
+
+              {editingId === room.roomId ? (
+                <div className="space-y-2">
+                  <input value={editingName} onChange={e => setEditingName(e.target.value)} className="w-full border border-primary rounded px-2 py-1 text-xs font-bold focus:outline-none" autoFocus placeholder="Tên phòng" />
+                  <select value={editingDoctorId} onChange={e => setEditingDoctorId(e.target.value)} className="w-full border border-outline-variant rounded px-2 py-1 text-xs font-semibold focus:outline-none cursor-pointer">
+                    <option value="">-- Chọn BS cố định --</option>
+                    {dentists.map(d => (
+                      <option key={d.id} value={d.id}>{d.name} ({d.role.split('&')[0]})</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-1.5 pt-1">
+                    <button onClick={() => handleSaveName(room.roomId)} disabled={saving} className="px-3 py-1 bg-green-600 text-white rounded text-[10px] font-bold cursor-pointer disabled:opacity-50 flex-1">Lưu</button>
+                    <button onClick={() => setEditingId(null)} className="px-3 py-1 bg-slate-400 text-white rounded text-[10px] cursor-pointer">✕ Hủy</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Icon name="meeting_room" className="text-primary text-[20px]" />
+                    <h4 className="font-bold text-sm text-on-surface flex-1">{room.name}</h4>
+                    <button onClick={() => { setEditingId(room.roomId); setEditingName(room.name); setEditingDoctorId(assignedDoc?.id || ''); }} className="text-outline hover:text-primary transition-colors cursor-pointer" title="Chỉnh sửa phòng & Bác sĩ phụ trách">
+                      <Icon name="edit" className="text-[16px]" />
+                    </button>
+                  </div>
+
+                  {/* Hiển thị bác sĩ cố định phụ trách phòng */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                      <Icon name="badge" className="text-xs text-purple-600" /> BS Cố định:
+                    </span>
+                    {assignedDoc ? (
+                      <div className="flex items-center gap-1.5 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-lg">
+                        <img src={assignedDoc.avatar} alt={assignedDoc.name} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                        <span className="text-[11px] font-black text-purple-900">{assignedDoc.name.replace('Bác sĩ ', 'BS. ')}</span>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">Chưa phân công</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => handleToggle(room.roomId, room.isActive)}
+                className={`mt-4 w-full py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${room.isActive ? 'bg-error/10 text-error hover:bg-error/20' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+              >
+                {room.isActive ? 'Tạm ngừng phòng' : 'Kích hoạt lại'}
+              </button>
             </div>
-
-            {editingId === room.roomId ? (
-              <div className="flex gap-1.5">
-                <input value={editingName} onChange={e => setEditingName(e.target.value)} className="flex-1 border border-primary rounded px-2 py-1 text-xs font-bold focus:outline-none" autoFocus />
-                <button onClick={() => handleSaveName(room.roomId)} disabled={saving} className="px-2 py-1 bg-green-600 text-white rounded text-[10px] font-bold cursor-pointer disabled:opacity-50">Lưu</button>
-                <button onClick={() => setEditingId(null)} className="px-2 py-1 bg-slate-400 text-white rounded text-[10px] cursor-pointer">✕</button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Icon name="meeting_room" className="text-primary text-[20px]" />
-                <h4 className="font-bold text-sm text-on-surface flex-1">{room.name}</h4>
-                <button onClick={() => { setEditingId(room.roomId); setEditingName(room.name); }} className="text-outline hover:text-primary transition-colors cursor-pointer">
-                  <Icon name="edit" className="text-[16px]" />
-                </button>
-              </div>
-            )}
-
-            <button
-              onClick={() => handleToggle(room.roomId, room.isActive)}
-              className={`mt-4 w-full py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${room.isActive ? 'bg-error/10 text-error hover:bg-error/20' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
-            >
-              {room.isActive ? 'Tạm ngừng phòng' : 'Kích hoạt lại'}
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Add Room Modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 bg-primary text-on-primary flex justify-between items-center rounded-t-xl">
-              <h3 className="font-bold text-sm flex items-center gap-2"><Icon name="add_box" /> Thêm Phòng Khám</h3>
-              <button onClick={() => setShowAdd(false)} className="cursor-pointer"><Icon name="close" /></button>
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
+            <div className="px-6 py-4 bg-primary text-on-primary flex justify-between items-center">
+              <h3 className="font-bold text-sm flex items-center gap-2"><Icon name="add_box" /> Thêm Phòng Khám Mới</h3>
+              <button onClick={() => setShowAdd(false)} className="cursor-pointer hover:opacity-80"><Icon name="close" /></button>
             </div>
-            <form onSubmit={handleAddRoom} className="p-6 space-y-4">
+            <form onSubmit={handleAddRoom} className="p-6 space-y-4 text-xs">
               <div>
                 <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">Tên phòng *</label>
-                <input type="text" required autoFocus value={newRoomName} onChange={e => setNewRoomName(e.target.value)} placeholder="VD: Phòng khám số 4" className="w-full border border-outline-variant rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none" />
+                <input type="text" required autoFocus value={newRoomName} onChange={e => setNewRoomName(e.target.value)} placeholder="VD: Phòng khám số 4" className="w-full border border-outline-variant rounded-xl px-3 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
-              <div className="flex justify-end gap-3 pt-2 border-t border-outline-variant">
-                <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 border border-outline rounded-lg text-xs font-bold cursor-pointer">Hủy</button>
-                <button type="submit" disabled={saving} className="px-6 py-2 bg-primary text-on-primary rounded-lg text-xs font-bold cursor-pointer disabled:opacity-50">
+
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">Bác sĩ cố định phụ trách (Không bắt buộc)</label>
+                <select
+                  value={newDoctorId}
+                  onChange={e => setNewDoctorId(e.target.value)}
+                  className="w-full border border-outline-variant rounded-xl px-3 py-2.5 text-xs font-semibold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer bg-slate-50"
+                >
+                  <option value="">-- Chọn bác sĩ cố định --</option>
+                  {dentists.map(d => (
+                    <option key={d.id} value={d.id}>
+                      {d.name} ({d.role.split('&')[0]})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-outline-variant">
+                <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 border border-outline rounded-xl text-xs font-bold hover:bg-slate-50 cursor-pointer transition-all">Hủy</button>
+                <button type="submit" disabled={saving} className="px-6 py-2 bg-primary text-on-primary rounded-xl text-xs font-bold hover:opacity-95 cursor-pointer shadow-md disabled:opacity-50 transition-all">
                   {saving ? 'Đang lưu...' : 'Tạo phòng'}
                 </button>
               </div>
@@ -476,8 +549,8 @@ const MembershipTiersTab: React.FC = () => {
                   <input type="number" step="0.5" min="0" max="100" value={editForm.discountPercent} onChange={e => setEditForm(f => ({ ...f, discountPercent: e.target.value }))} className="w-full border border-current/30 rounded-lg px-3 py-1.5 font-bold focus:outline-none bg-white/50" />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase font-bold mb-1 opacity-70">Ngưỡng điểm tích lũy</label>
-                  <input type="number" min="0" value={editForm.minPoints} onChange={e => setEditForm(f => ({ ...f, minPoints: e.target.value }))} className="w-full border border-current/30 rounded-lg px-3 py-1.5 font-bold focus:outline-none bg-white/50" />
+                  <label className="block text-[10px] uppercase font-bold mb-1 opacity-70">Số lần khám tối thiểu</label>
+                  <input type="number" min="0" value={editForm.minPoints} onChange={e => setEditForm(f => ({ ...f, minPoints: e.target.value }))} className="w-full border border-current/30 rounded-lg px-3 py-1.5 font-bold focus:outline-none bg-white/50" placeholder="VD: 3" />
                 </div>
                 <div className="flex gap-2 pt-1">
                   <button onClick={() => setEditingId(null)} className="flex-1 py-1.5 border border-current/30 rounded-lg text-[10px] font-bold cursor-pointer">Hủy</button>
@@ -493,8 +566,8 @@ const MembershipTiersTab: React.FC = () => {
                   <span className="text-xl font-extrabold">{tier.discountPercent}%</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-[11px] font-semibold opacity-70">Ngưỡng điểm</span>
-                  <span className="text-sm font-bold">{tier.minPoints.toLocaleString()} điểm</span>
+                  <span className="text-[11px] font-semibold opacity-70">Số lần khám</span>
+                  <span className="text-sm font-bold">{tier.minPoints.toLocaleString()} lần</span>
                 </div>
                 <button
                   onClick={() => { setEditingId(tier.tierId); setEditForm({ discountPercent: String(tier.discountPercent), minPoints: String(tier.minPoints) }); }}
@@ -515,7 +588,6 @@ const MembershipTiersTab: React.FC = () => {
 
 const SETTING_TABS = [
   { key: 'services',   label: 'Dịch vụ',          icon: 'medical_services' },
-  { key: 'rooms',      label: 'Phòng khám',        icon: 'meeting_room' },
   { key: 'hours',      label: 'Giờ hoạt động',     icon: 'schedule' },
   { key: 'tiers',      label: 'Hạng thành viên',   icon: 'workspace_premium' },
 ] as const;
@@ -528,7 +600,6 @@ export const ManagerSettings: React.FC = () => {
   const renderTab = () => {
     switch (activeTab) {
       case 'services': return <ServicesTab />;
-      case 'rooms':    return <RoomsTab />;
       case 'hours':    return <OperatingHoursTab />;
       case 'tiers':    return <MembershipTiersTab />;
     }
@@ -540,7 +611,7 @@ export const ManagerSettings: React.FC = () => {
       <div>
         <h2 className="font-headline-lg text-headline-lg text-primary">Cấu Hình & Cài Đặt</h2>
         <p className="text-on-surface-variant text-xs font-semibold mt-0.5">
-          Quản lý dịch vụ, phòng khám, giờ hoạt động và chương trình thành viên.
+          Quản lý bảng giá dịch vụ, giờ hoạt động phòng khám và chương trình hạng thành viên.
         </p>
       </div>
 

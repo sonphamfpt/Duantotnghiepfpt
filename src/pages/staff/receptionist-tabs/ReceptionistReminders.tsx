@@ -58,13 +58,30 @@ export const ReceptionistReminders: React.FC = () => {
     }
   });
 
+  const todayIso = useMemo(() => {
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }, []);
+
+  const [filterDate, setFilterDate] = useState<string>(todayIso);
+
+  const filterDateFormatted = useMemo(() => {
+    if (!filterDate) return todayStr;
+    const parts = filterDate.split('-');
+    if (parts.length === 3) {
+      return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+    }
+    return todayStr;
+  }, [filterDate, todayStr]);
+
   const handleResolve = (id: string) => {
     const next = [...resolvedIds, id];
     setResolvedIds(next);
     localStorage.setItem('goodsmile_resolved_reminders', JSON.stringify(next));
   };
 
-  // 1. Late patients today
+  // 1. Late patients today / selected date
   const latePatientsList = useMemo(() => {
     const list: LatePatientTask[] = [];
     const now = new Date();
@@ -75,14 +92,15 @@ export const ReceptionistReminders: React.FC = () => {
       // Check if resolved
       if (resolvedIds.includes(a.id)) continue;
       
-      // Determine if today
-      const isToday = !a.time.includes('@') || a.time.split('@')[0].trim() === todayStr;
-      if (!isToday) continue;
-      
+      // Determine date
+      let apptDateStr = todayStr;
       let timeStr = a.time;
       if (a.time.includes('@')) {
+        apptDateStr = a.time.split('@')[0].trim();
         timeStr = a.time.split('@')[1].trim();
       }
+      
+      if (apptDateStr !== filterDateFormatted) continue;
       
       const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
       if (!match) continue;
@@ -115,38 +133,41 @@ export const ReceptionistReminders: React.FC = () => {
       }
     }
     return list;
-  }, [appointments, queue, todayStr, resolvedIds]);
+  }, [appointments, queue, todayStr, filterDateFormatted, resolvedIds]);
 
-  // 2. Cancelled or missed (past confirmed) appointments
+  // 2. Cancelled or missed appointments for selected date (default TODAY)
   const noShowsList = useMemo(() => {
     const list: NoShowTask[] = [];
     
     for (const a of appointments) {
       if (resolvedIds.includes(a.id)) continue;
       
+      let apptDateStr = todayStr;
+      let timeStr = a.time;
+      if (a.time.includes('@')) {
+        apptDateStr = a.time.split('@')[0].trim();
+        timeStr = a.time.split('@')[1].trim();
+      }
+
+      // Chỉ lọc danh sách khách lỡ hẹn / hủy lịch theo NGÀY ĐÃ CHỌN (mặc định HÔM NAY)
+      if (apptDateStr !== filterDateFormatted) continue;
+
       const isCancelled = a.status === 'Cancelled';
       let isMissedPast = false;
       
       if (a.status === 'Confirmed' && a.time.includes('@')) {
-        const datePart = a.time.split('@')[0].trim();
-        const parts = datePart.split('/');
+        const parts = apptDateStr.split('/');
         if (parts.length === 3) {
           const [d, m, y] = parts.map(Number);
           const apptDate = new Date(y, m - 1, d);
-          if (apptDate.getTime() < todayMidnight.getTime()) {
+          if (apptDate.getTime() <= todayMidnight.getTime()) {
             isMissedPast = true;
           }
         }
       }
       
       if (isCancelled || isMissedPast) {
-        let displayDate = 'Hôm nay';
-        let timeStr = a.time;
-        if (a.time.includes('@')) {
-          const datePart = a.time.split('@')[0].trim();
-          timeStr = a.time.split('@')[1].trim();
-          displayDate = datePart === todayStr ? 'Hôm nay' : datePart;
-        }
+        const displayDate = apptDateStr === todayStr ? 'Hôm nay' : apptDateStr;
 
         list.push({
           id: a.id,
@@ -160,7 +181,7 @@ export const ReceptionistReminders: React.FC = () => {
       }
     }
     return list;
-  }, [appointments, todayMidnight, todayStr, resolvedIds]);
+  }, [appointments, todayMidnight, todayStr, filterDateFormatted, resolvedIds]);
 
 
   // ─── Lọc & Tìm kiếm (Filters) ───
@@ -181,6 +202,9 @@ export const ReceptionistReminders: React.FC = () => {
   const filteredShiftNotifs = useMemo(() => {
     if (taskFilter !== 'all' && taskFilter !== 'shift') return [];
     return (shiftChangeNotifications || []).filter(n => {
+      // Chỉ hiển thị các yêu cầu đổi ca / trực thay CÓ BỆNH NHÂN BỊ ẢNH HƯỞNG LỊCH HẸN (> 0 ca trùng)
+      if (!n.affectedItems || n.affectedItems.length === 0) return false;
+
       if (!query) return true;
       return (
         n.originalDentistName.toLowerCase().includes(query) ||
@@ -207,8 +231,8 @@ export const ReceptionistReminders: React.FC = () => {
     <div className="p-stack-lg animate-in fade-in duration-200">
 
       {/* ── Filter Bar ── */}
-      <div className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+      <div className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 lg:pb-0">
           {[
             { id: 'all', label: 'Tất cả công việc' },
             { id: 'shift', label: 'BS Đổi ca / Trực thay' },
@@ -227,15 +251,38 @@ export const ReceptionistReminders: React.FC = () => {
           ))}
         </div>
         
-        <div className="relative w-full md:w-64 shrink-0">
-          <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-          <input
-            type="text"
-            placeholder="Tìm tên KH, SĐT, Tên Bác sĩ..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-outline-variant/60 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Bộ lọc Ngày (Mặc định Hôm nay) */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-outline-variant/60 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs">
+            <Icon name="calendar_today" className="text-primary text-sm shrink-0" />
+            <span className="text-[10px] text-slate-400 uppercase tracking-wider shrink-0">Ngày:</span>
+            <input
+              type="date"
+              value={filterDate}
+              onChange={e => setFilterDate(e.target.value)}
+              className="bg-transparent font-extrabold outline-none cursor-pointer text-xs text-slate-800"
+            />
+          </div>
+          {filterDate !== todayIso && (
+            <button
+              onClick={() => setFilterDate(todayIso)}
+              className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+            >
+              Hôm nay
+            </button>
+          )}
+
+          {/* Ô Tìm kiếm */}
+          <div className="relative w-full sm:w-60 shrink-0">
+            <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+            <input
+              type="text"
+              placeholder="Tìm tên KH, SĐT, Tên BS..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-outline-variant/60 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+            />
+          </div>
         </div>
       </div>
 

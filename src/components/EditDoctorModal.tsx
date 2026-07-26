@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Icon } from './Icon';
 import { clinicApi } from '../services/api';
+import { useConfirm } from '../context/ConfirmContext';
 
 interface EditDoctorModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export const EditDoctorModal: React.FC<EditDoctorModalProps> = ({
   dentistId,
   onSuccess,
 }) => {
+  const { showAlert } = useConfirm();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,7 +61,11 @@ export const EditDoctorModal: React.FC<EditDoctorModalProps> = ({
       }
     } catch (err) {
       console.error('Lỗi khi tải chi tiết bác sĩ:', err);
-      alert('Không thể tải thông tin chi tiết bác sĩ.');
+      showAlert({
+        title: 'Không thể tải dữ liệu',
+        message: 'Không thể tải thông tin chi tiết của bác sĩ. Vui lòng thử lại sau.',
+        type: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -86,13 +92,21 @@ export const EditDoctorModal: React.FC<EditDoctorModalProps> = ({
 
       const res = await clinicApi.updateDentist(dentistId, payload);
       if (res.success) {
-        alert('Cập nhật hồ sơ bác sĩ thành công!');
+        showAlert({
+          title: 'Cập nhật thành công',
+          message: `Đã cập nhật đầy đủ thông tin chuyên môn, chứng chỉ quốc tế và lịch sử công tác của bác sĩ ${name} (${dentistId}) thành công!`,
+          type: 'success',
+        });
         onSuccess();
         onClose();
       }
     } catch (err: any) {
       console.error('Lỗi cập nhật bác sĩ:', err);
-      alert(err.message || 'Lỗi khi cập nhật hồ sơ bác sĩ.');
+      showAlert({
+        title: 'Cập nhật thất bại',
+        message: err.message || 'Lỗi hệ thống khi cập nhật hồ sơ bác sĩ.',
+        type: 'error',
+      });
     } finally {
       setSubmitting(false);
     }

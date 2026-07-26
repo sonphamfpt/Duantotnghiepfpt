@@ -239,6 +239,21 @@ export class AppointmentsService {
             'PATIENT_LOCKED'
           );
         }
+
+        // Cập nhật họ tên mới vào CSDL nếu người dùng chỉnh sửa họ tên khi đặt lịch
+        if (patientName && patientName.trim() !== patient.fullName) {
+          patient = await prisma.patient.update({
+            where: { patientId: patient.patientId },
+            data: { fullName: patientName.trim() },
+          });
+
+          if (patient.userId) {
+            await prisma.user.update({
+              where: { userId: patient.userId },
+              data: { fullName: patientName.trim() },
+            });
+          }
+        }
       }
       dbPatientId = patient.patientId;
     }

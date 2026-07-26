@@ -144,8 +144,16 @@ export const ReceptionistAppointments: React.FC = () => {
     return true;
   });
 
-  const handleCheckin = (appt: typeof appointments[0]) => {
-    checkInPatient(appt.patientId, appt.dentistId, undefined, appt.serviceName, appt.id);
+  const [checkingInId, setCheckingInId] = useState<string | null>(null);
+
+  const handleCheckin = async (appt: typeof appointments[0]) => {
+    if (checkingInId) return;
+    setCheckingInId(appt.id);
+    try {
+      await checkInPatient(appt.patientId, appt.dentistId, undefined, appt.serviceName, appt.id);
+    } finally {
+      setCheckingInId(null);
+    }
   };
 
   const totalAppts = appointments.length;
@@ -461,11 +469,21 @@ export const ReceptionistAppointments: React.FC = () => {
                                 <>
                                   <button
                                     id={`btn-checkin-${appt.id}`}
+                                    disabled={checkingInId === appt.id}
                                     onClick={() => handleCheckin(appt)}
-                                    className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:opacity-90 cursor-pointer flex items-center gap-1 active:scale-95 transition-all"
+                                    className="px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:opacity-90 cursor-pointer flex items-center gap-1 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                   >
-                                    <Icon name="how_to_reg" className="text-[13px]" />
-                                    Check-in
+                                    {checkingInId === appt.id ? (
+                                      <>
+                                        <Icon name="progress_activity" className="text-[13px] animate-spin" />
+                                        Đang check-in...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Icon name="how_to_reg" className="text-[13px]" />
+                                        Check-in
+                                      </>
+                                    )}
                                   </button>
                                   <button
                                     onClick={() => setRescheduleApptId(appt.id)}

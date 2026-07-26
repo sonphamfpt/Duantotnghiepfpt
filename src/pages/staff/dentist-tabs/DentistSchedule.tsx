@@ -1,14 +1,94 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
-import { useConfirm } from '../../../context/ConfirmContext';
 
+// ─── Constants & Helpers ───────────────────────────────────────────────────────
 
-const SHIFT_TYPES = {
-  Morning: { label: 'Ca sáng', color: 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100/70', time: '08:00 - 14:00' },
-  Afternoon: { label: 'Ca chiều', color: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100/70', time: '14:00 - 20:00' },
-  Full: { label: 'Cả ngày', color: 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100/70', time: '08:00 - 20:00' }
+const SHIFT_CONFIG = {
+  Morning: { label: 'Ca sáng', time: '08:00 – 14:00', color: 'bg-sky-50 border-sky-200 text-sky-800', dot: 'bg-sky-400', dotRing: 'ring-sky-200' },
+  Afternoon: { label: 'Ca chiều', time: '14:00 – 20:00', color: 'bg-emerald-50 border-emerald-200 text-emerald-800', dot: 'bg-emerald-400', dotRing: 'ring-emerald-200' },
+  Full: { label: 'Cả ngày', time: '08:00 – 20:00', color: 'bg-amber-50 border-amber-200 text-amber-800', dot: 'bg-amber-400', dotRing: 'ring-amber-200' },
+};
+
+const DENTIST_ACCENT: Record<string, string> = {
+  'D-01': 'border-l-blue-500',
+  'D-02': 'border-l-emerald-500',
+  'D-03': 'border-l-purple-500',
+  'D-04': 'border-l-pink-500',
+  'D-05': 'border-l-amber-500',
+  'D-06': 'border-l-teal-500',
+  'D-07': 'border-l-indigo-500',
+};
+
+const DAY_NAMES = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+const fmt = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getMonday = (d: Date): Date => {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  date.setDate(diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const TODAY = fmt(new Date());
+
+// Helper: Kiểm tra ca trực có đủ điều kiện hoán đổi / nhờ trực thay (bắt đầu sau ít nhất 12 tiếng)
+const isShiftEligibleForSwap = (shift?: { date: string; shiftType: string } | null): boolean => {
+  if (!shift || !shift.date) return false;
+  const [y, m, d] = shift.date.split('-').map(Number);
+  const startHour = shift.shiftType === 'Afternoon' ? 14 : 8;
+  const shiftStartMs = new Date(y, m - 1, d, startHour, 0, 0).getTime();
+  const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+  return shiftStartMs - Date.now() >= TWELVE_HOURS_MS;
+};
+
+// Helper: Kiểm tra 2 ca trực có bị trùng ca/xung đột thời gian không
+const isShiftOverlapping = (shift1: { date: string; shiftType: string }, shift2: { date: string; shiftType: string }): boolean => {
+  if (shift1.date !== shift2.date) return false;
+  if (shift1.shiftType === 'Full' || shift2.shiftType === 'Full') return true;
+  return shift1.shiftType === shift2.shiftType;
+};
+
+// Helper: Kiểm tra một lịch hẹn có thuộc đúng ngày & khung giờ ca trực được chọn không
+const isApptInShift = (apptTimeStr: string, shiftDateStr: string, shiftType: string): boolean => {
+  if (!apptTimeStr || !shiftDateStr) return false;
+
+  let datePart = apptTimeStr;
+  let timePart = '';
+  if (apptTimeStr.includes('@')) {
+    const parts = apptTimeStr.split('@');
+    datePart = parts[0].trim();
+    timePart = parts[1].trim();
+  }
+
+  const [y, m, d] = shiftDateStr.split('-');
+  const shiftDateDDMMYYYY = `${d}/${m}/${y}`;
+
+  const isSameDate = (datePart === shiftDateStr || datePart === shiftDateDDMMYYYY);
+  if (!isSameDate) return false;
+
+  if (timePart) {
+    const match = timePart.match(/^(\d{1,2}):/);
+    if (match) {
+      const hour = parseInt(match[1], 10);
+      if (shiftType === 'Morning') {
+        if (hour < 8 || hour >= 14) return false;
+      } else if (shiftType === 'Afternoon') {
+        if (hour < 14 || hour >= 20) return false;
+      }
+    }
+  }
+
+  return true;
 };
 
 export interface DentistScheduleProps {
@@ -18,17 +98,27 @@ export interface DentistScheduleProps {
 export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: dentistIdProp }) => {
   const { user } = useAuth();
   const dentistId = dentistIdProp || user?.id || '';
-  const { doctorShifts, dentists, appointments, swapShifts, transferShift, changeShiftRoom } = useClinic();
+  const { doctorShifts, dentists, appointments, swapShifts, transferShift } = useClinic();
 
-  // Swap / Transfer Modal State
+  const matchId = (id1?: string, id2?: string) => {
+    if (!id1 || !id2) return false;
+    if (id1 === id2) return true;
+    const num1 = id1.replace(/\D/g, '');
+    const num2 = id2.replace(/\D/g, '');
+    return num1 !== '' && num1 === num2;
+  };
+
+  // State quản lý tuần
+  const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
+  const [filterDentistId, setFilterDentistId] = useState<string>('ALL');
+
+  // Selected shift & Modal state
+  const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [actionType, setActionType] = useState<'swap' | 'transfer'>('swap');
-  const [originShiftId, setOriginShiftId] = useState('');
+  const [editFilterDentistId, setEditFilterDentistId] = useState('');
   const [targetShiftId, setTargetShiftId] = useState('');
   const [targetDentistId, setTargetDentistId] = useState('');
-
-  const [formDentistId, setFormDentistId] = useState('');
-  const [targetRoom, setTargetRoom] = useState('');
 
   // Conflict modal
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -40,873 +130,673 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
     pendingTransferDentistId?: string;
   } | null>(null);
 
-  // Success Toast Modal state
+  // Loading state & Toast
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [successToast, setSuccessToast] = useState<{ title: string; message: string } | null>(null);
 
-  // Dùng ngày thực tế, tính toán động trong render/useMemo
-  const getTodayStr = () => new Date().toISOString().slice(0, 10);
-  const getTomorrowStr = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
-  };
-  const todayDateStr = getTodayStr();
-  const tomorrowDateStr = getTomorrowStr();
-
-  // Mini calendar — tháng/năm động
-  const [calendarDate, setCalendarDate] = useState(() => {
-    const d = new Date();
-    return { year: d.getFullYear(), month: d.getMonth() };
-  });
-
-  const calendarLabel = new Date(calendarDate.year, calendarDate.month, 1)
-    .toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' })
-    .replace(/^./, s => s.toUpperCase());
-
-  const daysInMonth = new Date(calendarDate.year, calendarDate.month + 1, 0).getDate();
-  const firstDayOfWeek = new Date(calendarDate.year, calendarDate.month, 1).getDay();
-  const calendarOffset = firstDayOfWeek;
-
-  const prevCalendarMonth = () => setCalendarDate(prev => {
-    if (prev.month === 0) return { year: prev.year - 1, month: 11 };
-    return { year: prev.year, month: prev.month - 1 };
-  });
-  const nextCalendarMonth = () => setCalendarDate(prev => {
-    if (prev.month === 11) return { year: prev.year + 1, month: 0 };
-    return { year: prev.year, month: prev.month + 1 };
-  });
-
   const currentDentist = dentists.find(d => d.id === dentistId);
-  const dentistName = currentDentist?.name || 'Bác sĩ';
 
-  // Helper: Kiểm tra ca trực có đủ điều kiện đổi ca (bắt đầu sau ít nhất 12 tiếng)
-  const isShiftEligibleForSwap = React.useCallback((shift: { date: string; shiftType: string }) => {
-    if (!shift.date) return false;
-    const [y, m, d] = shift.date.split('-').map(Number);
-    const startHour = shift.shiftType === 'Afternoon' ? 14 : 8;
-    const shiftStartMs = new Date(y, m - 1, d, startHour, 0, 0).getTime();
-    const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
-    return shiftStartMs - Date.now() >= TWELVE_HOURS_MS;
-  }, []);
+  // Calculate week range
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
 
-  // Tất cả ngày có ca trong tuyển lịch (cho calendar highlight)
-  const myShiftDates = React.useMemo(() =>
-    doctorShifts.filter(s => s.dentistId === dentistId).map(s => s.date),
-    [doctorShifts, dentistId]
-  );
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return { dayNum: d.getDate(), dateStr: fmt(d), dayOfWeek: DAY_NAMES[d.getDay()], month: d.getMonth() + 1 };
+  });
 
-  // Ca sắp tới (từ hôm nay trở đi) — sắp xếp tăng dần
-  const myShifts = React.useMemo(() =>
-    doctorShifts
-      .filter(s => s.dentistId === dentistId && s.date >= todayDateStr)
-      .sort((a, b) => a.date.localeCompare(b.date)),
-    [doctorShifts, dentistId, todayDateStr]
-  );
+  const weekStartStr = fmt(weekStart);
+  const weekEndStr = fmt(weekEnd);
 
+  const filteredShifts = doctorShifts.filter(s => {
+    const inWeek = s.date >= weekStartStr && s.date <= weekEndStr;
+    const byDentist = filterDentistId === 'ALL' || s.dentistId === filterDentistId;
+    return inWeek && byDentist;
+  });
 
-  // Ca làm việc của tôi ĐỦ ĐIỀU KIỆN đổi/chuyển (>= 12 tiếng)
-  const eligibleMyShifts = React.useMemo(() =>
-    myShifts.filter(s => isShiftEligibleForSwap(s)),
-    [myShifts, isShiftEligibleForSwap]
-  );
+  const goToPrevWeek = () => setWeekStart(prev => { const d = new Date(prev); d.setDate(d.getDate() - 7); return d; });
+  const goToNextWeek = () => setWeekStart(prev => { const d = new Date(prev); d.setDate(d.getDate() + 7); return d; });
+  const goToToday = () => setWeekStart(getMonday(new Date()));
 
-  // Ca trực của bác sĩ khác ĐỦ ĐIỀU KIỆN hoán đổi (>= 12 tiếng & KHÔNG xung đột trùng ngày trực)
-  const swapTargets = React.useMemo(() => {
-    if (!originShiftId) return [];
-    const originShift = doctorShifts.find(s => s.id === originShiftId);
-    if (!originShift) return [];
+  const todayShifts = doctorShifts.filter(s => s.date === TODAY);
 
-    return doctorShifts.filter(target => {
-      // 1. Phải là bác sĩ khác
-      if (target.dentistId === dentistId) return false;
-      // 2. Phải đủ 12 tiếng nữa mới bắt đầu
-      if (!isShiftEligibleForSwap(target)) return false;
-
-      // 3. Nếu CÙNG NGÀY và CÙNG LOẠI CA: Cả 2 BS đều đang trực ca này -> Không thể hoán đổi ca giống hệt nhau
-      if (target.date === originShift.date && target.shiftType === originShift.shiftType) {
-        return false;
-      }
-
-      // 4. Nếu khác ngày: Bác sĩ hiện tại chưa có ca nào vào ngày của ca đích
-      if (target.date !== originShift.date) {
-        const myShiftOnTargetDate = doctorShifts.some(s => s.dentistId === dentistId && s.date === target.date);
-        if (myShiftOnTargetDate) return false;
-      }
-
-      // 5. Bác sĩ ca đích chưa có ca nào vào ngày của ca gốc
-      if (target.date !== originShift.date) {
-        const targetDentistShiftOnOriginDate = doctorShifts.some(s => s.dentistId === target.dentistId && s.date === originShift.date);
-        if (targetDentistShiftOnOriginDate) return false;
-      }
-
-      return true;
+  // Đưa Bác sĩ đang đăng nhập lên ĐẦU TIÊN
+  const sortedDentists = React.useMemo(() => {
+    return [...dentists].sort((a, b) => {
+      if (a.id === dentistId) return -1;
+      if (b.id === dentistId) return 1;
+      return 0;
     });
-  }, [doctorShifts, dentistId, originShiftId, isShiftEligibleForSwap]);
+  }, [dentists, dentistId]);
 
-  // Bác sĩ ĐỦ ĐIỀU KIỆN nhận chuyển ca (chưa có ca trực trùng giờ vào ngày của ca gốc)
-  const eligibleTransferDentists = React.useMemo(() => {
-    if (!originShiftId) return dentists.filter(d => d.id !== dentistId);
-    const originShift = doctorShifts.find(s => s.id === originShiftId);
-    if (!originShift) return dentists.filter(d => d.id !== dentistId);
+  // Stats
+  const totalShiftsThisWeek = filteredShifts.length;
+  const dentistShiftCounts = sortedDentists.map(d => ({
+    ...d,
+    count: filteredShifts.filter(s => s.dentistId === d.id).length
+  }));
 
-    return dentists.filter(d => {
-      if (d.id === dentistId) return false;
-      const hasOverlappingShift = doctorShifts.some(s => {
-        if (s.dentistId !== d.id || s.date !== originShift.date) return false;
-        if (originShift.shiftType === 'Full' || s.shiftType === 'Full') return true;
-        return s.shiftType === originShift.shiftType;
-      });
-      return !hasOverlappingShift;
-    });
-  }, [dentists, doctorShifts, dentistId, originShiftId]);
+  const selectedShift = selectedShiftId ? doctorShifts.find(s => s.id === selectedShiftId) : null;
 
-
-
-  const openSwapForShift = (shiftId: string) => {
-    setOriginShiftId(shiftId);
+  // Open modal for selected shift
+  const openActionModal = (shiftId: string) => {
+    const shift = doctorShifts.find(s => s.id === shiftId);
+    if (shift && !matchId(shift.dentistId, dentistId)) {
+      alert('Bạn chỉ được phép đổi hoặc xin trực thay cho ca trực của chính mình!');
+      return;
+    }
+    setSelectedShiftId(shiftId);
     setActionType('swap');
+    setTargetShiftId('');
+    setTargetDentistId('');
+    setEditFilterDentistId('');
     setShowSwapModal(true);
   };
 
+  // Submit action (Swap or Transfer)
   const handleConfirmAction = async () => {
-    if (!originShiftId) {
-      showAlert({ title: 'Thiếu thông tin', message: 'Vui lòng chọn ca làm việc gốc!', type: 'warning' });
+    if (!selectedShiftId) return;
+
+    const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
+    if (sourceShift && sourceShift.date < TODAY) {
+      alert('Ca trực trong quá khứ đã hoàn thành, không thể chỉnh sửa hoặc đổi ca!');
       return;
     }
 
-    const originShift = doctorShifts.find(s => s.id === originShiftId);
+    setIsSubmittingEdit(true);
+    try {
+      if (actionType === 'swap') {
+        if (!targetShiftId || targetShiftId === selectedShiftId) {
+          alert('Vui lòng chọn ca trực khác để hoán đổi!');
+          setIsSubmittingEdit(false);
+          return;
+        }
 
-    if (actionType === 'swap') {
-      if (!targetShiftId) {
-        showAlert({ title: 'Thiếu thông tin', message: 'Vui lòng chọn ca làm việc muốn đổi!', type: 'warning' });
-        return;
-      }
-      if (originShiftId === targetShiftId) {
-        showAlert({ title: 'Không hợp lệ', message: 'Không thể đổi ca làm việc với chính nó!', type: 'warning' });
-        return;
-      }
-
-      // Kiểm tra conflict lịch hẹn của ca gốc
-      if (originShift) {
-        const conflictAppts = appointments.filter(a =>
-          a.dentistId === originShift.dentistId &&
-          a.status !== 'Cancelled' && a.status !== 'Completed'
-        );
         const targetShift = doctorShifts.find(s => s.id === targetShiftId);
-        if (conflictAppts.length > 0) {
-          setConflictData({
-            action: 'swap',
-            conflictAppts,
-            newDentistName: targetShift?.dentistName || 'Bác sĩ khác',
-            pendingSwapTargetId: targetShiftId,
+        if (sourceShift) {
+          const sourceConflictAppts = appointments.filter(a =>
+            a.dentistId === sourceShift.dentistId &&
+            a.status !== 'Cancelled' && a.status !== 'Completed' &&
+            isApptInShift(a.time, sourceShift.date, sourceShift.shiftType)
+          );
+
+          const targetConflictAppts = targetShift
+            ? appointments.filter(a =>
+                a.dentistId === targetShift.dentistId &&
+                a.status !== 'Cancelled' && a.status !== 'Completed' &&
+                isApptInShift(a.time, targetShift.date, targetShift.shiftType)
+              )
+            : [];
+
+          const conflictAppts = [...sourceConflictAppts, ...targetConflictAppts];
+
+          if (conflictAppts.length > 0) {
+            setConflictData({
+              action: 'swap',
+              conflictAppts,
+              newDentistName: targetShift?.dentistName || 'Bác sĩ khác',
+              pendingSwapTargetId: targetShiftId,
+            });
+            setShowConflictModal(true);
+            setIsSubmittingEdit(false);
+            return;
+          }
+        }
+        const res = await swapShifts(selectedShiftId, targetShiftId);
+        if (res && (res as any).error) {
+          alert((res as any).error);
+        } else {
+          setSuccessToast({
+            title: 'Hoán đổi ca trực thành công!',
+            message: 'Ca trực đã được hoán đổi. Hệ thống tự động thông báo danh sách bệnh nhân bị ảnh hưởng đến Bộ phận Lễ tân.'
           });
-          setShowConflictModal(true);
+          setShowSwapModal(false);
+          setSelectedShiftId(null);
+          setTargetShiftId('');
+          setTargetDentistId('');
+        }
+
+      } else if (actionType === 'transfer') {
+        if (!targetDentistId) {
+          alert('Vui lòng chọn bác sĩ nhận ca trực!');
+          setIsSubmittingEdit(false);
           return;
         }
-      }
-      const res = await swapShifts(originShiftId, targetShiftId);
-      if (res && res.error) {
-        showAlert({ title: 'Không thể hoán đổi ca', message: res.error, type: 'error' });
-      } else {
-        setSuccessToast({
-          title: 'Hoán đổi ca trực thành công!',
-          message: 'Lịch làm việc đã được cập nhật và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
-        });
-        setShowSwapModal(false);
-        setOriginShiftId('');
-        setTargetShiftId('');
-        setTargetDentistId('');
-        setFormDentistId('');
-      }
 
-    } else if (actionType === 'transfer') {
-      if (!targetDentistId) {
-        showAlert({ title: 'Thiếu thông tin', message: 'Vui lòng chọn bác sĩ nhận ca trực!', type: 'warning' });
-        return;
-      }
-      if (originShift && originShift.dentistId === targetDentistId) {
-        showAlert({ title: 'Không hợp lệ', message: 'Bác sĩ nhận ca phải khác bác sĩ hiện tại của ca trực!', type: 'warning' });
-        return;
-      }
-
-      // Kiểm tra conflict lịch hẹn của ca gốc
-      if (originShift) {
-        const conflictAppts = appointments.filter(a =>
-          a.dentistId === originShift.dentistId &&
-          a.status !== 'Cancelled' && a.status !== 'Completed'
-        );
-        const newDentist = dentists.find(d => d.id === targetDentistId);
-        if (conflictAppts.length > 0) {
-          setConflictData({
-            action: 'transfer',
-            conflictAppts,
-            newDentistName: newDentist?.name || 'Bác sĩ mới',
-            pendingTransferDentistId: targetDentistId,
+        if (sourceShift) {
+          const conflictAppts = appointments.filter(a =>
+            a.dentistId === sourceShift.dentistId &&
+            a.status !== 'Cancelled' && a.status !== 'Completed' &&
+            isApptInShift(a.time, sourceShift.date, sourceShift.shiftType)
+          );
+          const newDentist = dentists.find(d => d.id === targetDentistId);
+          if (conflictAppts.length > 0) {
+            setConflictData({
+              action: 'transfer',
+              conflictAppts,
+              newDentistName: newDentist?.name || 'Bác sĩ mới',
+              pendingTransferDentistId: targetDentistId,
+            });
+            setShowConflictModal(true);
+            setIsSubmittingEdit(false);
+            return;
+          }
+        }
+        const res = await transferShift(selectedShiftId, targetDentistId);
+        if (res && res.error) {
+          alert(res.error);
+        } else {
+          setSuccessToast({
+            title: 'Nhờ trực thay thành công!',
+            message: 'Ca trực đã được chuyển giao và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
           });
-          setShowConflictModal(true);
-          return;
+          setShowSwapModal(false);
+          setSelectedShiftId(null);
+          setTargetShiftId('');
+          setTargetDentistId('');
         }
       }
-      const res = await transferShift(originShiftId, targetDentistId);
-      if (res && res.error) {
-        showAlert({ title: 'Không thể nhờ trực thay', message: res.error, type: 'error' });
-      } else {
-        setSuccessToast({
-          title: 'Nhờ trực thay thành công!',
-          message: 'Ca trực đã được chuyển giao và thông báo tự động đã gửi đến Bộ phận Lễ tân.'
-        });
-        setShowSwapModal(false);
-        setOriginShiftId('');
-        setTargetShiftId('');
-        setTargetDentistId('');
-        setFormDentistId('');
-      }
-
-    } else {
-      // actionType === 'change_room'
-      if (!targetRoom) {
-        alert('Vui lòng chọn phòng khám mới!');
-        return;
-      }
-      if (originShift && originShift.room === targetRoom) {
-        alert('Phòng khám mới phải khác phòng khám hiện tại của ca trực!');
-        return;
-      }
-      changeShiftRoom(originShiftId, targetRoom);
-      setSuccessToast({
-        title: 'Thay đổi phòng trực thành công!',
-        message: 'Lịch làm việc đã được cập nhật.'
-      });
+    } finally {
+      setIsSubmittingEdit(false);
     }
-
-    // Reset and close
-    setShowSwapModal(false);
-    setOriginShiftId('');
-    setTargetShiftId('');
-    setTargetDentistId('');
-    setFormDentistId('');
   };
 
-  // ── Confirm Conflict Handler ──
-  const handleConfirmConflict = () => {
-    if (!originShiftId || !conflictData) return;
+  // Confirm Conflict Handler
+  const handleConfirmConflict = async () => {
+    if (!selectedShiftId || !conflictData) return;
     const conflictIds = conflictData.conflictAppts.map(a => a.id);
 
-    if (conflictData.action === 'swap' && conflictData.pendingSwapTargetId) {
-      swapShifts(originShiftId, conflictData.pendingSwapTargetId, conflictIds);
-    } else if (conflictData.action === 'transfer' && conflictData.pendingTransferDentistId) {
-      transferShift(originShiftId, conflictData.pendingTransferDentistId, conflictIds);
-    }
+    setIsSubmittingEdit(true);
+    try {
+      if (conflictData.action === 'swap' && conflictData.pendingSwapTargetId) {
+        const res = await swapShifts(selectedShiftId, conflictData.pendingSwapTargetId, conflictIds);
+        if (res && (res as any).error) {
+          alert((res as any).error);
+          return;
+        }
+        setSuccessToast({
+          title: 'Hoán đổi ca trực thành công!',
+          message: 'Ca trực đã được hoán đổi. Thông báo danh sách bệnh nhân bị ảnh hưởng đã được gửi đến Lễ tân để hỗ trợ liên hệ.'
+        });
+      } else if (conflictData.action === 'transfer' && conflictData.pendingTransferDentistId) {
+        const res = await transferShift(selectedShiftId, conflictData.pendingTransferDentistId, conflictIds);
+        if (res && res.error) {
+          alert(res.error);
+          return;
+        }
+        setSuccessToast({
+          title: 'Nhờ trực thay thành công!',
+          message: 'Ca trực đã được chuyển giao. Thông báo danh sách bệnh nhân bị ảnh hưởng đã được gửi đến Lễ tân để hỗ trợ liên hệ.'
+        });
+      }
 
-    setShowConflictModal(false);
-    setConflictData(null);
-    setShowSwapModal(false);
-    setOriginShiftId('');
-    setTargetShiftId('');
-    setTargetDentistId('');
-    setTargetRoom('');
-    setSuccessToast({
-      title: 'Xác nhận đổi ca thành công!',
-      message: 'Lịch làm việc đã được chuyển giao. Thông báo danh sách bệnh nhân bị ảnh hưởng đã được gửi đến Lễ tân để hỗ trợ liên hệ.'
-    });
+      setShowConflictModal(false);
+      setConflictData(null);
+      setShowSwapModal(false);
+      setSelectedShiftId(null);
+      setTargetShiftId('');
+      setTargetDentistId('');
+    } finally {
+      setIsSubmittingEdit(false);
+    }
   };
 
-
   return (
-    <div className="p-container-padding-desktop grid grid-cols-12 gap-6 animate-in fade-in duration-200">
-      
-      {/* CỘT TRÁI (Sidebar) */}
-      <div className="col-span-12 lg:col-span-3 space-y-6">
-        
-        {/* Mini Calendar View — Tháng/Năm động */}
-        <div className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm">
-          <div className="flex justify-between items-center mb-3">
-            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400">{calendarLabel}</h4>
-            <div className="flex gap-1.5">
-              <button type="button" onClick={prevCalendarMonth}>
-                <Icon name="chevron_left" className="text-sm text-slate-500 cursor-pointer hover:text-primary transition-colors" />
-              </button>
-              <button type="button" onClick={nextCalendarMonth}>
-                <Icon name="chevron_right" className="text-sm text-slate-500 cursor-pointer hover:text-primary transition-colors" />
-              </button>
-            </div>
+    <div className="space-y-6 animate-in fade-in duration-200">
+
+      {/* ── Page Header ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-outline-variant shadow-sm">
+        <div>
+          <h2 className="font-bold text-headline-sm text-on-surface flex items-center gap-2">
+            <Icon name="calendar_month" className="text-primary" />
+            Lịch Làm Việc Bác Sĩ
+          </h2>
+          <p className="text-xs text-on-surface-variant mt-0.5">
+            Xem lịch làm việc cá nhân &amp; khoa phòng, hoán đổi ca trực hoặc nhờ đồng nghiệp trực thay
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Week navigation */}
+          <div className="flex items-center bg-white border border-outline-variant rounded-xl shadow-sm overflow-hidden">
+            <button
+              onClick={goToPrevWeek}
+              className="px-3 py-2 hover:bg-slate-50 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors border-r border-outline-variant"
+              title="Tuần trước"
+            >
+              <Icon name="chevron_left" className="text-lg" />
+            </button>
+            <button
+              onClick={goToToday}
+              className="px-4 py-2 text-sm font-bold text-on-surface hover:bg-purple-50 hover:text-purple-700 cursor-pointer transition-colors"
+            >
+              {weekDays[0].dayNum.toString().padStart(2, '0')}/{weekDays[0].month.toString().padStart(2, '0')} – {weekDays[6].dayNum.toString().padStart(2, '0')}/{weekDays[6].month.toString().padStart(2, '0')}/{weekStart.getFullYear()}
+            </button>
+            <button
+              onClick={goToNextWeek}
+              className="px-3 py-2 hover:bg-slate-50 text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors border-l border-outline-variant"
+              title="Tuần sau"
+            >
+              <Icon name="chevron_right" className="text-lg" />
+            </button>
           </div>
-          
-          {/* Mini Calendar Days Grid */}
-          <div className="grid grid-cols-7 gap-y-2 text-center text-[10px] font-bold">
-            {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map(day => (
-              <span key={day} className="text-slate-400 font-extrabold">{day}</span>
-            ))}
-            {/* Ô trống đầu tháng theo ngày thực tế */}
-            {Array.from({ length: calendarOffset }, (_, i) => (
-              <span key={`blank-${i}`} className="py-1" />
-            ))}
-            {Array.from({ length: daysInMonth }, (_, i) => {
-              const day = i + 1;
-              const m = (calendarDate.month + 1).toString().padStart(2, '0');
-              const dateStr = `${calendarDate.year}-${m}-${day.toString().padStart(2, '0')}`;
-              const isToday = dateStr === todayDateStr;
-              const hasShift = myShiftDates.includes(dateStr);
+
+          {/* Today button */}
+          <button
+            onClick={goToToday}
+            className="px-4 py-2.5 bg-white border border-outline-variant hover:bg-purple-50 hover:text-purple-700 text-on-surface rounded-xl font-bold text-xs cursor-pointer transition-all shadow-sm"
+          >
+            Hôm nay
+          </button>
+        </div>
+      </div>
+
+      {/* ── Today Banner ── */}
+      {todayShifts.length > 0 && (
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-5 text-white shadow-lg shadow-purple-200/50">
+          <p className="text-xs font-bold uppercase tracking-widest opacity-80 mb-2 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" />
+            Trực hôm nay – {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {todayShifts.map(shift => {
+              const conf = SHIFT_CONFIG[shift.shiftType as keyof typeof SHIFT_CONFIG];
+              const doc = dentists.find(d => d.id === shift.dentistId);
+              const isMine = shift.dentistId === dentistId;
               return (
-                <div key={day} className="flex flex-col items-center justify-center relative py-1">
-                  <span 
-                    className={`rounded-full flex items-center justify-center mx-auto w-6 h-6 text-xs transition-all ${
-                      isToday 
-                        ? 'bg-primary text-white font-black shadow-sm' 
-                        : hasShift
-                        ? 'bg-primary/10 text-primary border border-primary/20 font-bold'
-                        : 'text-slate-800 hover:bg-slate-100 cursor-pointer'
-                    }`}
-                  >
-                    {day}
-                  </span>
-                  {hasShift && !isToday && (
-                    <span className="absolute bottom-0.5 w-1 h-1 bg-primary rounded-full"></span>
+                <div key={shift.id} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 border transition-all ${isMine ? 'bg-white/30 border-white/60 ring-2 ring-white/50 font-bold' : 'bg-white/20 border-white/30'}`}>
+                  {doc?.avatar && (
+                    <img src={doc.avatar} alt={doc.name} className="w-7 h-7 rounded-full object-cover border border-white/50 shrink-0" />
                   )}
+                  <div>
+                    <p className="text-xs font-black">
+                      {shift.dentistName.replace('Bác sĩ ', 'BS. ')}
+                    </p>
+                    <p className="text-[10px] opacity-80">{shift.room} · {conf?.label} ({conf?.time})</p>
+                  </div>
                 </div>
               );
             })}
           </div>
         </div>
+      )}
 
-        {/* Notice Card */}
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-900 space-y-2 font-sans">
-          <h5 className="font-bold flex items-center gap-1">
-            <Icon name="warning" className="text-amber-600 text-[16px]" />
-            Quy chế đổi ca trực
-          </h5>
-          <ul className="list-disc pl-4 space-y-1.5 font-medium leading-relaxed text-[10px] text-amber-800">
-            <li>Yêu cầu đổi ca làm việc cần gửi trước thời điểm bắt đầu ít nhất <strong>12 tiếng</strong>.</li>
-            <li>Cần có sự đồng ý trực thay của bác sĩ nhận ca.</li>
-            <li>Bác sĩ không được có 2 ca trực trong cùng một ngày.</li>
-          </ul>
-        </div>
+      {/* ── Main Layout ── */}
+      <div className="grid grid-cols-12 gap-5">
 
-      </div>
+        {/* ── LEFT Sidebar ── */}
+        <div className="col-span-12 lg:col-span-3 space-y-4">
 
-      {/* KHU VỰC CHÍNH */}
-      <div className="col-span-12 lg:col-span-9 space-y-4">
-        
-        {/* Header Card: Lịch làm việc cá nhân */}
-        <div className="bg-white rounded-2xl border border-outline-variant p-5 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 font-sans">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Icon name="calendar_today" className="text-xl" />
+          {/* Stats */}
+          <div className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm space-y-3">
+            <p className="text-[10px] uppercase font-extrabold text-on-surface-variant tracking-wider">Thống kê tuần này</p>
+            <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-xl border border-purple-100">
+              <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-black text-lg">
+                {totalShiftsThisWeek}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-purple-900">Tổng ca trực toàn khoa</p>
+                <p className="text-[10px] text-purple-700">Trong tuần đã chọn</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-slate-800 text-sm">Lịch làm việc của tôi</h3>
-              <p className="text-xs text-slate-500">
-                Xin chào {dentistName}, chúc bạn một ngày làm việc hiệu quả!
-              </p>
-            </div>
-          </div>
-          
-          <button
-            onClick={() => {
-              if (eligibleMyShifts.length > 0) {
-                setOriginShiftId(eligibleMyShifts[0].id);
-              }
-              setActionType('swap');
-              setShowSwapModal(true);
-            }}
-            className="px-5 py-2 bg-primary hover:bg-primary/95 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow active:scale-95 cursor-pointer transition-all"
-          >
-            <Icon name="swap_horiz" className="text-[16px]" />
-            Đăng ký đổi ca trực
-          </button>
-        </div>
-
-        {/* Personalized Schedule Main Area */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 animate-in fade-in duration-300">
-          {/* Left inside: Today shift and stats */}
-          <div className="md:col-span-4 space-y-4">
-            
-            {/* Today shift card */}
-            {(() => {
-              const todayShift = doctorShifts.find(s => s.dentistId === dentistId && s.date === todayDateStr);
-              const conf = todayShift ? SHIFT_TYPES[todayShift.shiftType as keyof typeof SHIFT_TYPES] : null;
-              return (
-                <div className={`rounded-2xl p-5 text-white shadow-md border ${
-                  todayShift 
-                    ? 'bg-gradient-to-br from-primary to-[#003a73] border-primary/20' 
-                    : 'bg-gradient-to-br from-slate-700 to-slate-800 border-slate-600'
-                }`}>
-                  <p className="text-[10px] font-bold uppercase tracking-wider opacity-85 mb-1">Lịch trực hôm nay</p>
-                  <p className="text-xs font-medium opacity-75">{new Date(todayDateStr).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
-                  
-                  {todayShift ? (
-                    <div className="mt-4 space-y-3">
-                      <div className="flex items-center gap-2 bg-white/20 px-3 py-1.5 rounded-xl border border-white/25 w-fit">
-                        <Icon name="schedule" className="text-sm" />
-                        <span className="text-xs font-bold">{conf?.label} ({conf?.time})</span>
-                      </div>
-                      <div className="flex items-center gap-2 bg-white/20 px-3 py-1.5 rounded-xl border border-white/25 w-fit">
-                        <Icon name="meeting_room" className="text-sm" />
-                        <span className="text-xs font-bold">{todayShift.room}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-6 text-center py-2 space-y-2">
-                      <Icon name="bedtime" className="text-3xl opacity-60 animate-pulse" />
-                      <p className="text-xs font-bold opacity-90">Hôm nay bạn không có ca trực</p>
-                      <p className="text-[10px] opacity-75">Hãy nghỉ ngơi chuẩn bị cho ca tiếp theo nhé!</p>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Shift Stats Card */}
-            <div className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm space-y-3 font-sans">
-              <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400">Thống kê ca trực</h4>
-              {(() => {
-                const myTotalShifts = doctorShifts.filter(s => s.dentistId === dentistId).length;
-                const myMorningShifts = doctorShifts.filter(s => s.dentistId === dentistId && (s.shiftType === 'Morning' || s.shiftType === 'Full')).length;
-                const myAfternoonShifts = doctorShifts.filter(s => s.dentistId === dentistId && (s.shiftType === 'Afternoon' || s.shiftType === 'Full')).length;
+            <div className="space-y-1.5">
+              {dentistShiftCounts.map(d => {
+                const isMine = d.id === dentistId;
                 return (
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-slate-50 p-2.5 rounded-xl border border-outline-variant/60">
-                      <p className="text-lg font-black text-primary">{myTotalShifts}</p>
-                      <p className="text-[9px] font-bold text-slate-500 mt-0.5">Tổng ca</p>
+                  <div key={d.id} className={`flex items-center justify-between px-2 py-1.5 rounded-lg ${isMine ? 'bg-purple-100/60 font-bold border border-purple-200' : ''}`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <img src={d.avatar} alt={d.name} className="w-5 h-5 rounded-full object-cover shrink-0" />
+                      <span className={`text-[11px] truncate ${isMine ? 'text-purple-950 font-black' : 'text-on-surface font-bold'}`}>
+                        {d.name.replace('Bác sĩ ', 'BS. ')}
+                      </span>
                     </div>
-                    <div className="bg-sky-50/50 p-2.5 rounded-xl border border-sky-100">
-                      <p className="text-lg font-black text-sky-700">{myMorningShifts}</p>
-                      <p className="text-[9px] font-bold text-sky-600 mt-0.5">Ca Sáng</p>
-                    </div>
-                    <div className="bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100">
-                      <p className="text-lg font-black text-emerald-700">{myAfternoonShifts}</p>
-                      <p className="text-[9px] font-bold text-emerald-600 mt-0.5">Ca Chiều</p>
-                    </div>
+                    <span className={`text-[11px] font-black px-2 py-0.5 rounded-full ${d.count > 0 ? (isMine ? 'bg-purple-600 text-white shadow-2xs' : 'bg-purple-100 text-purple-700') : 'bg-slate-100 text-slate-400'}`}>
+                      {d.count} ca
+                    </span>
                   </div>
                 );
-              })()}
+              })}
             </div>
           </div>
 
-          {/* Right inside: Agenda List (Concise view) */}
-          <div className="md:col-span-8 space-y-4">
-            <div className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm space-y-4 font-sans">
-              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                <h4 className="font-extrabold text-sm text-slate-800">Ca trực sắp tới</h4>
-                <span className="text-[10px] bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-bold">
-                  {myShifts.length} ca sắp tới
-                </span>
-              </div>
-
-              <div className="space-y-2.5 max-h-[460px] overflow-y-auto custom-scrollbar pr-1">
-                {myShifts.length === 0 ? (
-                  <div className="text-center py-12 text-slate-400 italic text-xs">
-                    <Icon name="event_available" className="text-3xl opacity-30 mb-2 block" />
-                    Không có ca trực nào sắp tới.
-                  </div>
-                ) : (
-                  myShifts.map(shift => {
-                    const conf = SHIFT_TYPES[shift.shiftType as keyof typeof SHIFT_TYPES];
-                    const isShiftToday = shift.date === todayDateStr;
-                    const isShiftTomorrow = shift.date === tomorrowDateStr;
-                    const dateObj = new Date(shift.date + 'T00:00:00');
-                    const dayOfWeekStr = dateObj.getDay() === 0 ? 'Chủ Nhật' : `Thứ ${dateObj.getDay() + 1}`;
-                    const formattedDate = `${dayOfWeekStr}, ${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}`;
-                    const eligible = isShiftEligibleForSwap(shift);
-
-                    return (
-                      <div 
-                        key={shift.id}
-                        className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${
-                          isShiftToday 
-                            ? 'bg-blue-50/20 border-primary shadow-sm' 
-                            : isShiftTomorrow
-                            ? 'bg-amber-50 border-amber-300 shadow-sm'
-                            : 'bg-white border-outline-variant/65 hover:border-slate-300'
-                        }`}
-                      >
-                        {/* Left: Date details */}
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center text-[10px] font-black shrink-0 ${
-                            isShiftToday ? 'bg-primary text-white shadow-sm' 
-                            : isShiftTomorrow ? 'bg-amber-500 text-white shadow-sm'
-                            : 'bg-slate-100 text-slate-600'
-                          }`}>
-                            <span className="uppercase text-[8px] opacity-80">{dayOfWeekStr.replace('Thứ ', 'T')}</span>
-                            <span className="text-xs font-black">{dateObj.getDate()}</span>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className={`text-xs font-bold ${
-                                isShiftToday ? 'text-primary' 
-                                : isShiftTomorrow ? 'text-amber-700'
-                                : 'text-slate-800'
-                              }`}>
-                                {formattedDate}
-                              </p>
-                              {isShiftToday && (
-                                <span className="text-[9px] font-black bg-primary text-white px-1.5 py-0.5 rounded-full">Hôm nay</span>
-                              )}
-                              {isShiftTomorrow && (
-                                <span className="text-[9px] font-black bg-amber-500 text-white px-1.5 py-0.5 rounded-full animate-pulse">⚠️ Ngày mai</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <Icon name="meeting_room" className="text-slate-400 text-xs" />
-                              <span className="text-[10px] text-slate-500 font-bold">{shift.room}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Middle: Shift type details */}
-                        <div className="flex items-center">
-                          <span className={`text-[10px] font-extrabold px-3 py-1 rounded-xl border flex items-center gap-1.5 ${conf.color}`}>
-                            <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                            {conf.label} ({conf.time})
-                          </span>
-                        </div>
-
-                        {/* Right: Quick actions */}
-                        <div className="flex gap-2 justify-end">
-                          <button
-                            disabled={!eligible}
-                            onClick={() => openSwapForShift(shift.id)}
-                            title={!eligible ? 'Ca trực quá hạn hoặc bắt đầu trong dưới 12 tiếng, không thể đổi/chuyển ca' : ''}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 ${
-                              eligible
-                                ? 'border border-primary/20 hover:border-primary text-primary hover:bg-primary/5 cursor-pointer active:scale-95'
-                                : 'border border-slate-200 text-slate-400 bg-slate-100 cursor-not-allowed opacity-60'
-                            }`}
-                          >
-                            <Icon name="swap_horiz" className="text-[14px]" />
-                            {eligible ? 'Đăng ký đổi ca' : 'Quá hạn đổi ca'}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+          {/* Doctor filter */}
+          <div className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm space-y-3">
+            <p className="text-[10px] uppercase font-extrabold text-on-surface-variant tracking-wider">Lọc xem bác sĩ</p>
+            <div className="space-y-1.5">
+              <button
+                onClick={() => setFilterDentistId('ALL')}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${filterDentistId === 'ALL'
+                    ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                    : 'text-on-surface-variant hover:bg-surface-container border border-transparent'
+                  }`}
+              >
+                <Icon name="groups" className="text-sm" />
+                Tất cả bác sĩ
+              </button>
+              {sortedDentists.map(doc => {
+                return (
+                  <button
+                    key={doc.id}
+                    onClick={() => setFilterDentistId(doc.id)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border-l-4 ${DENTIST_ACCENT[doc.id] || 'border-l-outline-variant'} ${filterDentistId === doc.id
+                        ? 'bg-surface-container border border-outline-variant'
+                        : 'text-on-surface-variant hover:bg-surface-container border border-transparent'
+                      }`}
+                  >
+                    <img src={doc.avatar} alt={doc.name} className="w-6 h-6 rounded-full object-cover shrink-0" />
+                    <span className="truncate">{doc.name.replace('Bác sĩ ', 'BS. ')}</span>
+                  </button>
+                );
+              })}
             </div>
+          </div>
+
+          {/* Quy chế card */}
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-900 space-y-2">
+            <h5 className="font-bold flex items-center gap-1">
+              <Icon name="warning" className="text-amber-600 text-[16px]" />
+              Quy chế đổi ca trực
+            </h5>
+            <ul className="list-disc pl-4 space-y-1.5 font-medium leading-relaxed text-[10px] text-amber-800">
+              <li>Yêu cầu đổi ca cần thực hiện trước thời điểm bắt đầu ít nhất <strong>12 tiếng</strong>.</li>
+              <li>Bác sĩ nhận ca phải còn trống khung giờ tương ứng.</li>
+              <li>Sau khi đổi ca thành công, hệ thống tự động thông báo danh sách bệnh nhân bị ảnh hưởng đến Bộ phận Lễ tân.</li>
+            </ul>
           </div>
         </div>
 
+        {/* ── RIGHT Main Content: Weekly Matrix Table ── */}
+        <div className="col-span-12 lg:col-span-9">
+
+
+          <div className="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-x-auto">
+            <table className="w-full border-collapse min-w-[700px]">
+              <thead>
+                <tr className="bg-slate-50 border-b border-outline-variant text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-4 text-left w-36">Bác Sĩ</th>
+                  {weekDays.map(day => {
+                    const isToday = day.dateStr === TODAY;
+                    const isWeekend = day.dayOfWeek === 'Thứ Bảy' || day.dayOfWeek === 'Chủ Nhật';
+                    return (
+                      <th
+                        key={day.dateStr}
+                        className={`py-3 px-2 text-center border-l border-outline-variant/30 ${isToday ? 'bg-purple-50 text-purple-600' : isWeekend ? 'text-red-400' : ''}`}
+                      >
+                        <div>{day.dayOfWeek}</div>
+                        <div className="text-[10px] font-bold opacity-70 mt-0.5">{day.dayNum.toString().padStart(2, '0')}/{day.month.toString().padStart(2, '0')}</div>
+                        {isToday && <div className="text-[8px] font-black bg-purple-600 text-white px-1.5 py-0.5 rounded-full mt-0.5 inline-block">HÔM NAY</div>}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/60">
+                {sortedDentists
+                  .filter(d => filterDentistId === 'ALL' || d.id === filterDentistId)
+                  .map(doc => {
+                    const isMineRow = doc.id === dentistId;
+                    return (
+                      <tr key={doc.id} className={`transition-colors ${isMineRow ? 'bg-purple-50/50 border-l-4 border-l-purple-600 font-bold shadow-2xs' : 'hover:bg-slate-50/50'}`}>
+                        {/* Doctor column */}
+                        <td className={`px-4 py-3 border-r ${isMineRow ? 'bg-purple-100/60 border-r-purple-300' : 'bg-slate-50/30 border-r-outline-variant/60'}`}>
+                          <div className="flex items-center gap-2.5">
+                            <img src={doc.avatar} alt={doc.name} className={`w-8 h-8 rounded-full object-cover shrink-0 ${isMineRow ? 'border-2 border-purple-500 shadow-xs' : 'border border-slate-200'}`} />
+                            <div>
+                              <p className={`font-extrabold text-xs ${isMineRow ? 'text-purple-950 font-black' : 'text-on-surface'}`}>
+                                {doc.name.replace('Bác sĩ ', 'BS. ')}
+                              </p>
+                              <p className={`text-[10px] ${isMineRow ? 'text-purple-700 font-bold' : 'text-on-surface-variant'}`}>{doc.room}</p>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Day cells */}
+                        {weekDays.map(day => {
+                          const shifts = filteredShifts.filter(s => s.dentistId === doc.id && s.date === day.dateStr);
+                          const isToday = day.dateStr === TODAY;
+
+                          return (
+                            <td key={day.dateStr} className={`p-2 border-l border-outline-variant/30 align-top min-w-[110px] ${isMineRow ? (isToday ? 'bg-purple-100/40' : 'bg-purple-50/30') : (isToday ? 'bg-purple-50/20' : '')}`}>
+                              {shifts.length === 0 ? (
+                                <div className="h-10 border border-transparent rounded-xl" />
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {shifts.map(shift => {
+                                    const cfg = SHIFT_CONFIG[shift.shiftType as keyof typeof SHIFT_CONFIG];
+                                    const isMyShift = matchId(shift.dentistId, dentistId);
+                                    const isEligible = isShiftEligibleForSwap(shift);
+
+                                    return (
+                                      <div key={shift.id} className="space-y-1">
+                                        <button
+                                          onClick={() => isMyShift && openActionModal(shift.id)}
+                                          disabled={!isMyShift}
+                                          className={`w-full text-left p-2 border rounded-xl text-[10px] font-bold transition-all border-l-4 ${DENTIST_ACCENT[shift.dentistId] || ''} ${cfg?.color || ''} ${selectedShiftId === shift.id ? 'ring-2 ring-purple-400 shadow-md' : 'shadow-sm'} ${isMyShift ? 'cursor-pointer hover:shadow' : 'cursor-default opacity-85'}`}
+                                          title={isMyShift ? 'Bấm để đổi ca hoặc nhờ trực thay' : `Ca trực của ${doc.name}`}
+                                        >
+                                          <div className="flex items-center justify-between mb-0.5">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg?.dot || ''}`} />
+                                              <span className="font-extrabold">{cfg?.label}</span>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center justify-between text-[9px] opacity-75">
+                                            <span>{shift.room}</span>
+                                            {isMyShift && (
+                                              <span className={`text-[8px] font-semibold ${isEligible ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
+                                                {isEligible ? 'Đổi ca' : '< 12h'}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </button>
+                                        
+
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      {/* SWAP / TRANSFER WORK SHIFTS MODAL */}
-      {showSwapModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col text-slate-800 animate-in zoom-in duration-200">
-            {/* Modal Header */}
+      {/* ── Swap / Transfer Modal ── */}
+      {showSwapModal && selectedShift && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          onClick={() => { setShowSwapModal(false); setSelectedShiftId(null); }}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
             <div className="bg-slate-900 px-6 py-4 text-white flex justify-between items-center shrink-0">
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <Icon name="swap_horiz" />
-                Đăng Ký Đổi Ca Làm Việc Bác Sĩ
+                Quản Lý Đổi Ca làm việc
               </h3>
-              <button 
-                onClick={() => setShowSwapModal(false)} 
-                className="p-1.5 hover:bg-white/20 rounded-full cursor-pointer flex items-center justify-center"
-              >
+              <button onClick={() => { setShowSwapModal(false); setSelectedShiftId(null); }} className="p-1.5 hover:bg-white/20 rounded-full cursor-pointer">
                 <Icon name="close" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-5 overflow-y-auto max-h-[80vh] custom-scrollbar">
-              {/* Swap or Transfer Selector Tab */}
-              <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-outline-variant/40 gap-1.5 select-none">
-                <button
-                  type="button"
-                  onClick={() => { setActionType('swap'); setTargetShiftId(''); setTargetDentistId(''); setFormDentistId(''); }}
-                  className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                    actionType === 'swap' 
-                      ? 'bg-white text-primary shadow-sm border border-primary/20' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                  }`}
-                >
-                  <Icon name="swap_horiz" className="text-base" />
-                  Hoán đổi ca trực (Đổi chéo)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setActionType('transfer'); setTargetShiftId(''); setTargetDentistId(''); setFormDentistId(''); }}
-                  className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                    actionType === 'transfer' 
-                      ? 'bg-white text-primary shadow-sm border border-primary/20' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                  }`}
-                >
-                  <Icon name="person_add" className="text-base" />
-                  Nhờ trực thay (Chuyển ca)
-                </button>
+            <div className="p-6 space-y-4">
+              {/* Shift info summary */}
+              <div className="p-3.5 bg-slate-50 border border-outline-variant rounded-xl text-xs space-y-1">
+                <p className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Ca trực hiện tại:</p>
+                <p className="font-bold text-slate-800 text-sm">
+                  {selectedShift.dentistName} ({selectedShift.room})
+                </p>
+                <p className="text-slate-600">
+                  Ngày: <strong>{selectedShift.date}</strong> · Loại ca: <strong>{SHIFT_CONFIG[selectedShift.shiftType as keyof typeof SHIFT_CONFIG]?.label} ({SHIFT_CONFIG[selectedShift.shiftType as keyof typeof SHIFT_CONFIG]?.time})</strong>
+                </p>
               </div>
 
-              {/* FORM SECTION 1: Ca gốc của tôi */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Icon name="assignment" className="text-primary text-base" />
-                    1. Chọn ca trực của bạn muốn thay đổi *
-                  </label>
-                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                    <Icon name="check_circle" className="text-[12px]" /> Real-time Validated
-                  </span>
+              {/* Action selector */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Hình thức đổi ca</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setActionType('swap'); setTargetShiftId(''); }}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${actionType === 'swap' ? 'border-primary bg-primary/10 text-primary shadow-sm' : 'border-outline-variant text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    🔄 Hoán đổi ca trực (2 bên)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setActionType('transfer'); setTargetDentistId(''); }}
+                    className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${actionType === 'transfer' ? 'border-primary bg-primary/10 text-primary shadow-sm' : 'border-outline-variant text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    👤 Nhờ trực thay (1 bên)
+                  </button>
                 </div>
-
-                <select
-                  value={originShiftId}
-                  onChange={e => { setOriginShiftId(e.target.value); setTargetShiftId(''); setTargetDentistId(''); }}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-xs font-semibold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer shadow-sm"
-                >
-                  <option value="">-- Chọn ca trực của bạn (Đủ điều kiện &ge; 12 tiếng) --</option>
-                  {eligibleMyShifts.map(s => {
-                    const typeLabel = SHIFT_TYPES[s.shiftType as keyof typeof SHIFT_TYPES]?.label;
-                    return (
-                      <option key={s.id} value={s.id}>
-                        {s.dentistName} ({s.room}) — Ngày {s.date} ({typeLabel})
-                      </option>
-                    );
-                  })}
-                </select>
-
-                {/* Card hiển thị chi tiết Ca Gốc đã chọn */}
-                {(() => {
-                  const selShift = doctorShifts.find(s => s.id === originShiftId);
-                  if (!selShift) return null;
-                  const conf = SHIFT_TYPES[selShift.shiftType as keyof typeof SHIFT_TYPES];
-                  return (
-                    <div className="bg-white rounded-xl border border-primary/20 p-3.5 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0">
-                          <Icon name="event" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">
-                            Ngày {selShift.date} · {conf?.label} ({conf?.time})
-                          </p>
-                          <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                            Phòng làm việc: <strong>{selShift.room}</strong>
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 px-2.5 py-1 rounded-lg shrink-0">
-                        Ca trực gốc
-                      </span>
-                    </div>
-                  );
-                })()}
-
-                {eligibleMyShifts.length === 0 && (
-                  <p className="text-[11px] text-amber-700 font-bold bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center gap-1.5">
-                    <Icon name="warning" className="text-amber-600 text-sm" />
-                    Bạn không có ca trực nào sắp tới đủ điều kiện đổi ca (yêu cầu gửi trước ít nhất 12 tiếng).
-                  </p>
-                )}
               </div>
 
-              {/* FORM SECTION 2: Form chọn Bác sĩ & Bảng Lịch Trực Real-time của Bác sĩ được chọn */}
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Icon name="badge" className="text-primary text-base" />
-                    2. Chọn bác sĩ đối ứng &amp; Xem lịch trực Real-time *
-                  </label>
-                  <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                    {actionType === 'swap' ? 'Chế độ Hoán Đổi' : 'Chế độ Trực Thay'}
-                  </span>
+              {/* Ineligible warning banner */}
+              {!isShiftEligibleForSwap(selectedShift) && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-center gap-2">
+                  <Icon name="error" className="text-red-500 text-[18px] shrink-0" />
+                  <span>Ca trực này đang diễn ra hoặc còn dưới 12 tiếng mới tới giờ bắt đầu. Theo quy định, không thể thực hiện hoán đổi hoặc nhờ trực thay.</span>
                 </div>
+              )}
 
-                {/* Sub-step A: Danh sách Thẻ Bác sĩ */}
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                    A. Chọn bác sĩ đối ứng *
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {(actionType === 'swap' 
-                      ? dentists.filter(d => d.id !== dentistId)
-                      : eligibleTransferDentists
-                    ).map(d => {
-                      const isSelected = formDentistId === d.id;
-                      return (
-                        <div
-                          key={d.id}
-                          onClick={() => {
-                            setFormDentistId(d.id);
-                            if (actionType === 'transfer') setTargetDentistId(d.id);
-                            setTargetShiftId('');
-                          }}
-                          className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between relative ${
-                            isSelected
-                              ? 'bg-primary/10 border-primary shadow-sm ring-2 ring-primary/30'
-                              : 'bg-white border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          {isSelected && (
-                            <div className="absolute top-2 right-2 text-primary font-bold">
-                              <Icon name="check_circle" className="text-sm" />
-                            </div>
-                          )}
-                          <p className="font-extrabold text-xs text-slate-800 pr-4">{d.name}</p>
-                          <p className="text-[10px] text-slate-500 font-medium mt-1">{d.role.split('&')[0]}</p>
-                        </div>
-                      );
-                    })}
+              {/* Action specific fields */}
+              {actionType === 'swap' && (
+                <div className="space-y-4">
+                  {/* Field 1: Doctor Filter */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      1. Lọc theo bác sĩ muốn hoán đổi ca (Không bắt buộc)
+                    </label>
+                    <select
+                      value={editFilterDentistId}
+                      onChange={e => {
+                        setEditFilterDentistId(e.target.value);
+                        setTargetShiftId('');
+                      }}
+                      disabled={!isShiftEligibleForSwap(selectedShift)}
+                      className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">-- Tất cả bác sĩ (Hiển thị toàn bộ ca hợp lệ) --</option>
+                      {dentists
+                        .filter(d => d.id !== selectedShift.dentistId && d.status !== 'Inactive')
+                        .map(d => (
+                          <option key={d.id} value={d.id}>
+                            {d.name} ({d.role.split('&')[0]})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Field 2: Target Shift */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      2. Chọn ca trực muốn hoán đổi (Đủ điều kiện &ge; 12 tiếng) *
+                    </label>
+                    <select
+                      value={targetShiftId}
+                      onChange={e => setTargetShiftId(e.target.value)}
+                      disabled={!isShiftEligibleForSwap(selectedShift)}
+                      className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">-- Chọn ca trực khác --</option>
+                      {doctorShifts
+                        .filter(s => {
+                          if (s.dentistId === selectedShift.dentistId) return false;
+                          if (editFilterDentistId && s.dentistId !== editFilterDentistId) return false;
+                          if (!isShiftEligibleForSwap(s)) return false;
+                          if (s.date === selectedShift.date && s.shiftType === selectedShift.shiftType) return false;
+
+                          const doc1HasOverlapOnTargetDate = doctorShifts.some(other =>
+                            other.id !== selectedShift.id &&
+                            other.dentistId === selectedShift.dentistId &&
+                            isShiftOverlapping(other, s)
+                          );
+                          if (doc1HasOverlapOnTargetDate) return false;
+
+                          const doc2HasOverlapOnOriginDate = doctorShifts.some(other =>
+                            other.id !== s.id &&
+                            other.dentistId === s.dentistId &&
+                            isShiftOverlapping(other, selectedShift)
+                          );
+                          if (doc2HasOverlapOnOriginDate) return false;
+
+                          return true;
+                        })
+                        .map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.dentistName} ({s.room}) - {s.date} ({SHIFT_CONFIG[s.shiftType as keyof typeof SHIFT_CONFIG]?.label})
+                          </option>
+                        ))}
+                    </select>
                   </div>
                 </div>
+              )}
 
-                {/* Sub-step B: BẢNG LỊCH TRỰC CHÍNH THỨC CỦA BÁC SĨ ĐƯỢC CHỌN (Real-time Schedule Board) */}
-                {formDentistId && (() => {
-                  const selectedDoctorObj = dentists.find(d => d.id === formDentistId);
-                  const doctorUpcomingShifts = doctorShifts
-                    .filter(s => s.dentistId === formDentistId && s.date >= todayDateStr)
-                    .sort((a, b) => a.date.localeCompare(b.date));
-
-                  return (
-                    <div className="space-y-3 pt-3 border-t border-slate-200/80 animate-in fade-in slide-in-from-top-2">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                          <Icon name="calendar_view_week" className="text-primary text-base" />
-                          {actionType === 'swap' 
-                            ? `Lịch làm việc của Bác sĩ ${selectedDoctorObj?.name || ''} (Bấm chọn ca để hoán đổi)` 
-                            : `Lịch làm việc sắp tới của Bác sĩ ${selectedDoctorObj?.name || ''}`}
-                        </label>
-                        <span className="text-[10px] bg-primary/10 text-primary px-2.5 py-0.5 rounded-full font-bold">
-                          {doctorUpcomingShifts.length} ca trực
-                        </span>
-                      </div>
-
-                      {doctorUpcomingShifts.length === 0 ? (
-                        <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-xs text-amber-800 italic text-center">
-                          Bác sĩ này hiện chưa có ca trực nào sắp tới trong hệ thống.
-                        </div>
-                      ) : (
-                        <div className="space-y-2 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
-                          {doctorUpcomingShifts.map(s => {
-                            const conf = SHIFT_TYPES[s.shiftType as keyof typeof SHIFT_TYPES];
-                            const isSelected = targetShiftId === s.id;
-                            const isEligible = isShiftEligibleForSwap(s);
-                            const isValidSwapTarget = swapTargets.some(t => t.id === s.id);
-
-                            return (
-                              <div
-                                key={s.id}
-                                onClick={() => {
-                                  if (actionType === 'swap' && isValidSwapTarget) {
-                                    setTargetShiftId(s.id);
-                                  }
-                                }}
-                                className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
-                                  isSelected
-                                    ? 'bg-emerald-50 border-emerald-500 shadow-md ring-2 ring-emerald-500/30 cursor-pointer'
-                                    : actionType === 'swap' && isValidSwapTarget
-                                    ? 'bg-white border-slate-200 hover:border-primary cursor-pointer hover:shadow-sm'
-                                    : 'bg-slate-100/70 border-slate-200 opacity-60 cursor-not-allowed'
-                                }`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black ${
-                                    isSelected ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
-                                  }`}>
-                                    {s.date.split('-')[2]}
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-bold text-slate-800">
-                                      Ngày {s.date} · {conf?.label} ({conf?.time})
-                                    </p>
-                                    <p className="text-[10px] text-slate-500 font-medium">
-                                      Phòng: <strong>{s.room}</strong>
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div>
-                                  {isSelected ? (
-                                    <span className="text-[10px] font-bold bg-emerald-600 text-white px-2.5 py-1 rounded-lg flex items-center gap-1">
-                                      <Icon name="check" className="text-xs" /> Đã chọn đổi
-                                    </span>
-                                  ) : actionType === 'swap' && isValidSwapTarget ? (
-                                    <span className="text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 rounded-lg">
-                                      Bấm chọn ca này
-                                    </span>
-                                  ) : actionType === 'swap' ? (
-                                    <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-2 py-1 rounded-lg">
-                                      {!isEligible ? '< 12h' : 'Trùng ngày trực'}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] font-bold bg-slate-200 text-slate-600 px-2 py-1 rounded-lg">
-                                      Lịch đã xếp
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* LIVE SUMMARY / EXCHANGE PREVIEW FLOW */}
-              {originShiftId && (targetShiftId || targetDentistId) && (
-                <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 space-y-2.5 animate-in fade-in zoom-in-95">
-                  <h4 className="text-xs font-extrabold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                    <Icon name="preview" className="text-sm" />
-                    Xác nhận luồng đổi lịch Real-time
-                  </h4>
-
-                  {(() => {
-                    const orig = doctorShifts.find(s => s.id === originShiftId);
-                    const origConf = orig ? SHIFT_TYPES[orig.shiftType as keyof typeof SHIFT_TYPES] : null;
-
-                    if (actionType === 'swap') {
-                      const targ = doctorShifts.find(s => s.id === targetShiftId);
-                      const targConf = targ ? SHIFT_TYPES[targ.shiftType as keyof typeof SHIFT_TYPES] : null;
-                      if (!orig || !targ) return null;
-
-                      return (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1">
-                          <div className="bg-white p-3 rounded-xl border border-slate-200">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase">Ca gốc của bạn chuyển sang:</p>
-                            <p className="font-bold text-slate-800 mt-1">{targ.dentistName}</p>
-                            <p className="text-[11px] text-slate-500 mt-0.5">Ngày {orig.date} ({origConf?.label})</p>
-                          </div>
-                          <div className="bg-white p-3 rounded-xl border border-slate-200">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase">Bạn sẽ nhận ca mới từ:</p>
-                            <p className="font-bold text-slate-800 mt-1">{targ.dentistName}</p>
-                            <p className="text-[11px] text-slate-500 mt-0.5">Ngày {targ.date} ({targConf?.label})</p>
-                          </div>
-                        </div>
-                      );
-                    } else {
-                      const targDentist = dentists.find(d => d.id === targetDentistId);
-                      if (!orig || !targDentist) return null;
-
-                      return (
-                        <div className="bg-white p-3 rounded-xl border border-slate-200 text-xs">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">Ca trực được chuyển giao hoàn toàn cho:</p>
-                          <p className="font-bold text-primary mt-1 text-sm">{targDentist.name}</p>
-                          <p className="text-[11px] text-slate-600 mt-0.5">
-                            Ngày {orig.date} · {origConf?.label} ({origConf?.time}) · {orig.room}
-                          </p>
-                        </div>
-                      );
-                    }
-                  })()}
+              {actionType === 'transfer' && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Chọn bác sĩ nhận ca *</label>
+                  <select
+                    value={targetDentistId}
+                    onChange={e => setTargetDentistId(e.target.value)}
+                    disabled={!isShiftEligibleForSwap(selectedShift)}
+                    className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">-- Chọn bác sĩ --</option>
+                    {dentists
+                      .filter(d => {
+                        if (d.id === selectedShift.dentistId) return false;
+                        if (d.status === 'Inactive') return false;
+                        const hasOverlappingShift = doctorShifts.some(s => {
+                          if (s.dentistId !== d.id || s.date !== selectedShift.date) return false;
+                          if (selectedShift.shiftType === 'Full' || s.shiftType === 'Full') return true;
+                          return s.shiftType === selectedShift.shiftType;
+                        });
+                        return !hasOverlappingShift;
+                      })
+                      .map(d => (
+                        <option key={d.id} value={d.id}>{d.name} ({d.role.split('&')[0]})</option>
+                      ))}
+                  </select>
                 </div>
               )}
             </div>
 
-            {/* Modal Footer */}
+            {/* Footer */}
             <div className="p-4 bg-slate-50 border-t border-outline-variant flex justify-end gap-2 shrink-0">
               <button
-                onClick={() => setShowSwapModal(false)}
+                onClick={() => { setShowSwapModal(false); setSelectedShiftId(null); }}
                 className="px-5 py-2.5 border border-outline-variant text-slate-700 hover:bg-slate-100 rounded-xl font-bold text-xs cursor-pointer active:scale-95 transition-all"
               >
                 Hủy bỏ
               </button>
               <button
                 onClick={handleConfirmAction}
-                className="px-6 py-2.5 bg-primary hover:bg-primary/95 text-white rounded-xl font-bold text-xs flex items-center gap-1 cursor-pointer shadow active:scale-95 transition-all"
+                disabled={isSubmittingEdit || !isShiftEligibleForSwap(selectedShift)}
+                className="px-6 py-2.5 bg-primary hover:bg-primary/95 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Icon name="check_circle" className="text-[16px]" />
-                Xác nhận đổi ca
+                {isSubmittingEdit ? (
+                  <>
+                    <Icon name="progress_activity" className="text-[16px] animate-spin" />
+                    Đang xử lý...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="check_circle" className="text-[16px]" />
+                    Xác nhận đổi ca
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -927,7 +817,7 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
             <div className="bg-amber-500 px-6 py-4 text-white flex justify-between items-center shrink-0">
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <Icon name="warning" />
-                Lưu ý: Ca trực này có lịch hẹn bệnh nhân!
+                Cảnh báo: Ca trực có lịch hẹn bệnh nhân!
               </h3>
               <button onClick={() => { setShowConflictModal(false); setConflictData(null); }} className="p-1.5 hover:bg-white/20 rounded-full cursor-pointer">
                 <Icon name="close" />
@@ -950,7 +840,7 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
               <div>
                 <p className="text-xs font-extrabold text-on-surface-variant uppercase tracking-wider mb-2 flex items-center gap-1.5">
                   <Icon name="event_busy" className="text-amber-500 text-sm" />
-                  {conflictData.conflictAppts.length} lịch hẹn của bạn bị ảnh hưởng
+                  {conflictData.conflictAppts.length} lịch hẹn bị ảnh hưởng
                 </p>
                 <div className="space-y-2">
                   {conflictData.conflictAppts.map(appt => (
@@ -963,6 +853,7 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
                         <p className="text-xs text-on-surface-variant">{appt.time} · {appt.serviceName}</p>
                         <p className="text-xs text-primary font-semibold">{appt.patientPhone}</p>
                       </div>
+                      <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full shrink-0">Cần liên hệ</span>
                     </div>
                   ))}
                 </div>
@@ -986,10 +877,20 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
               </button>
               <button
                 onClick={handleConfirmConflict}
-                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all"
+                disabled={isSubmittingEdit}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Icon name="notifications_active" className="text-[16px]" />
-                Xác nhận &amp; Thông báo lễ tân
+                {isSubmittingEdit ? (
+                  <>
+                    <Icon name="progress_activity" className="text-[16px] animate-spin" />
+                    Đang gửi thông báo...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="notifications_active" className="text-[16px]" />
+                    Xác nhận &amp; Thông báo lễ tân
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1003,7 +904,7 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
             <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
               <Icon name="check_circle" className="text-3xl font-extrabold" />
             </div>
-            
+
             <div className="space-y-1.5">
               <h3 className="font-extrabold text-slate-800 text-base">{successToast.title}</h3>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
@@ -1015,7 +916,7 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
               <Icon name="notifications_active" className="text-emerald-600 text-base shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold">Đã tự động đồng bộ Lễ tân:</p>
-                <p className="text-[11px] text-emerald-700 mt-0.5">Bộ phận Lễ tân tiếp đón đã nhận được thông báo này trực tiếp trên màn hình <strong>"BS Đổi ca / Trực thay"</strong>.</p>
+                <p className="text-[11px] text-emerald-700 mt-0.5">Bộ phận Lễ tân tiếp đón đã nhận được thông báo này trực tiếp trên hệ thống.</p>
               </div>
             </div>
 

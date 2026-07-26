@@ -23,6 +23,8 @@ export interface Dentist {
   clinicalStrengths?: string[];
   certifications?: string[];
   workHistory?: string[];
+  status?: 'Active' | 'Inactive' | string;
+  imageUrl?: string;
 }
 
 export interface Patient {
@@ -47,6 +49,7 @@ export interface Appointment {
   patientId: string;
   patientName: string;
   patientPhone: string;
+  serviceId?: string;
   serviceName: string;
   dentistId: string;
   dentistName: string;
@@ -197,4 +200,5 @@ export interface ServiceReviewItem {
   status?: 'Pending' | 'Approved' | 'Hidden';
   createdAt: string;
 }
+
 

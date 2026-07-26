@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Icon } from '../../components/Icon';
 import { OtpVerificationModal } from '../../components/OtpVerificationModal';
 import { AlertModal } from '../../components/AlertModal';
-import { appointmentApi, request } from '../../services/api';
+import { appointmentApi, request, clinicApi } from '../../services/api';
 import { isSameDentistId, getVietnamHour, isSlotInDoctorShifts } from '../../utils/shiftUtils';
 import { socket } from '../../services/socketClient';
 
@@ -278,7 +278,13 @@ export const BookingPage: React.FC = () => {
 
       await request('/auth/send-otp', {
         method: 'POST',
-        body: JSON.stringify({ phone: checkPhone.trim() }),
+        body: JSON.stringify({
+          phone: checkPhone.trim(),
+          purpose: 'booking',
+          dentistId: selectedDentistId,
+          startTime: selectedTimeIso,
+          serviceId: selectedServiceId,
+        }),
       });
       setShowOtpModal(true);
     } catch (err: any) {
@@ -590,8 +596,41 @@ const formatLocalDateStr = (dateStr: string): string => {
                         type="tel"
                         required
                         value={patientPhone}
-                        onChange={(e) => { setPatientPhone(e.target.value); setPhoneError(''); setAntiSpamError(''); }}
-                        onBlur={(e) => setPhoneError(validatePhone(e.target.value))}
+                        onChange={async (e) => {
+                          const val = e.target.value;
+                          setPatientPhone(val);
+                          setPhoneError('');
+                          setAntiSpamError('');
+                          const cleanPhone = val.trim().replace(/[\s-]/g, '');
+                          if (cleanPhone.length >= 10) {
+                            try {
+                              const res = await clinicApi.lookupPatientByPhone(cleanPhone);
+                              if (res?.success && res.data?.found && res.data?.fullName) {
+                                setPatientName(res.data.fullName);
+                                setNameError('');
+                              }
+                            } catch (err) {
+                              console.error('Lỗi tra cứu SĐT bệnh nhân:', err);
+                            }
+                          }
+                        }}
+                        onBlur={async (e) => {
+                          const val = e.target.value;
+                          const err = validatePhone(val);
+                          setPhoneError(err);
+                          const cleanPhone = val.trim().replace(/[\s-]/g, '');
+                          if (!err && cleanPhone.length >= 9) {
+                            try {
+                              const res = await clinicApi.lookupPatientByPhone(cleanPhone);
+                              if (res?.success && res.data?.found && res.data?.fullName) {
+                                setPatientName(res.data.fullName);
+                                setNameError('');
+                              }
+                            } catch (err) {
+                              console.error('Lỗi tra cứu SĐT bệnh nhân:', err);
+                            }
+                          }
+                        }}
                         placeholder="Ví dụ: 0912345678"
                         maxLength={11}
                         className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
@@ -651,18 +690,11 @@ const formatLocalDateStr = (dateStr: string): string => {
                         </option>
                         {dentists.filter(d => 
                           doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
-                        ).map(d => {
-                          const dayShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === date);
-                          const shiftLabel = dayShifts.map(s => 
-                            s.shiftType === 'Morning' ? '☀️ Ca sáng' : s.shiftType === 'Afternoon' ? '🌙 Ca chiều' : '📅 Cả ngày'
-                          ).join(' & ');
-
-                          return (
-                            <option key={d.id} value={d.id}>
-                              {d.name.replace(/^bác sĩ\s+/i, 'BS. ')} ({d.room} — {shiftLabel})
-                            </option>
-                          );
-                        })}
+                        ).map(d => (
+                          <option key={d.id} value={d.id}>
+                            {d.name.replace(/^bác sĩ\s+/i, 'BS. ')}
+                          </option>
+                        ))}
                       </select>
                       {dentistError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{dentistError}</p>}
                     </div>
@@ -873,10 +905,25 @@ const formatLocalDateStr = (dateStr: string): string => {
                       </button>
                       <button
                         type="submit"
-                        className="bg-[#005eb8] hover:bg-[#004a94] text-white font-bold px-8 py-2.5 shadow hover:shadow-md transition-all cursor-pointer flex items-center gap-2"
+                        disabled={sendingOtp || submitting}
+                        className="bg-[#005eb8] hover:bg-[#004a94] text-white font-bold px-8 py-2.5 shadow hover:shadow-md transition-all cursor-pointer flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        <Icon name="verified_user" className="text-[18px]" />
-                        Xác Nhận & Gửi OTP
+                        {sendingOtp ? (
+                          <>
+                            <Icon name="progress_activity" className="animate-spin text-[18px]" />
+                            Đang gửi mã OTP...
+                          </>
+                        ) : submitting ? (
+                          <>
+                            <Icon name="progress_activity" className="animate-spin text-[18px]" />
+                            Đang tạo lịch hẹn...
+                          </>
+                        ) : (
+                          <>
+                            <Icon name="verified_user" className="text-[18px]" />
+                            Xác Nhận & Gửi OTP
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>

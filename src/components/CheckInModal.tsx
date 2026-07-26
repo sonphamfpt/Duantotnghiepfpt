@@ -53,6 +53,7 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
     ? appointments.filter(a => a.patientId === selectedPatient.id && a.status === 'Cancelled').length 
     : 0;
   const isLocked = (selectedPatient?.isLocked || cancelCount >= 3) && !selectedPatient?.isUnlocked;
+  const [isSubmittingCheckIn, setIsSubmittingCheckIn] = useState(false);
 
   if (!isOpen) return null;
 
@@ -112,6 +113,9 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
         const res = await clinicApi.lookupPatientByPhone(phone);
         if (res.success && res.data?.found) {
           setLookupStatus('found');
+          if (res.data.fullName && !newName) {
+            setNewName(res.data.fullName);
+          }
         } else {
           setLookupStatus('not_found');
         }
@@ -176,9 +180,14 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
       return;
     }
 
-    checkInPatient(patientId, selectedDentistId, undefined, selectedServiceId ? services.find(s => s.id === selectedServiceId)?.name : undefined);
-    setIsSuccess(true);
-    setTimeout(resetAndClose, 1400);
+    setIsSubmittingCheckIn(true);
+    try {
+      await checkInPatient(patientId, selectedDentistId, undefined, selectedServiceId ? services.find(s => s.id === selectedServiceId)?.name : undefined);
+      setIsSuccess(true);
+      setTimeout(resetAndClose, 1400);
+    } finally {
+      setIsSubmittingCheckIn(false);
+    }
   };
 
   return (
@@ -596,15 +605,24 @@ export const CheckInModal: React.FC<CheckInModalProps> = ({
                 </button>
                 <button 
                   type="submit" 
-                  disabled={isLocked}
+                  disabled={isLocked || isSubmittingCheckIn}
                   className={`px-8 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-md ${
-                    isLocked 
+                    isLocked || isSubmittingCheckIn
                       ? 'bg-outline/25 text-on-surface-variant/45 cursor-not-allowed border border-outline/10' 
                       : 'bg-primary text-on-primary hover:opacity-90 active:scale-95 cursor-pointer'
                   }`}
                 >
-                  <Icon name="how_to_reg" />
-                  Xác nhận Check-in
+                  {isSubmittingCheckIn ? (
+                    <>
+                      <Icon name="progress_activity" className="animate-spin text-base" />
+                      Đang Check-in...
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="how_to_reg" />
+                      Xác nhận Check-in
+                    </>
+                  )}
                 </button>
               </div>
             </form>

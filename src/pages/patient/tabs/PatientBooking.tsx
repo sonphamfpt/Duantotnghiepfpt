@@ -4,7 +4,7 @@ import { OtpVerificationModal } from '../../../components/OtpVerificationModal';
 import { AlertModal } from '../../../components/AlertModal';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
-import { appointmentApi } from '../../../services/api';
+import { appointmentApi, clinicApi } from '../../../services/api';
 import { isSameDentistId, getVietnamHour, isSlotInDoctorShifts } from '../../../utils/shiftUtils';
 
 const formatSlotToTimeString = (isoString: string): string => {
@@ -448,8 +448,41 @@ export const PatientBooking: React.FC = () => {
                   type="tel"
                   required
                   value={patientPhone}
-                  onChange={(e) => { setPatientPhone(e.target.value); setPhoneError(''); setAntiSpamError(''); }}
-                  onBlur={(e) => setPhoneError(validatePhone(e.target.value))}
+                  onChange={async (e) => {
+                    const val = e.target.value;
+                    setPatientPhone(val);
+                    setPhoneError('');
+                    setAntiSpamError('');
+                    const cleanPhone = val.trim().replace(/[\s-]/g, '');
+                    if (cleanPhone.length >= 10) {
+                      try {
+                        const res = await clinicApi.lookupPatientByPhone(cleanPhone);
+                        if (res?.success && res.data?.found && res.data?.fullName) {
+                          setPatientName(res.data.fullName);
+                          setNameError('');
+                        }
+                      } catch (err) {
+                        console.error('Lỗi tra cứu SĐT:', err);
+                      }
+                    }
+                  }}
+                  onBlur={async (e) => {
+                    const val = e.target.value;
+                    const err = validatePhone(val);
+                    setPhoneError(err);
+                    const cleanPhone = val.trim().replace(/[\s-]/g, '');
+                    if (!err && cleanPhone.length >= 9) {
+                      try {
+                        const res = await clinicApi.lookupPatientByPhone(cleanPhone);
+                        if (res?.success && res.data?.found && res.data?.fullName) {
+                          setPatientName(res.data.fullName);
+                          setNameError('');
+                        }
+                      } catch (err) {
+                        console.error('Lỗi tra cứu SĐT:', err);
+                      }
+                    }
+                  }}
                   placeholder="Ví dụ: 0912345678"
                   maxLength={11}
                   className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${
@@ -508,18 +541,11 @@ export const PatientBooking: React.FC = () => {
                   </option>
                   {dentists.filter(d => 
                     doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
-                  ).map(d => {
-                    const dayShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === date);
-                    const shiftLabel = dayShifts.map(s => 
-                      s.shiftType === 'Morning' ? '☀️ Ca sáng' : s.shiftType === 'Afternoon' ? '🌙 Ca chiều' : '📅 Cả ngày'
-                    ).join(' & ');
-
-                    return (
-                      <option key={d.id} value={d.id}>
-                        {d.name.replace(/^bác sĩ\s+/i, 'BS. ')} ({d.room} — {shiftLabel})
-                      </option>
-                    );
-                  })}
+                  ).map(d => (
+                    <option key={d.id} value={d.id}>
+                      {d.name.replace(/^bác sĩ\s+/i, 'BS. ')}
+                    </option>
+                  ))}
                 </select>
                 {dentistError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{dentistError}</p>}
               </div>
@@ -737,7 +763,7 @@ export const PatientBooking: React.FC = () => {
                 className="px-8 py-3 bg-[#005eb8] hover:bg-[#004a94] text-white rounded-xl font-bold text-sm shadow hover:shadow-md active:scale-95 disabled:opacity-50 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
                 {submitting ? <Icon name="progress_activity" className="animate-spin text-base" /> : <Icon name="verified_user" className="text-base" />}
-                {submitting ? 'Đang gửi...' : 'Xác Nhận & Gửi OTP'}
+                {submitting ? 'Đang gửi mã OTP...' : 'Xác Nhận & Gửi OTP'}
               </button>
             </div>
           </form>

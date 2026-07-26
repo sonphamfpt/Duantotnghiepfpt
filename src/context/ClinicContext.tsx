@@ -51,11 +51,11 @@ interface ClinicContextType {
   shiftChangeNotifications: ShiftChangeNotification[];
   reviews: ServiceReviewItem[];
   fetchPatientRecords: (patientId: string) => Promise<void>;
-  swapShifts: (shiftId1: string, shiftId2: string, conflictAppointmentIds?: string[]) => Promise<void>;
-  transferShift: (shiftId: string, targetDentistId: string, conflictAppointmentIds?: string[]) => Promise<void>;
+  swapShifts: (shiftId1: string, shiftId2: string, conflictAppointmentIds?: string[]) => Promise<any>;
+  transferShift: (shiftId: string, targetDentistId: string, conflictAppointmentIds?: string[]) => Promise<any>;
   changeShiftRoom: (shiftId: string, roomId: string) => void;
   addShift: (shift: any) => void;
-  deleteShift: (shiftId: string) => void;
+  deleteShift: (shiftId: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   resolveShiftConflict_Update: (notifId: string, appointmentId: string) => Promise<void>;
   resolveShiftConflict_Cancel: (notifId: string, appointmentId: string) => Promise<void>;
   addReview: (review: { patientId: string; appointmentId?: string; serviceId?: string; rating: number; comment: string }) => Promise<any>;
@@ -235,7 +235,6 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     socket.on('queue:status_changed', handleClinicEvent);
     socket.on('invoice:created', handleClinicEvent);
     socket.on('invoice:paid', handleClinicEvent);
-    socket.on('shift:swap_requested', handleClinicEvent);
     socket.on('appointment:created', handleClinicEvent);
     socket.on('appointment:cancelled', handleClinicEvent);
     socket.on('shift:changed', handleClinicEvent);
@@ -249,7 +248,6 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       socket.off('queue:status_changed', handleClinicEvent);
       socket.off('invoice:created', handleClinicEvent);
       socket.off('invoice:paid', handleClinicEvent);
-      socket.off('shift:swap_requested', handleClinicEvent);
       socket.off('appointment:created', handleClinicEvent);
       socket.off('appointment:cancelled', handleClinicEvent);
       socket.off('shift:changed', handleClinicEvent);
@@ -615,8 +613,6 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return { success: false, error: err?.message || 'Không thể chuyển giao ca trực.' };
     }
   };
-
-
 
   // ── Resolve conflict: Bệnh nhân đồng ý → cập nhật bác sĩ mới trong appointment ──
   const resolveShiftConflict_Update = async (notifId: string, appointmentId: string) => {

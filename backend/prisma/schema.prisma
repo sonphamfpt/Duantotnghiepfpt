@@ -26,6 +26,7 @@ model User {
   phone            String?          @db.VarChar(20)
   avatarUrl        String?          @map("avatar_url")
   status           UserStatus       @default(Active)
+  isDeleted        Boolean          @default(false) @map("is_deleted")
   createdAt        DateTime         @default(now()) @map("created_at")
   updatedAt        DateTime         @updatedAt @map("updated_at")
   dentist          Dentist?
@@ -88,7 +89,8 @@ model Dentist {
   queueTickets           QueueTicket[]
   shiftChangesAsNew      ShiftChangeNotification[] @relation("ShiftChangeNewDentist")
   shiftChangesAsOriginal ShiftChangeNotification[] @relation("ShiftChangeOriginalDentist")
-    treatmentPlans         TreatmentPlan[]
+  treatmentPlans         TreatmentPlan[]
+
 
   @@map("dentists")
 }

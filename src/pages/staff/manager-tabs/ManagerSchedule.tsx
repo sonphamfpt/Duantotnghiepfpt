@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { useConfirm } from '../../../context/ConfirmContext';
@@ -47,6 +47,56 @@ const fmt = (d: Date): string => {
 
 const TODAY = fmt(new Date());
 
+// Helper: Kiểm tra ca trực có đủ điều kiện hoán đổi / nhờ trực thay (bắt đầu sau ít nhất 12 tiếng)
+const isShiftEligibleForSwap = (shift?: { date: string; shiftType: string } | null): boolean => {
+  if (!shift || !shift.date) return false;
+  const [y, m, d] = shift.date.split('-').map(Number);
+  const startHour = shift.shiftType === 'Afternoon' ? 14 : 8;
+  const shiftStartMs = new Date(y, m - 1, d, startHour, 0, 0).getTime();
+  const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+  return shiftStartMs - Date.now() >= TWELVE_HOURS_MS;
+};
+
+// Helper: Kiểm tra 2 ca trực có bị trùng ca/xung đột thời gian không
+const isShiftOverlapping = (shift1: { date: string; shiftType: string }, shift2: { date: string; shiftType: string }): boolean => {
+  if (shift1.date !== shift2.date) return false;
+  if (shift1.shiftType === 'Full' || shift2.shiftType === 'Full') return true;
+  return shift1.shiftType === shift2.shiftType;
+};
+
+// Helper: Kiểm tra một lịch hẹn có thuộc đúng ngày & khung giờ ca trực được chọn không
+const isApptInShift = (apptTimeStr: string, shiftDateStr: string, shiftType: string): boolean => {
+  if (!apptTimeStr || !shiftDateStr) return false;
+
+  let datePart = apptTimeStr;
+  let timePart = '';
+  if (apptTimeStr.includes('@')) {
+    const parts = apptTimeStr.split('@');
+    datePart = parts[0].trim();
+    timePart = parts[1].trim();
+  }
+
+  const [y, m, d] = shiftDateStr.split('-');
+  const shiftDateDDMMYYYY = `${d}/${m}/${y}`;
+
+  const isSameDate = (datePart === shiftDateStr || datePart === shiftDateDDMMYYYY);
+  if (!isSameDate) return false;
+
+  if (timePart) {
+    const match = timePart.match(/^(\d{1,2}):/);
+    if (match) {
+      const hour = parseInt(match[1], 10);
+      if (shiftType === 'Morning') {
+        if (hour < 8 || hour >= 14) return false;
+      } else if (shiftType === 'Afternoon') {
+        if (hour < 14 || hour >= 20) return false;
+      }
+    }
+  }
+
+  return true;
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export const ManagerSchedule: React.FC = () => {
@@ -61,10 +111,70 @@ export const ManagerSchedule: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({
     dentistId: '',
-    date: '',
+    date: TODAY,
     shiftType: 'Morning' as 'Morning' | 'Afternoon' | 'Full',
     room: ALL_ROOMS[0],
   });
+
+  // Helper: Kiểm tra ca làm việc nào bị disable theo lịch đã có & real-time
+  const getShiftTypeAvailability = (dentistId: string, dateStr: string) => {
+    if (!dentistId || !dateStr) {
+      return { Morning: false, Afternoon: false, Full: false, reasons: {} as Record<string, string> };
+    }
+
+    const existingShifts = doctorShifts.filter(s => s.dentistId === dentistId && s.date === dateStr);
+    const hasMorning = existingShifts.some(s => s.shiftType === 'Morning');
+    const hasAfternoon = existingShifts.some(s => s.shiftType === 'Afternoon');
+    const hasFull = existingShifts.some(s => s.shiftType === 'Full');
+
+    const isToday = dateStr === TODAY;
+    const currentHour = new Date().getHours();
+    const isMorningPastRealtime = isToday && currentHour >= 8;
+    const isAfternoonPastRealtime = isToday && currentHour >= 14;
+
+    const reasons: Record<string, string> = {};
+
+    if (hasFull) {
+      reasons.Morning = 'Đã có ca cả ngày';
+      reasons.Afternoon = 'Đã có ca cả ngày';
+      reasons.Full = 'Đã có ca cả ngày';
+    } else {
+      if (hasMorning) {
+        reasons.Morning = 'Đã có ca sáng';
+        reasons.Full = 'Đã có ca sáng';
+      }
+      if (hasAfternoon) {
+        reasons.Afternoon = 'Đã có ca chiều';
+        reasons.Full = 'Đã có ca chiều';
+      }
+      if (isMorningPastRealtime) {
+        if (!reasons.Morning) reasons.Morning = 'Đã qua giờ bắt đầu (08:00)';
+        if (!reasons.Full) reasons.Full = 'Đã qua giờ bắt đầu (08:00)';
+      }
+      if (isAfternoonPastRealtime) {
+        if (!reasons.Afternoon) reasons.Afternoon = 'Đã qua giờ bắt đầu (14:00)';
+      }
+    }
+
+    return {
+      Morning: !!reasons.Morning,
+      Afternoon: !!reasons.Afternoon,
+      Full: !!reasons.Full,
+      reasons,
+    };
+  };
+
+  // Tự động chuyển shiftType chọn sẵn sang ca còn trống khi mở modal hoặc thay đổi bác sĩ/ngày
+  useEffect(() => {
+    if (showAddModal && addForm.dentistId && addForm.date) {
+      const avail = getShiftTypeAvailability(addForm.dentistId, addForm.date);
+      if (avail[addForm.shiftType]) {
+        if (!avail.Morning) setAddForm(p => ({ ...p, shiftType: 'Morning' }));
+        else if (!avail.Afternoon) setAddForm(p => ({ ...p, shiftType: 'Afternoon' }));
+        else if (!avail.Full) setAddForm(p => ({ ...p, shiftType: 'Full' }));
+      }
+    }
+  }, [showAddModal, addForm.dentistId, addForm.date]);
 
   // Detail/edit modal
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null);
@@ -72,7 +182,13 @@ export const ManagerSchedule: React.FC = () => {
   const [editAction, setEditAction] = useState<'swap' | 'transfer' | 'change_room'>('swap');
   const [editTargetShiftId, setEditTargetShiftId] = useState('');
   const [editTargetDentistId, setEditTargetDentistId] = useState('');
+  const [editFilterDentistId, setEditFilterDentistId] = useState('');
   const [editTargetRoom, setEditTargetRoom] = useState('');
+
+  // Loading states
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
 
   // Delete confirm
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
@@ -122,29 +238,93 @@ export const ManagerSchedule: React.FC = () => {
   const selectedDentist = selectedShift ? dentists.find(d => d.id === selectedShift.dentistId) : null;
 
   // ── Add Shift Handler ──
-  const handleAddShift = () => {
+  const handleAddShift = async () => {
     if (!addForm.dentistId || !addForm.date) {
       showAlert({ title: 'Thiếu thông tin', message: 'Vui lòng chọn bác sĩ và ngày trực!', type: 'warning' });
       return;
     }
 
+    // 1. Check past date
     if (addForm.date < TODAY) {
       showAlert({ title: 'Không hợp lệ', message: 'Không thể tạo hoặc xếp ca trực cho ngày trong quá khứ!', type: 'warning' });
       return;
     }
+
+    // 1b. Check real-time for TODAY
+    if (addForm.date === TODAY) {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const startHour = addForm.shiftType === 'Afternoon' ? 14 : 8;
+      if (currentHour >= startHour) {
+        const shiftLabel = addForm.shiftType === 'Morning' ? 'Ca sáng (08:00)' : addForm.shiftType === 'Afternoon' ? 'Ca chiều (14:00)' : 'Ca cả ngày (08:00)';
+        showAlert({
+          title: 'Giờ làm việc đã diễn ra',
+          message: `${shiftLabel} ngày hôm nay đã bắt đầu hoặc kết thúc (${startHour}:00). Không thể thêm ca trực mới cho khung giờ đã trôi qua!`,
+          type: 'warning',
+        });
+        return;
+      }
+    }
+
     const dentist = dentists.find(d => d.id === addForm.dentistId);
     if (!dentist) return;
 
-    // Check duplicate dentist shift
-    const isDuplicate = doctorShifts.some(
-      s => s.dentistId === addForm.dentistId && s.date === addForm.date && s.shiftType === addForm.shiftType
+    // 2. Check doctor existing shifts on the target date
+    const existingShifts = doctorShifts.filter(
+      s => s.dentistId === addForm.dentistId && s.date === addForm.date
     );
-    if (isDuplicate) {
-      showAlert({ title: 'Trùng ca trực', message: 'Ca trực này đã tồn tại cho bác sĩ trong ngày đã chọn!', type: 'warning' });
+
+    const hasMorning = existingShifts.some(s => s.shiftType === 'Morning');
+    const hasAfternoon = existingShifts.some(s => s.shiftType === 'Afternoon');
+    const hasFull = existingShifts.some(s => s.shiftType === 'Full');
+
+    if (hasFull) {
+      showAlert({
+        title: 'Lịch trực đã đầy',
+        message: `Bác sĩ ${dentist.name} đã được phân công Ca cả ngày vào ngày ${addForm.date}. Không thể xếp thêm ca nào khác!`,
+        type: 'warning',
+      });
       return;
     }
 
-    // Check room overlap conflict (2 doctors in same room on same shift and date)
+    if (hasMorning && hasAfternoon) {
+      showAlert({
+        title: 'Lịch trực đã đầy',
+        message: `Bác sĩ ${dentist.name} đã có đủ cả Ca sáng và Ca chiều vào ngày ${addForm.date}. Không thể thêm ca trực nào nữa!`,
+        type: 'warning',
+      });
+      return;
+    }
+
+    if ((hasMorning || hasAfternoon) && addForm.shiftType === 'Full') {
+      const existShiftLabel = hasMorning ? 'Ca sáng' : 'Ca chiều';
+      showAlert({
+        title: 'Xung đột ca trực',
+        message: `Bác sĩ ${dentist.name} đã có ${existShiftLabel} vào ngày ${addForm.date}. Không thể đăng ký thêm Ca cả ngày!`,
+        type: 'warning',
+      });
+      return;
+    }
+
+    if (addForm.shiftType === 'Morning' && hasMorning) {
+      showAlert({
+        title: 'Trùng ca trực',
+        message: `Bác sĩ ${dentist.name} đã có Ca sáng vào ngày ${addForm.date}!`,
+        type: 'warning',
+      });
+      return;
+    }
+
+    if (addForm.shiftType === 'Afternoon' && hasAfternoon) {
+      showAlert({
+        title: 'Trùng ca trực',
+        message: `Bác sĩ ${dentist.name} đã có Ca chiều vào ngày ${addForm.date}!`,
+        type: 'warning',
+      });
+      return;
+    }
+
+    // 3. Check room overlap conflict (2 doctors in same room on same shift and date)
     const isRoomOccupied = doctorShifts.some(
       s => s.room === addForm.room && s.date === addForm.date && (s.shiftType === addForm.shiftType || s.shiftType === 'Full' || addForm.shiftType === 'Full')
     );
@@ -157,35 +337,45 @@ export const ManagerSchedule: React.FC = () => {
       return;
     }
 
-    addShift({
-      dentistId: addForm.dentistId,
-      dentistName: dentist.name,
-      date: addForm.date,
-      shiftType: addForm.shiftType,
-      room: addForm.room,
-    });
-    showAlert({ title: 'Thành công', message: `Đã thêm ca trực mới cho ${dentist.name} thành công!`, type: 'success' });
-    setShowAddModal(false);
-    setAddForm({ dentistId: '', date: '', shiftType: 'Morning', room: ALL_ROOMS[0] });
+    setIsSubmittingAdd(true);
+    try {
+      await addShift({
+        dentistId: addForm.dentistId,
+        dentistName: dentist.name,
+        date: addForm.date,
+        shiftType: addForm.shiftType,
+        room: addForm.room,
+      });
+      showAlert({ title: 'Thành công', message: `Đã thêm ca trực mới cho ${dentist.name} thành công!`, type: 'success' });
+      setShowAddModal(false);
+      setAddForm({ dentistId: '', date: '', shiftType: 'Morning', room: ALL_ROOMS[0] });
+    } finally {
+      setIsSubmittingAdd(false);
+    }
   };
 
   // ── Delete Handler ──
   const handleDeleteShift = async (shiftId: string) => {
-    const res = await deleteShift(shiftId);
-    setShowDeleteConfirm(null);
-    setSelectedShiftId(null);
-    if (res && res.error) {
-      showAlert({
-        title: 'Không thể xóa ca trực',
-        message: res.error,
-        type: 'error',
-      });
-    } else if (res && res.success) {
-      showAlert({
-        title: 'Thành công',
-        message: res.message || 'Đã xóa ca trực thành công!',
-        type: 'success',
-      });
+    setIsSubmittingDelete(true);
+    try {
+      const res = await deleteShift(shiftId);
+      setShowDeleteConfirm(null);
+      setSelectedShiftId(null);
+      if (res && res.error) {
+        showAlert({
+          title: 'Không thể xóa ca trực',
+          message: res.error,
+          type: 'error',
+        });
+      } else if (res && res.success) {
+        showAlert({
+          title: 'Thành công',
+          message: res.message || 'Đã xóa ca trực thành công!',
+          type: 'success',
+        });
+      }
+    } finally {
+      setIsSubmittingDelete(false);
     }
   };
 
@@ -199,101 +389,125 @@ export const ManagerSchedule: React.FC = () => {
       return;
     }
 
-    if (editAction === 'swap') {
+    setIsSubmittingEdit(true);
+    try {
+      if (editAction === 'swap') {
 
-      if (!editTargetShiftId || editTargetShiftId === selectedShiftId) {
-        showAlert({ title: 'Chọn ca hoán đổi', message: 'Vui lòng chọn ca trực khác để hoán đổi!', type: 'warning' });
-        return;
-      }
+        if (!editTargetShiftId || editTargetShiftId === selectedShiftId) {
+          showAlert({ title: 'Chọn ca hoán đổi', message: 'Vui lòng chọn ca trực khác để hoán đổi!', type: 'warning' });
+          setIsSubmittingEdit(false);
+          return;
+        }
 
-      // Kiểm tra conflict lịch hẹn của ca gốc
-      const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
-      if (sourceShift) {
-        const conflictAppts = appointments.filter(a =>
-          a.dentistId === sourceShift.dentistId &&
-          a.status !== 'Cancelled' && a.status !== 'Completed'
-        );
+        // Kiểm tra conflict lịch hẹn của ca gốc và ca đích
+        const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
         const targetShift = doctorShifts.find(s => s.id === editTargetShiftId);
-        if (conflictAppts.length > 0) {
-          setConflictData({
-            action: 'swap',
-            conflictAppts,
-            newDentistName: targetShift?.dentistName || 'Bác sĩ khác',
-            pendingSwapTargetId: editTargetShiftId,
-          });
-          setShowConflictModal(true);
+        if (sourceShift) {
+          const sourceConflictAppts = appointments.filter(a =>
+            a.dentistId === sourceShift.dentistId &&
+            a.status !== 'Cancelled' && a.status !== 'Completed' &&
+            isApptInShift(a.time, sourceShift.date, sourceShift.shiftType)
+          );
+
+          const targetConflictAppts = targetShift
+            ? appointments.filter(a =>
+                a.dentistId === targetShift.dentistId &&
+                a.status !== 'Cancelled' && a.status !== 'Completed' &&
+                isApptInShift(a.time, targetShift.date, targetShift.shiftType)
+              )
+            : [];
+
+          const conflictAppts = [...sourceConflictAppts, ...targetConflictAppts];
+
+          if (conflictAppts.length > 0) {
+            setConflictData({
+              action: 'swap',
+              conflictAppts,
+              newDentistName: targetShift?.dentistName || 'Bác sĩ khác',
+              pendingSwapTargetId: editTargetShiftId,
+            });
+            setShowConflictModal(true);
+            setIsSubmittingEdit(false);
+            return;
+          }
+        }
+        const res = await swapShifts(selectedShiftId, editTargetShiftId);
+        if (res && res.error) {
+          showAlert({ title: 'Không thể hoán đổi ca', message: res.error, type: 'error' });
+        } else {
+          showAlert({ title: 'Thành công', message: 'Hoán đổi ca trực thành công!', type: 'success' });
+        }
+
+      } else if (editAction === 'transfer') {
+        if (!editTargetDentistId) {
+          showAlert({ title: 'Chọn bác sĩ nhận ca', message: 'Vui lòng chọn bác sĩ nhận ca!', type: 'warning' });
+          setIsSubmittingEdit(false);
           return;
         }
-      }
-      const res = await swapShifts(selectedShiftId, editTargetShiftId);
-      if (res && res.error) {
-        showAlert({ title: 'Không thể hoán đổi ca', message: res.error, type: 'error' });
-      } else {
-        showAlert({ title: 'Thành công', message: 'Hoán đổi ca trực thành công!', type: 'success' });
-      }
 
-    } else if (editAction === 'transfer') {
-      if (!editTargetDentistId) {
-        showAlert({ title: 'Chọn bác sĩ nhận ca', message: 'Vui lòng chọn bác sĩ nhận ca!', type: 'warning' });
-        return;
-      }
-
-      // Kiểm tra conflict lịch hẹn của ca gốc
-      const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
-      if (sourceShift) {
-        const conflictAppts = appointments.filter(a =>
-          a.dentistId === sourceShift.dentistId &&
-          a.status !== 'Cancelled' && a.status !== 'Completed'
-        );
-        const newDentist = dentists.find(d => d.id === editTargetDentistId);
-        if (conflictAppts.length > 0) {
-          setConflictData({
-            action: 'transfer',
-            conflictAppts,
-            newDentistName: newDentist?.name || 'Bác sĩ mới',
-            pendingTransferDentistId: editTargetDentistId,
-          });
-          setShowConflictModal(true);
-          return;
+        // Kiểm tra conflict lịch hẹn của ca gốc
+        const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
+        if (sourceShift) {
+          const conflictAppts = appointments.filter(a =>
+            a.dentistId === sourceShift.dentistId &&
+            a.status !== 'Cancelled' && a.status !== 'Completed' &&
+            isApptInShift(a.time, sourceShift.date, sourceShift.shiftType)
+          );
+          const newDentist = dentists.find(d => d.id === editTargetDentistId);
+          if (conflictAppts.length > 0) {
+            setConflictData({
+              action: 'transfer',
+              conflictAppts,
+              newDentistName: newDentist?.name || 'Bác sĩ mới',
+              pendingTransferDentistId: editTargetDentistId,
+            });
+            setShowConflictModal(true);
+            setIsSubmittingEdit(false);
+            return;
+          }
+        }
+        const res = await transferShift(selectedShiftId, editTargetDentistId);
+        if (res && res.error) {
+          showAlert({ title: 'Không thể nhờ trực thay', message: res.error, type: 'error' });
+        } else {
+          showAlert({ title: 'Thành công', message: 'Chuyển giao ca trực thành công!', type: 'success' });
         }
       }
-      const res = await transferShift(selectedShiftId, editTargetDentistId);
-      if (res && res.error) {
-        showAlert({ title: 'Không thể nhờ trực thay', message: res.error, type: 'error' });
-      } else {
-        showAlert({ title: 'Thành công', message: 'Chuyển giao ca trực thành công!', type: 'success' });
-      }
+
+      setShowEditModal(false);
+      setSelectedShiftId(null);
+      setEditTargetShiftId('');
+      setEditTargetDentistId('');
+      setEditTargetRoom('');
+    } finally {
+      setIsSubmittingEdit(false);
     }
-
-
-    setShowEditModal(false);
-    setSelectedShiftId(null);
-    setEditTargetShiftId('');
-    setEditTargetDentistId('');
-    setEditTargetRoom('');
   };
 
-
-
   // ── Confirm Conflict Handler ──
-  const handleConfirmConflict = () => {
+  const handleConfirmConflict = async () => {
     if (!selectedShiftId || !conflictData) return;
     const conflictIds = conflictData.conflictAppts.map(a => a.id);
 
-    if (conflictData.action === 'swap' && conflictData.pendingSwapTargetId) {
-      swapShifts(selectedShiftId, conflictData.pendingSwapTargetId, conflictIds);
-    } else if (conflictData.action === 'transfer' && conflictData.pendingTransferDentistId) {
-      transferShift(selectedShiftId, conflictData.pendingTransferDentistId, conflictIds);
-    }
+    setIsSubmittingEdit(true);
+    try {
+      if (conflictData.action === 'swap' && conflictData.pendingSwapTargetId) {
+        await swapShifts(selectedShiftId, conflictData.pendingSwapTargetId, conflictIds);
+      } else if (conflictData.action === 'transfer' && conflictData.pendingTransferDentistId) {
+        await transferShift(selectedShiftId, conflictData.pendingTransferDentistId, conflictIds);
+      }
 
-    setShowConflictModal(false);
-    setConflictData(null);
-    setShowEditModal(false);
-    setSelectedShiftId(null);
-    setEditTargetShiftId('');
-    setEditTargetDentistId('');
-    setEditTargetRoom('');
-    alert('Đã đổi ca và gửi thông báo đến lễ tân thành công!');
+      setShowConflictModal(false);
+      setConflictData(null);
+      setShowEditModal(false);
+      setSelectedShiftId(null);
+      setEditTargetShiftId('');
+      setEditTargetDentistId('');
+      setEditTargetRoom('');
+      showAlert({ title: 'Thành công', message: 'Đã đổi ca và gửi thông báo đến lễ tân thành công!', type: 'success' });
+    } finally {
+      setIsSubmittingEdit(false);
+    }
   };
 
   const handleExportScheduleExcel = () => {
@@ -527,23 +741,32 @@ export const ManagerSchedule: React.FC = () => {
                       {weekDays.map(day => {
                         const shifts = filteredShifts.filter(s => s.dentistId === doc.id && s.date === day.dateStr);
                         const isToday = day.dateStr === TODAY;
+                        const isPast = day.dateStr < TODAY;
+                        const canAddMore = !isPast && shifts.length === 1 && shifts[0].shiftType !== 'Full';
+
                         return (
                           <td key={day.dateStr} className={`p-2 border-l border-outline-variant/30 align-top min-w-[110px] ${isToday ? 'bg-purple-50/20' : ''}`}>
                             {shifts.length === 0 ? (
-                              <button
-                                onClick={() => {
-                                  setAddForm({
-                                    dentistId: doc.id,
-                                    date: day.dateStr,
-                                    shiftType: 'Morning',
-                                    room: doc.room,
-                                  });
-                                  setShowAddModal(true);
-                                }}
-                                className="w-full py-3 border border-dashed border-slate-200 hover:border-purple-300 hover:bg-purple-50/30 rounded-xl text-center text-[10px] text-slate-300 hover:text-purple-500 cursor-pointer font-bold select-none transition-all group"
-                              >
-                                <Icon name="add" className="text-sm opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </button>
+                              !isPast ? (
+                                <button
+                                  onClick={() => {
+                                    setAddForm({
+                                      dentistId: doc.id,
+                                      date: day.dateStr,
+                                      shiftType: 'Morning',
+                                      room: doc.room,
+                                    });
+                                    setShowAddModal(true);
+                                  }}
+                                  className="w-full py-2.5 border border-dashed border-slate-200 hover:border-purple-400 bg-slate-50/30 hover:bg-purple-50/40 rounded-xl text-center text-[10px] text-slate-400 hover:text-purple-600 font-bold cursor-pointer select-none transition-all flex items-center justify-center gap-1 group shadow-2xs"
+                                  title="Thêm ca trực mới cho ngày này"
+                                >
+                                  <Icon name="add" className="text-sm opacity-60 group-hover:opacity-100 transition-opacity" />
+                                  <span className="text-[9px]">Thêm ca</span>
+                                </button>
+                              ) : (
+                                <div className="h-10 border border-transparent rounded-xl" />
+                              )
                             ) : (
                               <div className="space-y-1.5">
                                 {shifts.map(shift => {
@@ -565,21 +788,26 @@ export const ManagerSchedule: React.FC = () => {
                                     </button>
                                   );
                                 })}
-                                {/* Mini add button for cells that already have shifts */}
-                                <button
-                                  onClick={() => {
-                                    setAddForm({
-                                      dentistId: doc.id,
-                                      date: day.dateStr,
-                                      shiftType: shifts.some(s => s.shiftType === 'Morning') ? 'Afternoon' : 'Morning',
-                                      room: doc.room,
-                                    });
-                                    setShowAddModal(true);
-                                  }}
-                                  className="w-full py-1 border border-dashed border-slate-200 hover:border-purple-300 rounded-lg text-[9px] text-slate-300 hover:text-purple-500 cursor-pointer transition-all text-center"
-                                >
-                                  <Icon name="add" className="text-[12px]" />
-                                </button>
+                                {/* Chỉ hiển thị nút thêm ca khi Bác sĩ mới có 1 ca và ngày >= hôm nay */}
+                                {canAddMore && (
+                                  <button
+                                    onClick={() => {
+                                      const nextType = shifts.some(s => s.shiftType === 'Morning') ? 'Afternoon' : 'Morning';
+                                      setAddForm({
+                                        dentistId: doc.id,
+                                        date: day.dateStr,
+                                        shiftType: nextType,
+                                        room: doc.room,
+                                      });
+                                      setShowAddModal(true);
+                                    }}
+                                    className="w-full py-1 border border-dashed border-purple-200 hover:border-purple-400 bg-purple-50/40 hover:bg-purple-100/60 rounded-xl text-[9px] text-purple-600 font-bold cursor-pointer transition-all flex items-center justify-center gap-1 shadow-2xs"
+                                    title="Thêm ca trực còn thiếu cho bác sĩ"
+                                  >
+                                    <Icon name="add_circle" className="text-[12px]" />
+                                    <span>Thêm ca {shifts.some(s => s.shiftType === 'Morning') ? 'Chiều' : 'Sáng'}</span>
+                                  </button>
+                                )}
                               </div>
                             )}
                           </td>
@@ -708,8 +936,16 @@ export const ManagerSchedule: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Ngày trực *</label>
                 <input
                   type="date"
+                  min={TODAY}
                   value={addForm.date}
-                  onChange={e => setAddForm(prev => ({ ...prev, date: e.target.value }))}
+                  onChange={e => {
+                    const selectedDate = e.target.value;
+                    if (selectedDate && selectedDate < TODAY) {
+                      setAddForm(prev => ({ ...prev, date: TODAY }));
+                      return;
+                    }
+                    setAddForm(prev => ({ ...prev, date: selectedDate }));
+                  }}
                   className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none cursor-pointer"
                 />
               </div>
@@ -717,23 +953,41 @@ export const ManagerSchedule: React.FC = () => {
               {/* Shift type */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Ca trực *</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(Object.entries(SHIFT_CONFIG) as [string, typeof SHIFT_CONFIG['Morning']][]).map(([key, cfg]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setAddForm(prev => ({ ...prev, shiftType: key as 'Morning' | 'Afternoon' | 'Full' }))}
-                      className={`p-2.5 rounded-xl border-2 text-center cursor-pointer transition-all ${addForm.shiftType === key
-                          ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm'
-                          : 'border-outline-variant bg-white text-on-surface-variant hover:border-purple-300'
-                        }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full inline-block mb-1 ${cfg.dot}`} />
-                      <p className="text-xs font-bold">{cfg.label}</p>
-                      <p className="text-[9px] opacity-70">{cfg.time}</p>
-                    </button>
-                  ))}
-                </div>
+                {(() => {
+                  const avail = getShiftTypeAvailability(addForm.dentistId, addForm.date);
+                  return (
+                    <div className="grid grid-cols-3 gap-2">
+                      {(Object.entries(SHIFT_CONFIG) as [string, typeof SHIFT_CONFIG['Morning']][]).map(([key, cfg]) => {
+                        const isDisabled = avail[key as keyof typeof avail] === true;
+                        const reason = avail.reasons[key];
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            disabled={isDisabled}
+                            onClick={() => setAddForm(prev => ({ ...prev, shiftType: key as 'Morning' | 'Afternoon' | 'Full' }))}
+                            className={`p-2.5 rounded-xl border-2 text-center transition-all ${
+                              isDisabled
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-60 cursor-not-allowed line-through'
+                                : addForm.shiftType === key
+                                ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-sm font-bold cursor-pointer'
+                                : 'border-outline-variant bg-white text-on-surface-variant hover:border-purple-300 cursor-pointer'
+                            }`}
+                          >
+                            <span className={`w-2 h-2 rounded-full inline-block mb-1 ${isDisabled ? 'bg-slate-300' : cfg.dot}`} />
+                            <p className="text-xs font-bold">{cfg.label}</p>
+                            <p className="text-[9px] opacity-70">{cfg.time}</p>
+                            {reason && (
+                              <span className="block text-[8px] font-semibold text-red-500 mt-1 not-italic no-underline">
+                                ({reason})
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Room */}
@@ -761,10 +1015,20 @@ export const ManagerSchedule: React.FC = () => {
               </button>
               <button
                 onClick={handleAddShift}
-                className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs flex items-center gap-1 cursor-pointer shadow active:scale-95 transition-all"
+                disabled={isSubmittingAdd}
+                className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Icon name="check_circle" className="text-[16px]" />
-                Thêm ca trực
+                {isSubmittingAdd ? (
+                  <>
+                    <Icon name="progress_activity" className="text-[16px] animate-spin" />
+                    Đang thêm...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="check_circle" className="text-[16px]" />
+                    Thêm ca trực
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -818,22 +1082,90 @@ export const ManagerSchedule: React.FC = () => {
                 ))}
               </div>
 
+              {/* Warning banner if current shift is ineligible (< 12 hours) */}
+              {(editAction === 'swap' || editAction === 'transfer') && !isShiftEligibleForSwap(selectedShift) && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-center gap-2">
+                  <Icon name="error" className="text-red-500 text-[18px] shrink-0" />
+                  <span>Ca trực này đang diễn ra hoặc còn dưới 12 tiếng mới tới giờ bắt đầu. Theo quy định, không thể thực hiện hoán đổi hoặc nhờ trực thay.</span>
+                </div>
+              )}
+
               {/* Action-specific fields */}
               {editAction === 'swap' && (
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Chọn ca trực muốn hoán đổi (Từ hôm nay trở đi) *</label>
-                  <select
-                    value={editTargetShiftId}
-                    onChange={e => setEditTargetShiftId(e.target.value)}
-                    className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer"
-                  >
-                    <option value="">-- Chọn ca trực khác --</option>
-                    {doctorShifts.filter(s => s.id !== selectedShiftId && s.date >= TODAY).map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.dentistName} ({s.room}) - {s.date} ({SHIFT_CONFIG[s.shiftType].label})
-                      </option>
-                    ))}
-                  </select>
+                <div className="space-y-4">
+                  {/* Field 1: Lọc Bác sĩ muốn hoán đổi ca cùng */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      1. Lọc theo bác sĩ muốn hoán đổi ca (Không bắt buộc)
+                    </label>
+                    <select
+                      value={editFilterDentistId}
+                      onChange={e => {
+                        setEditFilterDentistId(e.target.value);
+                        setEditTargetShiftId('');
+                      }}
+                      disabled={!isShiftEligibleForSwap(selectedShift)}
+                      className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">-- Tất cả bác sĩ (Hiển thị toàn bộ ca hợp lệ) --</option>
+                      {dentists
+                        .filter(d => d.id !== selectedShift.dentistId && d.status !== 'Inactive')
+                        .map(d => (
+                          <option key={d.id} value={d.id}>
+                            {d.name} ({d.role.split('&')[0]})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Field 2: Chọn ca trực muốn hoán đổi */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      2. Chọn ca trực muốn hoán đổi (Đủ điều kiện &ge; 12 tiếng) *
+                    </label>
+                    <select
+                      value={editTargetShiftId}
+                      onChange={e => setEditTargetShiftId(e.target.value)}
+                      disabled={!isShiftEligibleForSwap(selectedShift)}
+                      className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">-- Chọn ca trực khác --</option>
+                      {doctorShifts
+                        .filter(s => {
+                          // 1. Phải là ca trực của bác sĩ khác
+                          if (s.dentistId === selectedShift.dentistId) return false;
+                          // 2. Nếu đã chọn bác sĩ cụ thể ở Field 1 -> Chỉ hiển thị ca của bác sĩ đó
+                          if (editFilterDentistId && s.dentistId !== editFilterDentistId) return false;
+                          // 3. Phải đủ 12 tiếng nữa mới tới giờ trực
+                          if (!isShiftEligibleForSwap(s)) return false;
+                          // 4. Không hoán đổi ca cùng ngày cùng loại ca
+                          if (s.date === selectedShift.date && s.shiftType === selectedShift.shiftType) return false;
+
+                          // 5. Bác sĩ ca gốc (Doctor A) chưa có ca trùng giờ/ngày vào ngày của ca đích (Target Date: s.date)
+                          const doc1HasOverlapOnTargetDate = doctorShifts.some(other =>
+                            other.id !== selectedShift.id &&
+                            other.dentistId === selectedShift.dentistId &&
+                            isShiftOverlapping(other, s)
+                          );
+                          if (doc1HasOverlapOnTargetDate) return false;
+
+                          // 6. Bác sĩ ca đích (Doctor B: s.dentistId) chưa có ca trùng giờ/ngày vào ngày của ca gốc (Origin Date: selectedShift.date)
+                          const doc2HasOverlapOnOriginDate = doctorShifts.some(other =>
+                            other.id !== s.id &&
+                            other.dentistId === s.dentistId &&
+                            isShiftOverlapping(other, selectedShift)
+                          );
+                          if (doc2HasOverlapOnOriginDate) return false;
+
+                          return true;
+                        })
+                        .map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.dentistName} ({s.room}) - {s.date} ({SHIFT_CONFIG[s.shiftType].label})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
                 </div>
               )}
 
@@ -843,16 +1175,14 @@ export const ManagerSchedule: React.FC = () => {
                   <select
                     value={editTargetDentistId}
                     onChange={e => setEditTargetDentistId(e.target.value)}
-                    className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer"
+                    disabled={!isShiftEligibleForSwap(selectedShift)}
+                    className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">-- Chọn bác sĩ --</option>
                     {dentists
                       .filter(d => {
                         if (d.id === selectedShift.dentistId) return false;
-                        // Kiểm tra xung đột khung giờ ca trực:
-                        // Ca Sáng (Morning) chỉ trùng với Ca Sáng hoặc Ca Cả Ngày (Full)
-                        // Ca Chiều (Afternoon) chỉ trùng với Ca Chiều hoặc Ca Cả Ngày (Full)
-                        // Ca Cả Ngày (Full) trùng với tất cả ca trong ngày
+                        if (d.status === 'Inactive') return false;
                         const hasOverlappingShift = doctorShifts.some(s => {
                           if (s.dentistId !== d.id || s.date !== selectedShift.date) return false;
                           if (selectedShift.shiftType === 'Full' || s.shiftType === 'Full') return true;
@@ -881,10 +1211,20 @@ export const ManagerSchedule: React.FC = () => {
               </button>
               <button
                 onClick={handleEditAction}
-                className="px-6 py-2.5 bg-primary hover:bg-primary/95 text-white rounded-xl font-bold text-xs flex items-center gap-1 cursor-pointer shadow active:scale-95 transition-all"
+                disabled={isSubmittingEdit || ((editAction === 'swap' || editAction === 'transfer') && !isShiftEligibleForSwap(selectedShift))}
+                className="px-6 py-2.5 bg-primary hover:bg-primary/95 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Icon name="check_circle" className="text-[16px]" />
-                Xác nhận
+                {isSubmittingEdit ? (
+                  <>
+                    <Icon name="progress_activity" className="text-[16px] animate-spin" />
+                    Đang xử lý...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="check_circle" className="text-[16px]" />
+                    Xác nhận
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -920,10 +1260,20 @@ export const ManagerSchedule: React.FC = () => {
                 </button>
                 <button
                   onClick={() => handleDeleteShift(showDeleteConfirm)}
-                  className="flex-1 py-2.5 rounded-xl bg-error text-white font-bold text-sm hover:bg-error/90 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  disabled={isSubmittingDelete}
+                  className="flex-1 py-2.5 rounded-xl bg-error text-white font-bold text-sm hover:bg-error/90 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Icon name="delete" className="text-[16px]" />
-                  Xóa ca trực
+                  {isSubmittingDelete ? (
+                    <>
+                      <Icon name="progress_activity" className="text-[16px] animate-spin" />
+                      Đang xóa...
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="delete" className="text-[16px]" />
+                      Xóa ca trực
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -1005,10 +1355,20 @@ export const ManagerSchedule: React.FC = () => {
               </button>
               <button
                 onClick={handleConfirmConflict}
-                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all"
+                disabled={isSubmittingEdit}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Icon name="notifications_active" className="text-[16px]" />
-                Xác nhận &amp; Thông báo lễ tân
+                {isSubmittingEdit ? (
+                  <>
+                    <Icon name="progress_activity" className="text-[16px] animate-spin" />
+                    Đang gửi thông báo...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="notifications_active" className="text-[16px]" />
+                    Xác nhận &amp; Thông báo lễ tân
+                  </>
+                )}
               </button>
             </div>
           </div>

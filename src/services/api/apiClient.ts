@@ -25,7 +25,21 @@ export async function request<T>(endpoint: string, options: RequestInit = {}, co
     headers,
   });
 
-  const resData = await response.json();
+  let resData: any = {};
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    try {
+      resData = await response.json();
+    } catch {
+      resData = {};
+    }
+  } else {
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Lỗi kết nối máy chủ (HTTP ${response.status})`);
+    }
+  }
 
   if (!response.ok) {
     const errorCode = resData.error?.code || '';

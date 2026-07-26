@@ -58,6 +58,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
   const [lockoutCountdown, setLockoutCountdown] = useState(0);
   const [error, setError] = useState('');
   const [isVerified, setIsVerified] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [shake, setShake] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
 
@@ -222,6 +223,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
 
   const verifyOtp = async (code: string) => {
     setError('');
+    setIsVerifying(true);
     try {
       const resData = await request<{ otpToken?: string }>('/auth/verify-otp', {
         method: 'POST',
@@ -232,6 +234,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
       const otpToken = resData.data?.otpToken;
       if (!otpToken) {
         setError('Máy chủ chưa trả về token xác thực OTP.');
+        setIsVerifying(false);
         return;
       }
 
@@ -242,6 +245,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
       }, 800);
     } catch (err: any) {
       console.error('Lỗi khi xác thực OTP:', err);
+      setIsVerifying(false);
 
       const newAttempts = attempts + 1;
       setAttempts(newAttempts);
@@ -260,6 +264,8 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
       // Clear inputs
       setOtp(Array(OTP_LENGTH).fill(''));
       setTimeout(() => inputRefs.current[0]?.focus(), 100);
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -334,11 +340,11 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
                 value={digit}
                 onChange={(e) => handleInputChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
-                disabled={isLocked || isVerified}
+                disabled={isLocked || isVerified || isVerifying}
                 className={`w-12 h-14 text-center text-xl font-black rounded-xl border-2 outline-none transition-all duration-200 ${
                   isVerified
                     ? 'border-green-500 bg-green-50 text-green-700 scale-105'
-                    : isLocked
+                    : isLocked || isVerifying
                     ? 'border-outline-variant bg-surface-container-high text-on-surface-variant cursor-not-allowed'
                     : error
                     ? 'border-red-400 bg-red-50/50 text-on-surface focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/30'
@@ -350,11 +356,20 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
             ))}
           </div>
 
+          {/* Verifying Indicator */}
+          {isVerifying && !isVerified && (
+            <div className="flex items-center justify-center gap-2.5 text-[#005eb8] bg-blue-50 border border-blue-200 rounded-xl py-3 animate-in fade-in">
+              <Icon name="progress_activity" className="animate-spin text-[20px] text-[#005eb8]" />
+              <span className="font-bold text-sm">Đang xác thực mã OTP, vui lòng chờ...</span>
+            </div>
+          )}
+
           {/* Success indicator */}
           {isVerified && (
             <div className="flex items-center justify-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-xl py-3 animate-in fade-in zoom-in-95">
-              <Icon name="check_circle" className="text-[24px]" />
-              <span className="font-bold">Xác thực thành công!</span>
+              <Icon name="check_circle" className="text-[24px] text-green-600" />
+              <span className="font-bold">Mã OTP hợp lệ! Đang khởi tạo lịch hẹn...</span>
+              <Icon name="progress_activity" className="animate-spin text-[18px] text-green-600 ml-1" />
             </div>
           )}
 
