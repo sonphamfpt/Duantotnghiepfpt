@@ -63,7 +63,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const cfg = TYPE_CONFIG[type];
+  const cfg = TYPE_CONFIG[type] || TYPE_CONFIG['error'];
+
 
   return (
     <div

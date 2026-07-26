@@ -178,7 +178,7 @@ export const ManagerSchedule: React.FC = () => {
       showAlert({
         title: 'Không thể xóa ca trực',
         message: res.error,
-        type: 'danger',
+        type: 'error',
       });
     } else if (res && res.success) {
       showAlert({
@@ -227,7 +227,7 @@ export const ManagerSchedule: React.FC = () => {
       }
       const res = await swapShifts(selectedShiftId, editTargetShiftId);
       if (res && res.error) {
-        showAlert({ title: 'Không thể hoán đổi ca', message: res.error, type: 'danger' });
+        showAlert({ title: 'Không thể hoán đổi ca', message: res.error, type: 'error' });
       } else {
         showAlert({ title: 'Thành công', message: 'Hoán đổi ca trực thành công!', type: 'success' });
       }
@@ -259,11 +259,12 @@ export const ManagerSchedule: React.FC = () => {
       }
       const res = await transferShift(selectedShiftId, editTargetDentistId);
       if (res && res.error) {
-        showAlert({ title: 'Không thể nhờ trực thay', message: res.error, type: 'danger' });
+        showAlert({ title: 'Không thể nhờ trực thay', message: res.error, type: 'error' });
       } else {
         showAlert({ title: 'Thành công', message: 'Chuyển giao ca trực thành công!', type: 'success' });
       }
     }
+
 
     setShowEditModal(false);
     setSelectedShiftId(null);
