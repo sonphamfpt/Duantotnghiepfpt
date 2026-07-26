@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { useConfirm } from '../../../context/ConfirmContext';
 import { exportToExcel } from '../../../utils/exportToExcel';
+
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -49,6 +51,8 @@ const TODAY = fmt(new Date());
 
 export const ManagerSchedule: React.FC = () => {
   const { doctorShifts, dentists, appointments, addShift, deleteShift, swapShifts, transferShift, changeShiftRoom } = useClinic();
+  const { showAlert } = useConfirm();
+
 
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [filterDentistId, setFilterDentistId] = useState<string>('ALL');
@@ -120,12 +124,12 @@ export const ManagerSchedule: React.FC = () => {
   // ── Add Shift Handler ──
   const handleAddShift = () => {
     if (!addForm.dentistId || !addForm.date) {
-      alert('Vui lòng chọn bác sĩ và ngày trực!');
+      showAlert({ title: 'Thiếu thông tin', message: 'Vui lòng chọn bác sĩ và ngày trực!', type: 'warning' });
       return;
     }
 
     if (addForm.date < TODAY) {
-      alert('Không thể tạo hoặc xếp ca trực cho ngày trong quá khứ!');
+      showAlert({ title: 'Không hợp lệ', message: 'Không thể tạo hoặc xếp ca trực cho ngày trong quá khứ!', type: 'warning' });
       return;
     }
     const dentist = dentists.find(d => d.id === addForm.dentistId);
@@ -136,7 +140,7 @@ export const ManagerSchedule: React.FC = () => {
       s => s.dentistId === addForm.dentistId && s.date === addForm.date && s.shiftType === addForm.shiftType
     );
     if (isDuplicate) {
-      alert('Ca trực này đã tồn tại cho bác sĩ trong ngày đã chọn!');
+      showAlert({ title: 'Trùng ca trực', message: 'Ca trực này đã tồn tại cho bác sĩ trong ngày đã chọn!', type: 'warning' });
       return;
     }
 
@@ -145,7 +149,11 @@ export const ManagerSchedule: React.FC = () => {
       s => s.room === addForm.room && s.date === addForm.date && (s.shiftType === addForm.shiftType || s.shiftType === 'Full' || addForm.shiftType === 'Full')
     );
     if (isRoomOccupied) {
-      alert(`Phòng khám ${addForm.room} đã có bác sĩ khác đăng ký trực trong ${addForm.shiftType === 'Morning' ? 'Ca sáng' : addForm.shiftType === 'Afternoon' ? 'Ca chiều' : 'Cả ngày'} ngày ${addForm.date}. Vui lòng chọn phòng khác!`);
+      showAlert({
+        title: 'Xung đột phòng khám',
+        message: `Phòng khám ${addForm.room} đã có bác sĩ khác đăng ký trực trong ${addForm.shiftType === 'Morning' ? 'Ca sáng' : addForm.shiftType === 'Afternoon' ? 'Ca chiều' : 'Cả ngày'} ngày ${addForm.date}. Vui lòng chọn phòng khác!`,
+        type: 'warning',
+      });
       return;
     }
 
@@ -156,7 +164,7 @@ export const ManagerSchedule: React.FC = () => {
       shiftType: addForm.shiftType,
       room: addForm.room,
     });
-    alert(`Đã thêm ca trực mới cho ${dentist.name} thành công!`);
+    showAlert({ title: 'Thành công', message: `Đã thêm ca trực mới cho ${dentist.name} thành công!`, type: 'success' });
     setShowAddModal(false);
     setAddForm({ dentistId: '', date: '', shiftType: 'Morning', room: ALL_ROOMS[0] });
   };
@@ -174,14 +182,14 @@ export const ManagerSchedule: React.FC = () => {
 
     const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
     if (sourceShift && sourceShift.date < TODAY) {
-      alert('Ca trực trong quá khứ đã hoàn thành, không thể chỉnh sửa hoặc đổi phòng!');
+      showAlert({ title: 'Ca trực đã hoàn tất', message: 'Ca trực trong quá khứ đã hoàn thành, không thể chỉnh sửa hoặc đổi ca!', type: 'warning' });
       return;
     }
 
     if (editAction === 'swap') {
 
       if (!editTargetShiftId || editTargetShiftId === selectedShiftId) {
-        alert('Vui lòng chọn ca trực khác để hoán đổi!');
+        showAlert({ title: 'Chọn ca hoán đổi', message: 'Vui lòng chọn ca trực khác để hoán đổi!', type: 'warning' });
         return;
       }
 
@@ -205,11 +213,10 @@ export const ManagerSchedule: React.FC = () => {
         }
       }
       swapShifts(selectedShiftId, editTargetShiftId);
-      alert('Hoán đổi ca trực thành công!');
 
     } else if (editAction === 'transfer') {
       if (!editTargetDentistId) {
-        alert('Vui lòng chọn bác sĩ nhận ca!');
+        showAlert({ title: 'Chọn bác sĩ nhận ca', message: 'Vui lòng chọn bác sĩ nhận ca!', type: 'warning' });
         return;
       }
 
@@ -233,15 +240,6 @@ export const ManagerSchedule: React.FC = () => {
         }
       }
       transferShift(selectedShiftId, editTargetDentistId);
-      alert('Chuyển giao ca trực thành công!');
-
-    } else {
-      if (!editTargetRoom) {
-        alert('Vui lòng chọn phòng khám mới!');
-        return;
-      }
-      changeShiftRoom(selectedShiftId, editTargetRoom);
-      alert('Đổi phòng trực thành công!');
     }
 
     setShowEditModal(false);
@@ -250,6 +248,7 @@ export const ManagerSchedule: React.FC = () => {
     setEditTargetDentistId('');
     setEditTargetRoom('');
   };
+
 
   // ── Confirm Conflict Handler ──
   const handleConfirmConflict = () => {
