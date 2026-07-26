@@ -186,7 +186,7 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
     });
 
     if (!shift1 || !shift2) {
-      throw new AppError(404, 'SHIFT_NOT_FOUND', 'Một trong hai ca trực không tồn tại.');
+      throw new AppError(404, 'Một trong hai ca trực không tồn tại.', 'SHIFT_NOT_FOUND');
     }
 
     // Kiểm tra quy chế: Phải gửi yêu cầu trước ít nhất 12 tiếng
@@ -195,12 +195,12 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
 
     const start1Ms = getShiftStartTimeMs(shift1.workDate, shift1.shiftType);
     if (start1Ms - nowMs < TWELVE_HOURS_MS) {
-      throw new AppError(400, 'SWAP_TOO_LATE', 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để thực hiện hoán đổi.');
+      throw new AppError(400, 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để thực hiện hoán đổi.', 'SWAP_TOO_LATE');
     }
 
     const start2Ms = getShiftStartTimeMs(shift2.workDate, shift2.shiftType);
     if (start2Ms - nowMs < TWELVE_HOURS_MS) {
-      throw new AppError(400, 'SWAP_TOO_LATE', 'Ca trực muốn hoán đổi phải còn ít nhất 12 tiếng mới tới giờ bắt đầu.');
+      throw new AppError(400, 'Ca trực muốn hoán đổi phải còn ít nhất 12 tiếng mới tới giờ bắt đầu.', 'SWAP_TOO_LATE');
     }
 
     // 1. Kiểm tra không cho hoán đổi giữa 2 ca giống hệt nhau trong cùng một ngày
@@ -209,7 +209,7 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
 
     if (date1Str === date2Str && shift1.shiftType === shift2.shiftType) {
       const shiftName = shift1.shiftType === 'Morning' ? 'Ca Sáng' : shift1.shiftType === 'Afternoon' ? 'Ca Chiều' : 'Ca Cả ngày';
-      throw new AppError(400, 'SAME_SHIFT_SWAP_INVALID', `Cả hai bác sĩ đều đã có lịch trực ${shiftName} vào ngày ${date1Str}. Không thể hoán đổi 2 ca trùng nhau.`);
+      throw new AppError(400, `Cả hai bác sĩ đều đã có lịch trực ${shiftName} vào ngày ${date1Str}. Không thể hoán đổi 2 ca trùng nhau.`, 'SAME_SHIFT_SWAP_INVALID');
     }
 
     // 2. Kiểm tra xung đột trùng ngày trực: Bác sĩ 1 không được có ca trực khác vào ngày của ca 2 (nếu khác ngày)
@@ -223,7 +223,7 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
         },
       });
       if (existingShiftDoc1OnDate2) {
-        throw new AppError(400, 'SWAP_CONFLICT_DOCTOR_1', `Bác sĩ ${shift1.dentist.user.fullName} đã có ca trực vào ngày ${shift2.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`);
+        throw new AppError(400, `Bác sĩ ${shift1.dentist.user.fullName} đã có ca trực vào ngày ${shift2.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_1');
       }
 
       const existingShiftDoc2OnDate1 = await tx.dentistShift.findFirst({
@@ -235,7 +235,7 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
         },
       });
       if (existingShiftDoc2OnDate1) {
-        throw new AppError(400, 'SWAP_CONFLICT_DOCTOR_2', `Bác sĩ ${shift2.dentist.user.fullName} đã có ca trực vào ngày ${shift1.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`);
+        throw new AppError(400, `Bác sĩ ${shift2.dentist.user.fullName} đã có ca trực vào ngày ${shift1.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_2');
       }
     }
 
@@ -291,10 +291,10 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
     });
 
     if (!shift) {
-      throw new AppError(404, 'SHIFT_NOT_FOUND', 'Ca trực không tồn tại.');
+      throw new AppError(404, 'Ca trực không tồn tại.', 'SHIFT_NOT_FOUND');
     }
     if (!targetDentist) {
-      throw new AppError(404, 'DENTIST_NOT_FOUND', 'Bác sĩ nhận ca trực không tồn tại.');
+      throw new AppError(404, 'Bác sĩ nhận ca trực không tồn tại.', 'DENTIST_NOT_FOUND');
     }
 
     // Kiểm tra quy chế: Phải gửi yêu cầu trước ít nhất 12 tiếng
@@ -303,7 +303,7 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
 
     const startMs = getShiftStartTimeMs(shift.workDate, shift.shiftType);
     if (startMs - nowMs < TWELVE_HOURS_MS) {
-      throw new AppError(400, 'TRANSFER_TOO_LATE', 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để nhờ trực thay.');
+      throw new AppError(400, 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để nhờ trực thay.', 'TRANSFER_TOO_LATE');
     }
 
     // Kiểm tra xung đột: Bác sĩ nhận ca chưa có ca trực nào vào ngày đó
@@ -315,8 +315,9 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
       },
     });
     if (existingShiftTarget) {
-      throw new AppError(400, 'TARGET_DENTIST_HAS_SHIFT', `Bác sĩ ${targetDentist.user.fullName} đã có ca trực vào ngày ${shift.workDate.toISOString().slice(0, 10)}. Không thể nhờ trực thay.`);
+      throw new AppError(400, `Bác sĩ ${targetDentist.user.fullName} đã có ca trực vào ngày ${shift.workDate.toISOString().slice(0, 10)}. Không thể nhờ trực thay.`, 'TARGET_DENTIST_HAS_SHIFT');
     }
+
 
     // 1. Quét tìm và lưu trữ thông tin lịch hẹn bị ảnh hưởng
     await detectAndCreateConflicts(tx, shift, shift.dentistId, targetDentistId);
@@ -481,8 +482,8 @@ export async function deleteShift(shiftId: bigint) {
   if (nowMs >= shiftStartMs && nowMs <= shiftEndMs) {
     throw new AppError(
       400,
-      'CURRENT_SHIFT_ACTIVE',
-      `Không thể xóa ca trực vì ca làm việc đang trong thời gian diễn ra (${shift.shiftType === 'Morning' ? '08:00 - 14:00' : shift.shiftType === 'Afternoon' ? '14:00 - 20:00' : '08:00 - 20:00'}). Bác sĩ đang trong ca trực.`
+      `Không thể xóa ca trực vì ca làm việc đang trong thời gian diễn ra (${shift.shiftType === 'Morning' ? '08:00 - 14:00' : shift.shiftType === 'Afternoon' ? '14:00 - 20:00' : '08:00 - 20:00'}). Bác sĩ đang trong ca trực.`,
+      'CURRENT_SHIFT_ACTIVE'
     );
   }
 
@@ -499,10 +500,11 @@ export async function deleteShift(shiftId: bigint) {
   if (activeAppointmentsCount > 0) {
     throw new AppError(
       400,
-      'SHIFT_HAS_APPOINTMENTS',
-      `Không thể xóa ca trực vì đã có ${activeAppointmentsCount} lịch hẹn đang chờ/đang khám trong ca này. Vui lòng hoán đổi ca trực hoặc chuyển ca trực trước.`
+      `Không thể xóa ca trực vì đã có ${activeAppointmentsCount} lịch hẹn đang chờ/đang khám trong ca này. Vui lòng hoán đổi ca trực hoặc chuyển ca trực trước.`,
+      'SHIFT_HAS_APPOINTMENTS'
     );
   }
+
 
 
   const todayStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
