@@ -847,13 +847,19 @@ export const ManagerSchedule: React.FC = () => {
                   >
                     <option value="">-- Chọn bác sĩ --</option>
                     {dentists
-                      .filter(d => d.id !== selectedShift.dentistId)
+                      .filter(d => {
+                        if (d.id === selectedShift.dentistId) return false;
+                        // Kiểm tra nếu bác sĩ này đã có ca trực vào ngày của ca đang chọn
+                        const hasShiftOnDate = doctorShifts.some(s => s.dentistId === d.id && s.date === selectedShift.date);
+                        return !hasShiftOnDate;
+                      })
                       .map(d => (
                         <option key={d.id} value={d.id}>{d.name} ({d.role.split('&')[0]})</option>
                       ))}
                   </select>
                 </div>
               )}
+
 
 
             </div>
