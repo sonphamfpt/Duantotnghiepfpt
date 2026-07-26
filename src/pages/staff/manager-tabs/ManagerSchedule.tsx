@@ -797,14 +797,14 @@ export const ManagerSchedule: React.FC = () => {
               {/* Action-specific fields */}
               {editAction === 'swap' && (
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Chọn ca trực muốn hoán đổi *</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Chọn ca trực muốn hoán đổi (Từ hôm nay trở đi) *</label>
                   <select
                     value={editTargetShiftId}
                     onChange={e => setEditTargetShiftId(e.target.value)}
                     className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer"
                   >
                     <option value="">-- Chọn ca trực khác --</option>
-                    {doctorShifts.filter(s => s.id !== selectedShiftId).map(s => (
+                    {doctorShifts.filter(s => s.id !== selectedShiftId && s.date >= TODAY).map(s => (
                       <option key={s.id} value={s.id}>
                         {s.dentistName} ({s.room}) - {s.date} ({SHIFT_CONFIG[s.shiftType].label})
                       </option>
@@ -812,6 +812,7 @@ export const ManagerSchedule: React.FC = () => {
                   </select>
                 </div>
               )}
+
 
               {editAction === 'transfer' && (
                 <div className="space-y-1.5">
