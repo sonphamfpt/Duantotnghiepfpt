@@ -822,12 +822,15 @@ export const ManagerSchedule: React.FC = () => {
                     className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer"
                   >
                     <option value="">-- Chọn bác sĩ --</option>
-                    {dentists.map(d => (
-                      <option key={d.id} value={d.id}>{d.name} ({d.role.split('&')[0]})</option>
-                    ))}
+                    {dentists
+                      .filter(d => d.id !== selectedShift.dentistId)
+                      .map(d => (
+                        <option key={d.id} value={d.id}>{d.name} ({d.role.split('&')[0]})</option>
+                      ))}
                   </select>
                 </div>
               )}
+
 
             </div>
 
