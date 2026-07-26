@@ -143,7 +143,7 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
     });
   }, [doctorShifts, dentistId, originShiftId, isShiftEligibleForSwap]);
 
-  // Bác sĩ ĐỦ ĐIỀU KIỆN nhận chuyển ca (chưa có ca trực vào ngày của ca gốc)
+  // Bác sĩ ĐỦ ĐIỀU KIỆN nhận chuyển ca (chưa có ca trực trùng giờ vào ngày của ca gốc)
   const eligibleTransferDentists = React.useMemo(() => {
     if (!originShiftId) return dentists.filter(d => d.id !== dentistId);
     const originShift = doctorShifts.find(s => s.id === originShiftId);
@@ -151,10 +151,15 @@ export const DentistSchedule: React.FC<DentistScheduleProps> = ({ dentistId: den
 
     return dentists.filter(d => {
       if (d.id === dentistId) return false;
-      const hasShiftOnDate = doctorShifts.some(s => s.dentistId === d.id && s.date === originShift.date);
-      return !hasShiftOnDate;
+      const hasOverlappingShift = doctorShifts.some(s => {
+        if (s.dentistId !== d.id || s.date !== originShift.date) return false;
+        if (originShift.shiftType === 'Full' || s.shiftType === 'Full') return true;
+        return s.shiftType === originShift.shiftType;
+      });
+      return !hasOverlappingShift;
     });
   }, [dentists, doctorShifts, dentistId, originShiftId]);
+
 
 
   const openSwapForShift = (shiftId: string) => {

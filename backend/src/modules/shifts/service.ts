@@ -213,32 +213,38 @@ export async function swapShifts(shiftId1: bigint, shiftId2: bigint) {
       throw new AppError(400, `Cả hai bác sĩ đều đã có lịch trực ${shiftName} vào ngày ${date1Str}. Không thể hoán đổi 2 ca trùng nhau.`, 'SAME_SHIFT_SWAP_INVALID');
     }
 
-    // 2. Kiểm tra xung đột trùng ngày trực: Bác sĩ 1 không được có ca trực khác vào ngày của ca 2 (nếu khác ngày)
+    // 2. Kiểm tra xung đột trùng ca trực: Bác sĩ 1 không được trùng ca với ca 2, Bác sĩ 2 không được trùng ca với ca 1
     if (date1Str !== date2Str) {
+      const shift1OverlapTypes = shift1.shiftType === 'Full' ? ['Morning', 'Afternoon', 'Full'] : [shift1.shiftType, 'Full'];
+      const shift2OverlapTypes = shift2.shiftType === 'Full' ? ['Morning', 'Afternoon', 'Full'] : [shift2.shiftType, 'Full'];
+
       const existingShiftDoc1OnDate2 = await tx.dentistShift.findFirst({
         where: {
           dentistId: shift1.dentistId,
           workDate: shift2.workDate,
+          shiftType: { in: shift2OverlapTypes },
           isActive: true,
           shiftId: { notIn: [shiftId1, shiftId2] },
         },
       });
       if (existingShiftDoc1OnDate2) {
-        throw new AppError(400, `Bác sĩ ${shift1.dentist.user.fullName} đã có ca trực vào ngày ${shift2.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_1');
+        throw new AppError(400, `Bác sĩ ${shift1.dentist.user.fullName} đã có ca trực trùng giờ vào ngày ${shift2.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_1');
       }
 
       const existingShiftDoc2OnDate1 = await tx.dentistShift.findFirst({
         where: {
           dentistId: shift2.dentistId,
           workDate: shift1.workDate,
+          shiftType: { in: shift1OverlapTypes },
           isActive: true,
           shiftId: { notIn: [shiftId1, shiftId2] },
         },
       });
       if (existingShiftDoc2OnDate1) {
-        throw new AppError(400, `Bác sĩ ${shift2.dentist.user.fullName} đã có ca trực vào ngày ${shift1.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_2');
+        throw new AppError(400, `Bác sĩ ${shift2.dentist.user.fullName} đã có ca trực trùng giờ vào ngày ${shift1.workDate.toISOString().slice(0, 10)}. Không thể hoán đổi.`, 'SWAP_CONFLICT_DOCTOR_2');
       }
     }
+
 
     // 1. Phát hiện và tạo các thông báo xung đột lịch hẹn
     await detectAndCreateConflicts(tx, shift1, shift1.dentistId, shift2.dentistId);
@@ -307,17 +313,33 @@ export async function transferShift(shiftId: bigint, targetDentistId: bigint) {
       throw new AppError(400, 'Ca trực của bạn phải còn ít nhất 12 tiếng mới tới giờ bắt đầu để nhờ trực thay.', 'TRANSFER_TOO_LATE');
     }
 
-    // Kiểm tra xung đột: Bác sĩ nhận ca chưa có ca trực nào vào ngày đó
+    // Kiểm tra xung đột ca trực của Bác sĩ nhận ca:
+    // Ca Sáng (08:00-14:00) xung đột với Ca Sáng & Ca Cả Ngày.
+    // Ca Chiều (14:00-20:00) xung đột với Ca Chiều & Ca Cả Ngày.
+    // Ca Cả Ngày (08:00-20:00) xung đột với mọi ca trong ngày.
+    const overlappingShiftTypes = shift.shiftType === 'Full'
+      ? ['Morning', 'Afternoon', 'Full']
+      : [shift.shiftType, 'Full'];
+
     const existingShiftTarget = await tx.dentistShift.findFirst({
       where: {
         dentistId: targetDentistId,
         workDate: shift.workDate,
+        shiftType: { in: overlappingShiftTypes },
         isActive: true,
       },
     });
+
     if (existingShiftTarget) {
-      throw new AppError(400, `Bác sĩ ${targetDentist.user.fullName} đã có ca trực vào ngày ${shift.workDate.toISOString().slice(0, 10)}. Không thể nhờ trực thay.`, 'TARGET_DENTIST_HAS_SHIFT');
+      const shiftName = shift.shiftType === 'Morning' ? 'Ca sáng' : shift.shiftType === 'Afternoon' ? 'Ca chiều' : 'Ca cả ngày';
+      const targetShiftName = existingShiftTarget.shiftType === 'Morning' ? 'Ca sáng' : existingShiftTarget.shiftType === 'Afternoon' ? 'Ca chiều' : 'Ca cả ngày';
+      throw new AppError(
+        400,
+        `Bác sĩ ${targetDentist.user.fullName} đã có lịch trực (${targetShiftName}) trùng giờ với ${shiftName} ngày ${shift.workDate.toISOString().slice(0, 10)}. Không thể nhờ trực thay.`,
+        'TARGET_DENTIST_HAS_SHIFT'
+      );
     }
+
 
 
     // 1. Quét tìm và lưu trữ thông tin lịch hẹn bị ảnh hưởng

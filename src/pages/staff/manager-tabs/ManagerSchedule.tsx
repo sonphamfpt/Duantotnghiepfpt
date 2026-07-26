@@ -849,9 +849,16 @@ export const ManagerSchedule: React.FC = () => {
                     {dentists
                       .filter(d => {
                         if (d.id === selectedShift.dentistId) return false;
-                        // Kiểm tra nếu bác sĩ này đã có ca trực vào ngày của ca đang chọn
-                        const hasShiftOnDate = doctorShifts.some(s => s.dentistId === d.id && s.date === selectedShift.date);
-                        return !hasShiftOnDate;
+                        // Kiểm tra xung đột khung giờ ca trực:
+                        // Ca Sáng (Morning) chỉ trùng với Ca Sáng hoặc Ca Cả Ngày (Full)
+                        // Ca Chiều (Afternoon) chỉ trùng với Ca Chiều hoặc Ca Cả Ngày (Full)
+                        // Ca Cả Ngày (Full) trùng với tất cả ca trong ngày
+                        const hasOverlappingShift = doctorShifts.some(s => {
+                          if (s.dentistId !== d.id || s.date !== selectedShift.date) return false;
+                          if (selectedShift.shiftType === 'Full' || s.shiftType === 'Full') return true;
+                          return s.shiftType === selectedShift.shiftType;
+                        });
+                        return !hasOverlappingShift;
                       })
                       .map(d => (
                         <option key={d.id} value={d.id}>{d.name} ({d.role.split('&')[0]})</option>
@@ -859,6 +866,7 @@ export const ManagerSchedule: React.FC = () => {
                   </select>
                 </div>
               )}
+
 
 
 
