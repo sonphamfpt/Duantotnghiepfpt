@@ -112,11 +112,6 @@ export const ReceptionistCancelHistory: React.FC = () => {
     }
     return 'Vừa xong';
   };
-   day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  };
 
   return (
     <div className="p-stack-lg space-y-6 animate-in fade-in duration-200">
