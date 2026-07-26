@@ -9,6 +9,7 @@ import { DashboardLayout } from './layouts/DashboardLayout';
 
 // Public pages
 import { Home } from './pages/public/Home';
+import { AboutUs } from './pages/public/AboutUs';
 import { Services } from './pages/public/Services';
 import { Doctors } from './pages/public/Doctors';
 import { DoctorDetail } from './pages/public/DoctorDetail';
