@@ -624,8 +624,9 @@ export const ManagerSchedule: React.FC = () => {
                   className="py-2.5 bg-primary text-white rounded-xl font-bold text-xs hover:bg-primary/90 cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95"
                 >
                   <Icon name="swap_horiz" className="text-[14px]" />
-                  Đổi ca/phòng
+                  Đổi ca trực
                 </button>
+
               )}
               <button
                 onClick={() => setShowDeleteConfirm(selectedShift.id)}
@@ -780,7 +781,6 @@ export const ManagerSchedule: React.FC = () => {
                 {[
                   { id: 'swap' as const, label: 'Hoán đổi ca' },
                   { id: 'transfer' as const, label: 'Nhờ trực thay' },
-                  { id: 'change_room' as const, label: 'Đổi phòng trực' },
                 ].map(opt => (
                   <button
                     key={opt.id}
@@ -813,7 +813,6 @@ export const ManagerSchedule: React.FC = () => {
                 </div>
               )}
 
-
               {editAction === 'transfer' && (
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Chọn bác sĩ nhận ca *</label>
@@ -830,21 +829,6 @@ export const ManagerSchedule: React.FC = () => {
                 </div>
               )}
 
-              {editAction === 'change_room' && (
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Chọn phòng khám mới *</label>
-                  <select
-                    value={editTargetRoom}
-                    onChange={e => setEditTargetRoom(e.target.value)}
-                    className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none cursor-pointer"
-                  >
-                    <option value="">-- Chọn phòng khám --</option>
-                    {ALL_ROOMS.map(r => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
             </div>
 
             <div className="p-4 bg-slate-50 border-t border-outline-variant flex justify-end gap-2 shrink-0">
