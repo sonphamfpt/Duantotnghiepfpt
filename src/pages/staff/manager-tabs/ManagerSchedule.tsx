@@ -123,6 +123,11 @@ export const ManagerSchedule: React.FC = () => {
       alert('Vui lòng chọn bác sĩ và ngày trực!');
       return;
     }
+
+    if (addForm.date < TODAY) {
+      alert('Không thể tạo hoặc xếp ca trực cho ngày trong quá khứ!');
+      return;
+    }
     const dentist = dentists.find(d => d.id === addForm.dentistId);
     if (!dentist) return;
 
@@ -167,7 +172,14 @@ export const ManagerSchedule: React.FC = () => {
   const handleEditAction = () => {
     if (!selectedShiftId) return;
 
+    const sourceShift = doctorShifts.find(s => s.id === selectedShiftId);
+    if (sourceShift && sourceShift.date < TODAY) {
+      alert('Ca trực trong quá khứ đã hoàn thành, không thể chỉnh sửa hoặc đổi phòng!');
+      return;
+    }
+
     if (editAction === 'swap') {
+
       if (!editTargetShiftId || editTargetShiftId === selectedShiftId) {
         alert('Vui lòng chọn ca trực khác để hoán đổi!');
         return;

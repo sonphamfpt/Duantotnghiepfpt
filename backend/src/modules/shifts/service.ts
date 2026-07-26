@@ -104,6 +104,13 @@ export async function createShift(data: {
   shiftType: 'Morning' | 'Afternoon' | 'Full';
   roomId: number | string;
 }) {
+  // Validate ca trong quá khứ
+  const todayStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const workDateStr = data.workDate.toISOString().split('T')[0];
+  if (workDateStr < todayStr) {
+    throw new AppError(400, 'PAST_SHIFT_INVALID', 'Không thể xếp ca trực cho ngày trong quá khứ.');
+  }
+
   const shiftHours = {
     Morning: { start: '08:00', end: '14:00' },
     Afternoon: { start: '14:00', end: '20:00' },
@@ -149,6 +156,7 @@ export async function createShift(data: {
     },
   });
 }
+
 
 /**
  * Tính timestamp chính xác (UTC ms) của giờ bắt đầu ca trực theo giờ Việt Nam (UTC+7)
@@ -482,6 +490,28 @@ export async function deleteShift(shiftId: bigint) {
     );
   }
 
+  const todayStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const shiftDateStr = shift.workDate.toISOString().split('T')[0];
+  const isPastShift = shiftDateStr < todayStr;
+
+  if (isPastShift) {
+    // Ca trong quá khứ chỉ thực hiện xóa mềm (soft delete - ẩn khỏi giao diện nhưng giữ lịch sử)
+    await prisma.dentistShift.update({
+      where: { shiftId },
+      data: { isActive: false },
+    });
+
+    await prisma.systemLog.create({
+      data: {
+        module: 'SYSTEM',
+        logType: 'WARN',
+        message: `Đã xóa mềm (chuyển ẩn) ca trực lịch sử ID ${shiftId} của bác sĩ ID ${shift.dentistId} ngày ${shiftDateStr}.`,
+      },
+    });
+
+    return { success: true, message: 'Đã xóa mềm ca trực quá khứ thành công (Lưu lịch sử).' };
+  }
+
   await prisma.dentistShift.delete({
     where: { shiftId },
   });
@@ -490,7 +520,7 @@ export async function deleteShift(shiftId: bigint) {
     data: {
       module: 'SYSTEM',
       logType: 'WARN',
-      message: `Đã xóa ca trực ID ${shiftId} của bác sĩ ID ${shift.dentistId} vào ngày ${shift.workDate.toISOString().split('T')[0]}.`,
+      message: `Đã xóa ca trực ID ${shiftId} của bác sĩ ID ${shift.dentistId} vào ngày ${shiftDateStr}.`,
     },
   });
 
@@ -506,8 +536,15 @@ export async function updateShiftRoom(shiftId: bigint, roomId: number) {
     throw new AppError(404, 'Không tìm thấy ca trực.', 'SHIFT_NOT_FOUND');
   }
 
+  const todayStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const shiftDateStr = shift.workDate.toISOString().split('T')[0];
+  if (shiftDateStr < todayStr) {
+    throw new AppError(400, 'PAST_SHIFT_EDIT_LOCKED', 'Ca trực trong quá khứ đã hoàn tất. Không thể thay đổi phòng khám.');
+  }
+
   return await prisma.dentistShift.update({
     where: { shiftId },
     data: { roomId },
   });
 }
+
