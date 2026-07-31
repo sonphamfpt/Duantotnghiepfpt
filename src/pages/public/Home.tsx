@@ -1,312 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookingModal } from '../../components/BookingModal';
 import { LogoIcon } from '../../components/BrandLogo';
-import { FaUsers, FaStar } from "react-icons/fa";
-import { MdMedicalServices, MdVerified } from "react-icons/md";
+import { FaUsers, FaStar, FaChevronLeft, FaChevronRight } from "react-icons/fa";
+import { MdMedicalServices, MdVerified, MdSecurity, MdBiotech } from "react-icons/md";
 import { RiAwardFill } from "react-icons/ri";
 import { Icon } from '../../components/Icon';
 import { useClinic } from '../../context/ClinicContext';
-
-// ── Promotional Banner Popup ──
-const PromoBanner: React.FC<{ onClose: () => void; onBookNow: () => void }> = ({ onClose, onBookNow }) => {
-  const [copied, setCopied] = useState(false);
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-
-  const targetDate = React.useMemo(() => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).getTime();
-  }, []);
-
-  const promoLabel = React.useMemo(() => {
-    const now = new Date();
-    return `Ưu đãi tháng ${now.getMonth() + 1} / ${now.getFullYear()}`;
-  }, []);
-
-  useEffect(() => {
-    const updateTimer = () => {
-      const now = new Date().getTime();
-      const diff = targetDate - now;
-      if (diff <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-        return;
-      }
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-      setTimeLeft({ days, hours, minutes, seconds });
-    };
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [targetDate]);
-
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard?.writeText('SMILE30');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  
-  const stats = [
-  { icon: <FaUsers />, val: '12,500+', label: 'Bệnh nhân hài lòng' },
-  { icon: <MdMedicalServices />, val: '15+', label: 'Năm kinh nghiệm' },
-  { icon: <RiAwardFill />, val: '4', label: 'Bác sĩ chuyên khoa' },
-  { icon: <FaStar />, val: '4.9/5', label: 'Đánh giá Google' },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-300">
-      <style>{`
-        @keyframes shimmer-fast {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        @keyframes float-slower {
-          0%, 100% { transform: translateY(0px) rotate(0deg); }
-          50% { transform: translateY(-6px) rotate(2deg); }
-        }
-        @keyframes pulse-soft {
-          0%, 100% { transform: scale(1); opacity: 0.9; }
-          50% { transform: scale(1.05); opacity: 1; }
-        }
-        .animate-float-slower {
-          animation: float-slower 6s ease-in-out infinite;
-        }
-        .animate-pulse-soft {
-          animation: pulse-soft 2s ease-in-out infinite;
-        }
-        .shimmer-progress::after {
-          content: '';
-          position: absolute;
-          top: 0; right: 0; bottom: 0; left: 0;
-          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
-          animation: shimmer-fast 1.8s infinite;
-        }
-        .ticket-box {
-          position: relative;
-          background-color: #f8fafc;
-          border: 1.5px dashed #cbd5e1;
-          border-radius: 12px;
-          padding: 12px 16px;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          overflow: visible;
-        }
-        .ticket-circle-l, .ticket-circle-r {
-          position: absolute;
-          top: 50%;
-          width: 14px;
-          height: 14px;
-          background-color: white;
-          border-radius: 50%;
-          transform: translateY(-50%);
-          border: 1.5px solid #cbd5e1;
-          z-index: 10;
-        }
-        .ticket-circle-l {
-          left: -8px;
-          border-right-color: transparent;
-          border-top-color: transparent;
-          border-bottom-color: transparent;
-        }
-        .ticket-circle-r {
-          right: -8px;
-          border-left-color: transparent;
-          border-top-color: transparent;
-          border-bottom-color: transparent;
-        }
-      `}</style>
-
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-300 relative flex flex-col md:flex-row border border-slate-100">
-        
-        {/* Left Pane (Visual Graphic - Hidden on Mobile) */}
-        <div className="hidden md:flex flex-col justify-between p-8 bg-gradient-to-br from-[#00478d] via-[#005fa8] to-[#006d33] text-white relative overflow-hidden w-[280px] shrink-0 select-none">
-          {/* Decorative Background effects */}
-          <div className="absolute -top-10 -left-10 w-36 h-36 rounded-full bg-white/5 pointer-events-none"></div>
-          <div className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full bg-white/5 pointer-events-none"></div>
-          
-          <div className="relative z-10 flex flex-col items-center text-center mt-6">
-            <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/20 p-2 animate-float-slower mb-4">
-              <LogoIcon className="w-16 h-16" />
-            </div>
-            <h4 className="text-lg font-black tracking-tight text-white/95">GoodSmile</h4>
-            <p className="text-[10px] uppercase font-bold tracking-widest text-white/60">Dental Clinic</p>
-          </div>
-
-          <div className="relative z-10 text-center mb-6">
-            <p className="text-xs text-white/85 font-medium leading-relaxed px-2">
-              Kiến tạo nụ cười rạng rỡ, tự tin cùng đội ngũ chuyên gia nha khoa hàng đầu.
-            </p>
-            <div className="mt-4 inline-flex items-center gap-1 bg-white/15 px-3 py-1 rounded-full text-[10px] font-bold border border-white/10">
-              <Icon name="verified" className="text-[12px] text-yellow-300" />
-              Công nghệ Đạt chuẩn ISO
-            </div>
-          </div>
-        </div>
-
-        {/* Right Pane (Offer Details) */}
-        <div className="flex-1 p-6 md:p-8 flex flex-col justify-between relative bg-white">
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-all cursor-pointer"
-          >
-            <Icon name="close" className="text-[18px] font-bold" />
-          </button>
-
-          <div className="space-y-4">
-            {/* Promo Tag */}
-            <div>
-              <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-700 text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full">
-                <Icon name="star" className="text-[12px] text-amber-600 animate-pulse-soft" />
-                {promoLabel}
-              </span>
-            </div>
-
-            {/* Title */}
-            <div>
-              <h3 className="text-2xl md:text-3xl font-black text-slate-800 leading-tight">
-                Giảm 30% Dịch Vụ<br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-green-600">Tẩy Trắng Răng Premium</span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-1.5 font-medium">
-                Công nghệ tẩy trắng răng từ Hoa Kỳ, không ê buốt, trắng bật 2-3 tông ngay sau 45 phút.
-              </p>
-            </div>
-
-            {/* Countdown Timer */}
-            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">Ưu đãi kết thúc sau:</p>
-              <div className="flex items-center gap-2">
-                {[
-                  { val: timeLeft.days, label: 'Ngày' },
-                  { val: timeLeft.hours, label: 'Giờ' },
-                  { val: timeLeft.minutes, label: 'Phút' },
-                  { val: timeLeft.seconds, label: 'Giây' }
-                ].map((item, i) => (
-                  <React.Fragment key={i}>
-                    {i > 0 && <span className="text-slate-300 font-bold text-sm">:</span>}
-                    <div className="flex-1 bg-white border border-slate-100 rounded-xl py-2 flex flex-col items-center shadow-sm">
-                      <span className="text-lg font-black text-slate-800 leading-none">
-                        {String(item.val).padStart(2, '0')}
-                      </span>
-                      <span className="text-[8px] text-slate-400 font-extrabold uppercase mt-1">
-                        {item.label}
-                      </span>
-                    </div>
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-
-            {/* Slots / Progress Bar */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-slate-600">Số lượng suất ưu đãi còn lại:</span>
-                <span className="font-black text-primary bg-primary/5 px-2 py-0.5 rounded text-[11px]">23 / 50 suất</span>
-              </div>
-              <div className="h-3 bg-slate-100 rounded-full overflow-hidden relative">
-                <div 
-                  className="h-full bg-gradient-to-r from-primary to-green-600 rounded-full transition-all duration-1000 relative shimmer-progress"
-                  style={{ width: '46%' }}
-                ></div>
-              </div>
-              <p className="text-[10px] text-amber-600 font-bold flex items-center gap-1 mt-1">
-                <Icon name="info" className="text-[12px]" />
-                Lưu ý: Hơn 100 người khác đang xem ưu đãi này.
-              </p>
-            </div>
-
-            {/* Coupon Box */}
-            <div className="ticket-box">
-              <div className="ticket-circle-l"></div>
-              <div className="ticket-circle-r"></div>
-              
-              <Icon name="local_offer" className="text-primary text-xl" />
-              <div className="flex-1">
-                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Mã coupon của bạn</p>
-                <p className="font-extrabold text-primary tracking-widest text-base font-mono">SMILE30</p>
-              </div>
-              <button 
-                onClick={handleCopy}
-                className={`text-xs font-black px-4 py-2 rounded-xl transition-all border shadow-sm cursor-pointer ${
-                  copied 
-                    ? 'bg-green-500 border-green-500 text-white' 
-                    : 'bg-white border-primary/20 text-primary hover:bg-primary/5'
-                }`}
-              >
-                {copied ? 'Đã chép! ✓' : 'Sao chép'}
-              </button>
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 border border-slate-200 rounded-xl text-slate-500 font-bold text-sm hover:bg-slate-50 hover:text-slate-700 transition-all cursor-pointer text-center"
-            >
-              Để sau
-            </button>
-            <button
-              onClick={() => {
-                onClose();
-                onBookNow();
-              }}
-              className="flex-1 py-3 bg-gradient-to-r from-primary to-green-600 text-white rounded-xl font-bold text-sm hover:shadow-lg hover:shadow-primary/20 active:scale-95 transition-all cursor-pointer text-center flex items-center justify-center gap-1.5"
-            >
-              Đặt lịch ngay
-              <Icon name="arrow_forward" className="text-[16px]" />
-            </button>
-          </div>
-
-        </div>
-
-      </div>
-    </div>
-  );
-};
+import { AIChatbot } from '../../components/AIChatbot';
 
 // ── Marquee Ticker ──
 const TICKER_ITEMS = [
   '🦷 Khai trương chi nhánh mới tại Quận 7 — Tháng 7/2026',
-  '🎉 Ưu đãi tẩy trắng răng giảm 30% cho khách hàng mới',
-  '📋 Ứng dụng đặt lịch GoodSmile đã ra mắt trên iOS & Android',
-  '⭐ GoodSmile đạt chứng nhận ISO 9001:2015 và HIPAA Compliance',
-  '🩺 Miễn phí khám tổng quát cho bệnh nhân lần đầu trong tháng 6',
+  '🎉 Ưu đãi tẩy trắng răng Laser Whitening giảm 30% cho bệnh nhân mới',
+  '💎 Cấy ghép Implant Thụy Sĩ Straumann tặng mão sứ trị giá 5 Triệu',
+  '📋 Ứng dụng quản lý lịch hẹn GoodSmile đã ra mắt trên iOS & Android',
+  '⭐ GoodSmile đạt chứng nhận y tế ISO 9001:2015 & Chuẩn an toàn HIPAA',
+  '🩺 Miễn phí 100% khám tổng quát & cạo vôi răng lần đầu',
 ];
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
-  const [isBookingOpen, setIsBookingOpen] = useState(false);
-  const [showBanner, setShowBanner] = useState(false);
+  const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
   useEffect(() => {
     document.title = 'Nha Khoa GoodSmile - Hệ Thống Phòng Khám Nha Khoa Uy Tín Hàng Đầu';
   }, []);
-  const [activeFaq, setActiveFaq] = useState<number | null>(null);
-
-  // Hiện banner sau 2 giây
-  useEffect(() => {
-    const t = setTimeout(() => setShowBanner(true), 2000);
-    return () => clearTimeout(t);
-  }, []);
 
   const faqs = [
     { q: 'Tôi có thể đặt lịch hẹn như thế nào?', a: 'Bạn có thể đặt lịch trực tuyến qua website, ứng dụng GoodSmile, hoặc gọi hotline 1800-SMILE (miễn phí). Lịch hẹn sẽ được xác nhận qua SMS/Zalo trong vòng 15 phút.' },
-    { q: 'Chi phí khám lần đầu là bao nhiêu?', a: 'GoodSmile miễn phí khám tổng quát và tư vấn cho tất cả bệnh nhân lần đầu. Sau khi có phác đồ điều trị, bạn sẽ được thông báo chi phí cụ thể trước khi thực hiện.' },
-    { q: 'Phòng khám có hỗ trợ bảo hiểm không?', a: 'Chúng tôi hỗ trợ bảo hiểm xã hội cho một số dịch vụ cơ bản và tất cả các gói bảo hiểm sức khỏe tư nhân lớn tại Việt Nam. Vui lòng mang theo thẻ bảo hiểm khi đến khám.' },
-    { q: 'Quy trình điều trị implant mất bao lâu?', a: 'Điều trị implant thường kéo dài từ 3–6 tháng tùy thuộc vào tình trạng xương hàm. GoodSmile sử dụng implant thương hiệu Straumann (Thụy Sĩ) với độ bền 25+ năm.' },
-    { q: 'Tôi có thể xem lại hồ sơ bệnh án của mình không?', a: 'Có. Toàn bộ hồ sơ bệnh án, hình ảnh X-quang và đơn thuốc được lưu trữ bảo mật trên hệ thống EMR. Bạn có thể truy cập 24/7 qua cổng bệnh nhân tại website.' },
+    { q: 'Chi phí khám lần đầu là bao nhiêu?', a: 'GoodSmile miễn phí khám tổng quát và tư vấn cho tất cả bệnh nhân lần đầu. Sau khi có phác đồ điều trị, bạn sẽ được thông báo chi phí minh bạch trước khi thực hiện.' },
+    { q: 'Phòng khám có hỗ trợ bảo hiểm không?', a: 'Chúng tôi hỗ trợ bảo hiểm y tế cho một số dịch vụ cơ bản và liên kết bảo lãnh viện phí trực tiếp với các đơn vị bảo hiểm sức khỏe tư nhân hàng đầu tại Việt Nam.' },
+    { q: 'Quy trình điều trị implant mất bao lâu?', a: 'Điều trị cấy ghép implant thường kéo dài từ 3–6 tháng tùy thuộc vào chất lượng xương hàm. GoodSmile sử dụng implant thương hiệu Straumann (Thụy Sĩ) có thẻ bảo hành 25+ năm.' },
+    { q: 'Tôi có thể xem lại hồ sơ bệnh án của mình không?', a: 'Có. Toàn bộ hồ sơ bệnh án, phim X-quang 3D và đơn thuốc được lưu trữ bảo mật trên hệ thống EMR. Bạn có thể truy cập 24/7 qua cổng bệnh nhân trên website.' },
   ];
 
   const { reviews: dbReviews } = useClinic();
 
   const staticReviews = [
-    { name: 'Nguyễn Thu Hà', role: 'Nhân viên văn phòng', rating: 5, comment: 'Lần đầu nhổ răng khôn mà không đau gì cả! Bác sĩ Hoàng Nam rất nhẹ nhàng và kiên nhẫn giải thích. Phòng chờ rộng, sạch, có wifi và cà phê miễn phí. Chắc chắn sẽ quay lại.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&h=80&q=80', aiReply: 'Cảm ơn Thu Hà đã tin tưởng GoodSmile! Đội ngũ bác sĩ luôn nỗ lực để mang lại trải nghiệm êm ái nhất cho bạn.' },
+    { name: 'Nguyễn Thu Hà', role: 'Nhân viên văn phòng', rating: 5, comment: 'Lần đầu nhổ răng khôn mà không đau gì cả! Bác sĩ Hoàng Nam rất nhẹ nhàng và kiên nhẫn giải thích. Phòng chờ rộng, sạch, có wifi và cà phê miễn phí. Chắc chắn sẽ giới thiệu cho người thân.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&h=80&q=80', aiReply: 'Cảm ơn Thu Hà đã tin tưởng GoodSmile! Đội ngũ bác sĩ luôn nỗ lực để mang lại trải nghiệm êm ái nhất cho bạn.' },
     { name: 'Trần Minh Tuấn', role: 'Kỹ sư phần mềm', rating: 5, comment: 'Đặt lịch online rất dễ, nhận được xác nhận qua Zalo ngay. Đến nơi được check-in nhanh chóng, không phải chờ lâu. Bác sĩ tư vấn tận tình về phác đồ niềng răng cho con.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&h=80&q=80', aiReply: 'Rất vui vì quy trình trực tuyến và đón tiếp tại phòng khám làm gia đình anh hài lòng! GoodSmile chúc bé có hành trình niềng răng thuận lợi.' },
     { name: 'Lê Phương Linh', role: 'Giáo viên', rating: 5, comment: 'Tẩy trắng răng xong kết quả rõ ngay! Được miễn phí khám ban đầu, báo giá rõ ràng trước khi làm. Nhân viên lễ tân thân thiện, cho mình uống nước chờ. Rất hài lòng!', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=80&h=80&q=80', aiReply: 'GoodSmile trân trọng cảm ơn cô Phương Linh! Chúc cô luôn giữ vững nụ cười rạng rỡ và tự tin mỗi ngày.' },
   ];
@@ -323,22 +54,14 @@ export const Home: React.FC = () => {
     : staticReviews;
 
   const stats = [
-    { icon: <FaUsers />, val: '12,500+', label: 'Bệnh nhân hài lòng' },
+    { icon: <FaUsers />, val: '15,000+', label: 'Bệnh nhân hài lòng' },
     { icon: <MdMedicalServices />, val: '15+', label: 'Năm kinh nghiệm' },
-    { icon: <RiAwardFill />, val: '4', label: 'Bác sĩ chuyên khoa' },
-    { icon: <FaStar />, val: '4.9/5', label: 'Đánh giá Google' },
+    { icon: <RiAwardFill />, val: '20+', label: 'Bác sĩ chuyên khoa' },
+    { icon: <FaStar />, val: '4.9/5', label: 'Đánh giá từ bệnh nhân' },
   ];
 
   return (
     <div className="flex flex-col bg-background">
-
-      {/* ── Promotional Banner Popup ── */}
-      {showBanner && (
-        <PromoBanner 
-          onClose={() => setShowBanner(false)} 
-          onBookNow={() => navigate('/book')} 
-        />
-      )}
 
       {/* ── News Ticker ── */}
       <div className="bg-primary text-on-primary py-1.5 overflow-hidden">
@@ -349,88 +72,222 @@ export const Home: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Hero Section ── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#00478d] via-[#005fa8] to-[#006d33] px-6 md:px-16 py-20 min-h-[580px] flex flex-col md:flex-row items-center gap-12">
-        {/* Decorative blobs */}
-        <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full bg-white/5 translate-y-1/2 -translate-x-1/4 pointer-events-none"></div>
+      {/* ── Hero Carousel Banner Section (Tự động chuyển slide) ── */}
+      {(() => {
+        const HERO_SLIDES = [
+          {
+            tag: 'Giải pháp nha khoa 4.0 hàng đầu',
+            titleLine1: 'Nâng Tầm Trải Nghiệm',
+            titleLine2: 'Chăm Sóc Răng Miệng',
+            desc: 'Hệ thống nha khoa chuyên sâu với công nghệ chuẩn quốc tế ISO 13485. Tối ưu hóa quy trình từ đặt lịch, chẩn đoán 3D đến thanh toán.',
+            btnText: 'Đặt lịch khám ngay',
+            btnLink: '/book',
+            badgeText: 'Đã phục vụ 15,000+ bệnh nhân',
+            image: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1200&q=80',
+          },
+          {
+            tag: 'Công nghệ Quét 3D iTero 5D',
+            titleLine1: 'Niềng Răng Thẩm Mỹ',
+            titleLine2: 'Đều Đẹp Tự Nhiên',
+            desc: 'Xem trước mô phỏng kết quả niềng răng ngay trên màn hình 3D. Hỗ trợ trả góp 0% lãi suất chỉ từ 1.000.000đ/tháng.',
+            btnText: 'Tư vấn niềng răng 0đ',
+            btnLink: '/book',
+            badgeText: 'Tặng bộ máng duy trì 3 triệu',
+            image: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=1200&q=80',
+          },
+          {
+            tag: 'Phục hình răng chuyên sâu',
+            titleLine1: 'Cấy Ghép Implant Thụy Sĩ',
+            titleLine2: 'Bảo Hành 25 Năm',
+            desc: 'Khôi phục răng đã mất chắc chắn như răng thật. Sử dụng trụ Implant Straumann chính hãng, tặng mão sứ trị giá 5.000.000đ.',
+            btnText: 'Khám & Chụp X-Quang 0đ',
+            btnLink: '/book',
+            badgeText: 'Bảo hành chính hãng 25 năm',
+            image: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=1200&q=80',
+          },
+          {
+            tag: 'Công nghệ Laser Whitening Hoa Kỳ',
+            titleLine1: 'Tẩy Trắng Răng Premium',
+            titleLine2: 'Bật Tông Sau 45 Phút',
+            desc: 'Tẩy trắng răng êm ái không ê buốt bằng ánh sáng Laser lạnh. Giảm ngay 30% cho bệnh nhân đặt lịch hẹn trực tuyến.',
+            btnText: 'Nhận ưu đãi giảm 30%',
+            btnLink: '/book',
+            badgeText: 'Cam kết trắng sáng tức thì',
+            image: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1200&q=80',
+          },
+        ];
 
-        <div className="flex-1 space-y-6 max-w-2xl relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/15 text-white/90 rounded-full text-xs font-bold border border-white/20">
-            <Icon name="verified" className="text-[16px]" />
-            Giải pháp nha khoa 4.0 hàng đầu Việt Nam
-          </div>
-          <h1 className="font-headline-lg text-headline-lg text-white leading-tight">
-            Nâng Tầm Trải Nghiệm <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-green-300">Chăm Sóc Răng Miệng</span>
-          </h1>
-          <p className="text-white/80 text-lg max-w-lg leading-relaxed">
-            Hệ thống nha khoa chuyên sâu với công nghệ chuẩn quốc tế. Tối ưu hóa quy trình từ đặt lịch, chẩn đoán đến thanh toán.
-          </p>
-          <div className="flex flex-wrap gap-4 pt-2">
-            <button
-              onClick={() => navigate('/book')}
-              className="bg-white text-primary px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 hover:shadow-xl active:scale-95 transition-all cursor-pointer"
-            >
-              Đặt lịch khám ngay
-              <Icon name="arrow_forward" className="text-[18px]" />
-            </button>
-            <button
-              onClick={() => navigate('/services')}
-              className="border border-outline-variant bg-white text-on-surface px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-surface-container-low transition-all cursor-pointer"
-            >
-              Xem dịch vụ
-            </button>
-          </div>
-          <div className="flex items-center gap-4 pt-4 border-t border-outline-variant/30">
-            <div className="flex -space-x-3">
-              {[
-                'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=500&q=80',
-                'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=500&q=80',
-              ].map((src, i) => (
-                <img key={i} src={src} alt="Doctor" className="w-10 h-10 rounded-full border-2 border-white object-cover" />
-              ))}
-              <div className="w-10 h-10 rounded-full border-2 border-white bg-primary-container text-white flex items-center justify-center text-xs font-bold">+500</div>
-            </div>
-            <p className="text-sm font-medium text-on-surface-variant">
-               Được tin dùng bởi <span className="text-primary font-bold">500+</span> phòng khám trên toàn quốc
-            </p>
-          </div>
-        </div>
-        <div className="flex-1 relative">
-          <div className="relative z-10 rounded-2xl overflow-hidden shadow-2xl border border-white/50">
-            <img
-              alt="Dental Clinic Dashboard"
-              className="w-full object-cover"
-              src="https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1200&q=80"
-            />
-          </div>
-          <div className="absolute -top-6 -right-6 bg-white p-4 rounded-xl shadow-xl z-20 hidden lg:block border border-outline-variant">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-secondary-container rounded-full flex items-center justify-center text-on-secondary-container">
-                <Icon name="pending_actions" />
+        const [heroIdx, setHeroIdx] = useState(0);
+
+        useEffect(() => {
+          const heroTimer = setInterval(() => {
+            setHeroIdx((prev) => (prev + 1) % HERO_SLIDES.length);
+          }, 5000);
+          return () => clearInterval(heroTimer);
+        }, []);
+
+        const currentHero = HERO_SLIDES[heroIdx];
+
+        return (
+          <section className="relative overflow-hidden bg-gradient-to-br from-[#00478d] via-[#005fa8] to-[#006d33] px-6 md:px-16 py-16 md:py-20 min-h-[580px] flex flex-col justify-between transition-all duration-700">
+            {/* Background Decorative Circles */}
+            <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full bg-white/5 translate-y-1/2 -translate-x-1/4 pointer-events-none"></div>
+
+            <div className="flex flex-col md:flex-row items-center gap-12 relative z-10 my-auto">
+              {/* Left Content */}
+              <div className="flex-1 space-y-6 max-w-2xl">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white/15 text-white/95 rounded-full text-xs font-extrabold border border-white/20 shadow-sm backdrop-blur-md">
+                  <Icon name="verified" className="text-base text-yellow-300" />
+                  {currentHero.tag}
+                </div>
+
+                <h1 className="font-headline-lg text-headline-lg text-white leading-tight">
+                  {currentHero.titleLine1} <br />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-emerald-200 to-green-300">
+                    {currentHero.titleLine2}
+                  </span>
+                </h1>
+
+                <p className="text-white/85 text-base md:text-lg max-w-lg leading-relaxed font-medium">
+                  {currentHero.desc}
+                </p>
+                
+                <div className="flex flex-wrap items-center gap-4 pt-2">
+                  <button
+                    onClick={() => navigate(currentHero.btnLink)}
+                    className="group relative overflow-hidden bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 text-[#003366] px-8 py-4 rounded-xl font-extrabold flex items-center gap-3 shadow-xl hover:shadow-2xl hover:shadow-emerald-400/30 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer text-base"
+                  >
+                    <span className="absolute inset-0 w-1/2 h-full bg-white/40 skew-x-[-20deg] group-hover:translate-x-[300%] transition-transform duration-1000 ease-out"></span>
+                    <span className="relative z-10 flex items-center gap-2">
+                      <Icon name="calendar_month" className="text-xl" />
+                      {currentHero.btnText}
+                    </span>
+                    <Icon name="arrow_forward" className="text-xl relative z-10 group-hover:translate-x-1.5 transition-transform duration-300" />
+                  </button>
+                  <button
+                    onClick={() => navigate('/services')}
+                    className="group bg-white/10 hover:bg-white/20 text-white border border-white/30 backdrop-blur-md px-7 py-4 rounded-xl font-bold flex items-center gap-2.5 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer text-base shadow-lg"
+                  >
+                    <span>Xem dịch vụ & Bảng giá</span>
+                    <Icon name="read_more" className="text-lg opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-4 pt-4 border-t border-white/20">
+                  <div className="flex -space-x-3">
+                    {[
+                      'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=500&q=80',
+                      'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=500&q=80',
+                    ].map((src, i) => (
+                      <img key={i} src={src} alt="Doctor" className="w-10 h-10 rounded-full border-2 border-white object-cover" />
+                    ))}
+                    <div className="w-10 h-10 rounded-full border-2 border-white bg-primary-container text-white flex items-center justify-center text-xs font-bold">+500</div>
+                  </div>
+                  <p className="text-sm font-semibold text-white/95">
+                     ★ <span className="text-yellow-300 font-bold">{currentHero.badgeText}</span>
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-on-surface-variant">Hàng chờ thực tế</p>
-                <p className="font-bold text-secondary">08 Bệnh nhân</p>
+
+              {/* Right Image Container (Đã bỏ thẻ hàng chờ 08 bệnh nhân) */}
+              <div className="flex-1 relative w-full">
+                <div className="relative z-10 rounded-2xl overflow-hidden shadow-2xl border border-white/40 bg-slate-800">
+                  <img
+                    alt={currentHero.titleLine1}
+                    className="w-full h-[360px] md:h-[420px] object-cover transition-all duration-700 hover:scale-105"
+                    src={currentHero.image}
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+
+            {/* Slider Bottom Controls & Dots */}
+            <div className="relative z-20 flex items-center justify-between pt-6 border-t border-white/10 mt-6">
+              <div className="flex items-center gap-2">
+                {HERO_SLIDES.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setHeroIdx(idx)}
+                    className={`h-2.5 rounded-full transition-all cursor-pointer ${
+                      idx === heroIdx ? 'w-10 bg-yellow-300' : 'w-3 bg-white/40 hover:bg-white/70'
+                    }`}
+                    title={`Banner ${idx + 1}`}
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setHeroIdx((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)}
+                  className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md border border-white/20"
+                  title="Banner trước"
+                >
+                  <FaChevronLeft className="text-xs" />
+                </button>
+                <span className="text-xs font-mono font-bold text-white/80 px-1">
+                  0{heroIdx + 1} / 0{HERO_SLIDES.length}
+                </span>
+                <button
+                  onClick={() => setHeroIdx((prev) => (prev + 1) % HERO_SLIDES.length)}
+                  className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md border border-white/20"
+                  title="Banner tiếp theo"
+                >
+                  <FaChevronRight className="text-xs" />
+                </button>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* ── Stats Bar ── */}
-      <section className="bg-primary text-on-primary py-8 px-6 md:px-16">
+      <section className="bg-primary text-on-primary py-8 px-6 md:px-16 shadow-inner">
         <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
           {stats.map((stat, i) => (
             <div key={i} className="flex flex-col items-center gap-2">
-              <div className="text-3xl opacity-80">
+              <div className="text-3xl opacity-85">
                 {stat.icon}
               </div>
               <p className="text-3xl font-extrabold">{stat.val}</p>
-              <p className="text-sm opacity-75 font-semibold">{stat.label}</p>
+              <p className="text-sm opacity-80 font-semibold">{stat.label}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── Section MỚI: Quy Trình Khám Chữa Chuẩn Y Khoa 4 Bước ── */}
+      <section className="px-6 md:px-16 py-16 bg-white border-b border-slate-100">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full uppercase tracking-wider">
+              Quy Trình Chuyên Nghiệp
+            </span>
+            <h2 className="font-headline-lg text-headline-lg text-on-surface mt-3">4 Bước Khám & Điều Trị Chuẩn Y Khoa</h2>
+            <p className="text-body-lg text-on-surface-variant mt-2 max-w-2xl mx-auto">
+              GoodSmile áp dụng quy trình khám chữa khép kín, minh bạch và an toàn tuyệt đối cho bệnh nhân.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 relative">
+            {[
+              { step: '01', title: 'Đặt Lịch Trực Tuyến', desc: 'Chọn giờ khám & bác sĩ mong muốn qua Website/App. Nhận mã xác nhận tức thì.', icon: 'calendar_month' },
+              { step: '02', title: 'Check-in & Tiếp Đón', desc: 'Đến quầy lễ tân quét mã QR check-in trong 30 giây, không phải xếp hàng chờ đợi.', icon: 'qr_code_scanner' },
+              { step: '03', title: 'Khám & Chẩn Đoán 3D', desc: 'Chụp phim X-quang Panorama/Cone Beam 3D, bác sĩ lập phác đồ chi tiết.', icon: 'biotech' },
+              { step: '04', title: 'Điều Trị & Bảo Hành', desc: 'Thực hiện dịch vụ bằng công nghệ chuẩn y khoa, nhận đơn thuốc & thẻ bảo hành điện tử.', icon: 'verified' },
+            ].map((item, index) => (
+              <div key={index} className="bg-slate-50 border border-slate-200/80 rounded-2xl p-6 relative hover:shadow-lg hover:border-primary/40 transition-all duration-300 group">
+                <span className="text-4xl font-black text-slate-200 group-hover:text-primary/20 transition-colors absolute top-4 right-4 font-mono">
+                  {item.step}
+                </span>
+                <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center text-primary text-2xl mb-4 group-hover:bg-primary group-hover:text-white transition-all">
+                  <Icon name={item.icon} />
+                </div>
+                <h3 className="font-bold text-base text-slate-800 mb-2">{item.title}</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -527,6 +384,62 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
+      {/* ── Section MỚI: Công Nghệ & Trang Thiết Bị Hiện Đại ── */}
+      <section className="px-6 md:px-16 py-16 bg-slate-900 text-white relative overflow-hidden">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12 space-y-3">
+            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full uppercase tracking-wider">
+              Trang Thiết Bị Tân Tiến
+            </span>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-white">Công Nghệ Nha Khoa Chuẩn ISO & FDA</h2>
+            <p className="text-slate-400 text-sm max-w-2xl mx-auto">
+              Đầu tư hệ thống máy móc chẩn đoán và điều trị hiện đại bậc nhất nhập khẩu từ Đức, Hoa Kỳ & Thụy Sĩ.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                title: 'Máy Chụp X-Quang Cone Beam 3D',
+                desc: 'Tái tạo hình ảnh cấu trúc xương hàm 3D sắc nét chỉ trong 10 giây, hỗ trợ lập phác đồ cấy ghép Implant chính xác 99.9%.',
+                tag: 'Công nghệ Đức',
+                img: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=600&q=80',
+              },
+              {
+                title: 'Máy Quét Dấu Răng 3D iTero 5D',
+                desc: 'Lấy dấu răng kỹ thuật số không cần dùng thạch cao, xem trước kết quả niềng răng mô phỏng ngay trên màn hình.',
+                tag: 'Công nghệ Hoa Kỳ',
+                img: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=600&q=80',
+              },
+              {
+                title: 'Hệ Thống Tẩy Trắng Răng Laser Whitening',
+                desc: 'Sử dụng ánh sáng Laser lạnh tác động cắt đứt chuỗi màu chất hữu cơ, mang lại nụ cười trắng sáng êm ái không ê buốt.',
+                tag: 'Tiêu chuẩn FDA',
+                img: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=600&q=80',
+              },
+            ].map((tech, idx) => (
+              <div key={idx} className="bg-slate-800/80 border border-slate-700/80 rounded-2xl overflow-hidden shadow-lg hover:border-emerald-500/50 transition-all duration-300 flex flex-col justify-between">
+                <div className="h-48 overflow-hidden relative">
+                  <img src={tech.img} alt={tech.title} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+                  <span className="absolute top-3 right-3 bg-emerald-500/90 backdrop-blur-md text-slate-950 font-bold text-[10px] uppercase px-2.5 py-1 rounded-full shadow-sm">
+                    {tech.tag}
+                  </span>
+                </div>
+                <div className="p-6 space-y-2 flex-1 flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-bold text-base text-white mb-1.5">{tech.title}</h3>
+                    <p className="text-xs text-slate-400 leading-relaxed">{tech.desc}</p>
+                  </div>
+                  <div className="pt-4 flex items-center gap-1.5 text-xs text-emerald-400 font-bold">
+                    <MdVerified /> Đã kiểm định an toàn y tế
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── Experts Section ── */}
       <section className="px-6 md:px-16 py-16 bg-surface-container-lowest overflow-hidden">
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12">
@@ -566,6 +479,26 @@ export const Home: React.FC = () => {
               Tìm hiểu về đội ngũ →
             </button>
           </div>
+        </div>
+      </section>
+
+      {/* ── Section MỚI: Cam Kết & Chính Sách Bảo Hành Minh Bạch ── */}
+      <section className="px-6 md:px-16 py-14 bg-gradient-to-r from-emerald-700 via-teal-700 to-blue-800 text-white">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6 text-center">
+          {[
+            { icon: <MdSecurity className="text-3xl" />, title: 'Bảo Hành Đến 25 Năm', desc: 'Thẻ bảo hành điện tử chính hãng cho dịch vụ Implant & Răng sứ.' },
+            { icon: <MdVerified className="text-3xl" />, title: 'Chi Phí Trọn Gói', desc: 'Báo giá minh bạch trước khi điều trị, cam kết không phát sinh chi phí.' },
+            { icon: <MdBiotech className="text-3xl" />, title: 'Vô Trùng Chuẩn ISO', desc: 'Hệ thống vô trùng 1 chiều đảm bảo an toàn tuyệt đối tránh lây nhiễm chéo.' },
+            { icon: <RiAwardFill className="text-3xl" />, title: 'Bác Sĩ Trực Tiếp Khám', desc: '100% ca điều trị được thực hiện trực tiếp bởi bác sĩ chuyên khoa.' },
+          ].map((c, idx) => (
+            <div key={idx} className="flex flex-col items-center gap-2 p-4 bg-white/10 rounded-2xl backdrop-blur-md border border-white/15">
+              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-white mb-1">
+                {c.icon}
+              </div>
+              <h3 className="font-bold text-base">{c.title}</h3>
+              <p className="text-xs text-white/80 leading-relaxed">{c.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -677,6 +610,9 @@ export const Home: React.FC = () => {
           <p className="text-xs opacity-60">Hotline: 1800-SMILE • Thứ 2 – Chủ nhật: 7:00 – 20:00</p>
         </div>
       </section>
+
+      {/* ── AI Chatbot Widget (Floating) ── */}
+      <AIChatbot />
 
     </div>
   );

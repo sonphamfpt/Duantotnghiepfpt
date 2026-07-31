@@ -1,7 +1,7 @@
 import { ReviewStatus, ReviewSentiment } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../middlewares/errorHandler';
-import { generateAIReply } from '../../services/aiReplyService';
+import { generateAIReply, moderateContent } from '../../services/aiReplyService';
 
 interface CreateReviewParams {
   patientId: bigint;
@@ -12,7 +12,7 @@ interface CreateReviewParams {
 }
 
 /**
- * Tạo mới bài đánh giá dịch vụ & Tự động chạy AI Sentiment Analysis + Auto-Reply
+ * Tạo mới bài đánh giá dịch vụ & Tự động chạy AI Moderation + Sentiment + Auto-Reply
  */
 export async function createReview(params: CreateReviewParams) {
   const { patientId, appointmentId, serviceId, rating, comment } = params;
@@ -54,7 +54,13 @@ export async function createReview(params: CreateReviewParams) {
     if (srv) serviceName = srv.name;
   }
 
-  // 4. Gọi AI Service phân tích cảm xúc & tạo phản hồi tự động
+  // 4. AI Kiểm duyệt nội dung (chạy TRƯỚC khi lưu)
+  const moderation = moderateContent(comment, rating);
+  const autoStatus = moderation.isAppropriate
+    ? ReviewStatus.Approved   // Nội dung sạch → duyệt ngay
+    : ReviewStatus.Hidden;    // Nội dung bất lịch sự / spam → ẩn, chờ manager
+
+  // 5. AI Phân tích cảm xúc & tạo phản hồi tự động
   const patientName = patient.user?.fullName || patient.fullName;
   const { sentiment, aiReply } = generateAIReply({
     patientName,
@@ -63,7 +69,11 @@ export async function createReview(params: CreateReviewParams) {
     comment,
   });
 
-  // 5. Lưu vào CSDL
+  // 6. Lưu vào CSDL — gắn lý do kiểm duyệt vào aiReply nếu bị ẩn
+  const finalAiReply = moderation.isAppropriate
+    ? aiReply
+    : `[🛡️ AI MODERATION — ${moderation.confidence}] Bình luận bị ẩn tự động. Lý do: ${moderation.reason}`;
+
   const review = await prisma.serviceReview.create({
     data: {
       patientId,
@@ -72,9 +82,9 @@ export async function createReview(params: CreateReviewParams) {
       rating,
       comment,
       sentiment,
-      aiReply,
+      aiReply: finalAiReply,
       aiRepliedAt: new Date(),
-      status: ReviewStatus.Approved,
+      status: autoStatus,
     },
     include: {
       patient: { include: { user: true } },

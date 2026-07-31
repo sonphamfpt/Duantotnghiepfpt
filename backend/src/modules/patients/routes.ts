@@ -29,6 +29,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       name: p.fullName,
       phone: p.phone,
       age: p.dateOfBirth ? calcAge(p.dateOfBirth) : null,
+      dateOfBirth: p.dateOfBirth ? p.dateOfBirth.toISOString().split('T')[0] : null,
       gender: p.gender || null,
       criticalAllergy: p.criticalAllergy || 'Không',
       condition: p.medicalCondition || 'Bình thường',

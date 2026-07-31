@@ -142,6 +142,8 @@ export const ManagerRbac: React.FC = () => {
     } catch (err) {
       console.error('Lỗi khi thay đổi trạng thái:', err);
       alert('Không thể thay đổi trạng thái hoạt động.');
+    } finally {
+      setConfirmLock(null);
     }
   };
 
@@ -372,12 +374,25 @@ export const ManagerRbac: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button
-                      onClick={() => handleToggleStatus(member.id)}
+                      onClick={async () => {
+                        const isLocking = member.status === 'Active';
+                        if (isLocking) {
+                          const confirmed = await showConfirm({
+                            title: '⚠️ Xác nhận Ngưng Hoạt Động Tài Khoản',
+                            message: `Bạn có chắc chắn muốn KHÓA tài khoản của nhân viên "${member.name}" (${member.roleName}) không?\n\n• Nhân viên sẽ nhận thông báo cảnh báo ngay lập tức trên màn hình\n• Tài khoản sẽ bị đăng xuất bắt buộc sau 5 giây\n• Nhân viên sẽ không thể đăng nhập lại cho đến khi được mở khóa`,
+                            type: 'error',
+                            confirmLabel: '🔒 Xác nhận Khóa Tài Khoản',
+                            cancelLabel: 'Hủy bỏ',
+                          });
+                          if (!confirmed) return;
+                        }
+                        handleToggleStatus(member.id);
+                      }}
                       className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${member.status === 'Active'
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                          : 'bg-red-100 text-red-800 border border-red-200'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-red-50 hover:border-red-300 hover:text-red-700'
+                          : 'bg-red-100 text-red-800 border border-red-200 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700'
                         }`}
-                      title="Click để khoá/kích hoạt tài khoản"
+                      title={member.status === 'Active' ? 'Click để khóa tài khoản — nhân viên sẽ bị đăng xuất ngay' : 'Click để kích hoạt lại tài khoản'}
                     >
                       {member.status === 'Active' ? 'HOẠT ĐỘNG' : 'TẠM KHOÁ'}
                     </button>

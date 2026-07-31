@@ -69,6 +69,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [token, setToken] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [lockModal, setLockModal] = useState<{
+    visible: boolean;
+    countdown: number;
+    type: 'deactivated' | 'permission';
+    moduleName?: string;
+  } | null>(null);
+
+  // Đếm ngược & tự đăng xuất khi modal hiện
+  useEffect(() => {
+    if (!lockModal?.visible) return;
+    if (lockModal.countdown <= 0) {
+      logout();
+      window.location.href = '/login';
+      return;
+    }
+    const timer = setTimeout(() => {
+      setLockModal(prev => prev ? { ...prev, countdown: prev.countdown - 1 } : null);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [lockModal]);
 
   // Khôi phục phiên đăng nhập khi load trang từ localStorage token
   React.useEffect(() => {
@@ -135,9 +155,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const handleStatusChanged = (data: { userId: string; status: string }) => {
       if (user && user.rawUserId && String(user.rawUserId) === String(data.userId)) {
         if (data.status === 'Inactive') {
-          alert('⚠️ THÔNG BÁO TỪ HỆ THỐNG:\nTài khoản của bạn đã bị NGƯNG HOẠT ĐỘNG bởi Quản trị viên phòng khám.\nBạn sẽ được tự động đăng xuất khỏi hệ thống ngay lập tức.');
-          logout();
-          window.location.href = '/login';
+          setLockModal({ visible: true, countdown: 5, type: 'deactivated' });
         }
       }
     };
@@ -168,9 +186,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         if (isRevoked) {
-          alert(`⚠️ THÔNG BÁO TỪ HỆ THỐNG:\nQuyền truy cập phân hệ ${moduleName} của bạn đã bị Quản trị viên thu hồi.\nBạn sẽ được tự động đăng xuất khỏi hệ thống ngay lập tức.`);
-          logout();
-          window.location.href = '/login';
+          setLockModal({ visible: true, countdown: 5, type: 'permission', moduleName });
         }
       }
     };
@@ -252,6 +268,79 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return (
     <AuthContext.Provider value={{ role, user, token, isAuthenticated, isInitializing, loginWithCredentials, logout, registerPatient }}>
       {children}
+
+      {/* ── Modal Cảnh báo Tài khoản bị Khóa / Quyền bị Thu hồi ── */}
+      {lockModal?.visible && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99999,
+          background: 'rgba(0,0,0,0.85)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(6px)',
+        }}>
+          <div style={{
+            background: '#1a1a2e',
+            border: '2px solid #ef4444',
+            borderRadius: '16px',
+            padding: '40px 48px',
+            maxWidth: '480px',
+            width: '90%',
+            textAlign: 'center',
+            boxShadow: '0 0 60px rgba(239,68,68,0.4)',
+            animation: 'fadeIn 0.3s ease',
+          }}>
+            {/* Icon cảnh báo */}
+            <div style={{
+              width: 72, height: 72, borderRadius: '50%',
+              background: 'rgba(239,68,68,0.15)',
+              border: '2px solid #ef4444',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 20px',
+            }}>
+              <span style={{ fontSize: 36 }}>🔒</span>
+            </div>
+
+            <h2 style={{ color: '#ef4444', fontSize: 20, fontWeight: 800, marginBottom: 12, letterSpacing: 0.5 }}>
+              {lockModal.type === 'deactivated'
+                ? 'TÀI KHOẢN BỊ NGƯNG HOẠT ĐỘNG'
+                : 'QUYỀN TRUY CẬP BỊ THU HỒI'}
+            </h2>
+
+            <p style={{ color: '#fca5a5', fontSize: 14, lineHeight: 1.6, marginBottom: 8 }}>
+              {lockModal.type === 'deactivated'
+                ? 'Tài khoản của bạn đã bị Quản trị viên phòng khám ngưng hoạt động.'
+                : `Quyền truy cập phân hệ "${lockModal.moduleName}" của bạn đã bị thu hồi bởi Quản trị viên.`}
+            </p>
+            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 28 }}>
+              Mọi thay đổi dữ liệu đang thực hiện sẽ được lưu lại. Vui lòng liên hệ Quản trị viên để biết thêm thông tin.
+            </p>
+
+            {/* Countdown */}
+            <div style={{
+              background: 'rgba(239,68,68,0.1)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: 12, padding: '16px 24px', marginBottom: 24,
+            }}>
+              <p style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>Tự động đăng xuất sau</p>
+              <p style={{ color: '#ef4444', fontSize: 40, fontWeight: 900, fontFamily: 'monospace', lineHeight: 1 }}>
+                {lockModal.countdown}
+              </p>
+              <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>giây</p>
+            </div>
+
+            <button
+              onClick={() => { logout(); window.location.href = '/login'; }}
+              style={{
+                background: '#ef4444', color: '#fff',
+                border: 'none', borderRadius: 8,
+                padding: '12px 32px', fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', width: '100%',
+              }}
+            >
+              Đăng xuất ngay
+            </button>
+          </div>
+        </div>
+      )}
     </AuthContext.Provider>
   );
 };

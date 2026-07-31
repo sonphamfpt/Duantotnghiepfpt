@@ -1,10 +1,42 @@
-import React from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { exportToExcel } from '../../../utils/exportToExcel';
 
 export const ManagerOverview: React.FC = () => {
   const { queue, invoices, appointments, logs } = useClinic();
+
+  // ── Đồng hồ real-time cho widget live log ──────────────────────────────
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const todayLabel = now.toLocaleDateString('vi-VN', {
+    weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric'
+  });
+
+  // Lọc log của ngày hôm nay — dùng createdAt ISO từ backend (đã fix)
+  const todayLogs = useMemo(() => {
+    const todayStart = new Date(
+      now.getFullYear(), now.getMonth(), now.getDate()
+    ).getTime();
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
+    return logs.filter(log => {
+      // Ưu tiên createdAt ISO (full timestamp), fallback sang time nếu cần
+      const isoTime = (log as any).createdAt;
+      if (isoTime && !/^\d{2}:\d{2}:\d{2}$/.test(isoTime)) {
+        // ISO string đầy đủ → parse chính xác
+        const ms = new Date(isoTime).getTime();
+        return ms >= todayStart && ms <= todayEnd;
+      }
+      // Fallback: HH:MM:SS thuần (legacy) → không thể xác định ngày → bỏ qua
+      return false;
+    });
+  }, [logs, now]);
+  // ───────────────────────────────────────────────────────────────────────
 
   const handleExportExcel = () => {
     const exportData = invoices.map((i) => ({
@@ -239,14 +271,17 @@ export const ManagerOverview: React.FC = () => {
           <div className="flex items-center justify-between mb-3 shrink-0">
             <h3 className="font-bold text-xs uppercase text-white tracking-widest flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping"></span>
-              Nhật Ký Hệ Thống Live
+              Nhật Ký Live
             </h3>
-            <span className="font-data-mono text-[9px] text-outline">AUTO SYNC</span>
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="font-data-mono text-[9px] text-green-400 font-bold">AUTO SYNC</span>
+              <span className="font-data-mono text-[9px] text-outline">{todayLabel}</span>
+            </div>
           </div>
 
           <div className="flex-1 font-data-mono text-[10px] space-y-2.5 text-primary-fixed-dim/80 overflow-y-auto pr-2 custom-scrollbar my-2">
-            {logs.length > 0 ? (
-              logs.map((log) => {
+            {todayLogs.length > 0 ? (
+              todayLogs.map((log) => {
                 let typeColor = 'text-white/80';
                 if (log.type === 'SUCCESS') typeColor = 'text-green-400';
                 else if (log.type === 'WARN') typeColor = 'text-yellow-400';
@@ -254,14 +289,17 @@ export const ManagerOverview: React.FC = () => {
 
                 return (
                   <p key={log.id} className="leading-relaxed border-b border-white/5 pb-1">
-                    <span className="text-secondary-fixed">[{log.time}]</span>{' '}
+                    <span className="text-secondary-fixed">[{(log as any).time || new Date((log as any).createdAt).toLocaleTimeString('vi-VN')}]</span>{' '}
                     <span className="font-bold text-white">[{log.module}]</span>{' '}
                     <span className={typeColor}>{log.message}</span>
                   </p>
                 );
               })
             ) : (
-              <p className="text-outline italic text-center py-10">Không có bản ghi log nào hôm nay.</p>
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-outline">
+                <Icon name="event_busy" className="text-[28px] opacity-40" />
+                <p className="italic text-center text-[10px] opacity-60">Chưa có hoạt động nào hôm nay.<br />{todayLabel}</p>
+              </div>
             )}
           </div>
 

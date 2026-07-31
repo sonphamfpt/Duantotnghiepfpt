@@ -121,33 +121,45 @@ const PatientHome: React.FC = () => {
   const upcomingAppointments = myAppointments.filter(a => a.status === 'Confirmed' || a.status === 'In-Progress');
   
   // Xác định tiến độ điều trị hiện tại (Quy trình khám)
-  const isCheckedIn = queue.some(q => (cleanId(q.patientId) === targetPatientId || q.patientId === rawPatientId) && q.status !== 'Completed');
+  // Thực tế: Đặt lịch (1) → Check-in (2) → Đang khám (3) → Chờ thanh toán (4) → Hoàn thành (5)
+  const isInChair = queue.some(q =>
+    (cleanId(q.patientId) === targetPatientId || q.patientId === rawPatientId) &&
+    q.status === 'In Chair'
+  );
+  const isCheckedIn = queue.some(q =>
+    (cleanId(q.patientId) === targetPatientId || q.patientId === rawPatientId) &&
+    (q.status === 'Waiting' || q.status === 'In Chair')
+  );
+
   let currentStep = 0;
-  
-  if (myAppointments.length > 0) {
-    const latestAppointment = [...myAppointments].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())[0];
-    currentStep = 1; // Đã đặt lịch
-    
-    if (latestAppointment.status === 'In-Progress' || isCheckedIn) {
-      currentStep = 2; // Đã check-in / Đang chờ
-    } else if (latestAppointment.status === 'Completed') {
-      currentStep = 3; // Đã khám xong
-      
-      // BUG-M02: Chỉ lên bước 4 khi thực sự CÓ hóa đơn đã thanh toán.
-      // Tránh bệnh nhân mới (invoices=[]) bị hiển thị sai là "Đã thanh toán"
-      const hasPaidInvoice = paidInvoicesCount > 0;
-      const hasPendingInvoice = pendingInvoices.length > 0;
-      if (hasPaidInvoice && !hasPendingInvoice) {
-        currentStep = 4; // Đã thanh toán
-      }
-    }
+
+  // Ưu tiên 1: Đang có hóa đơn chờ thanh toán → Bước 4 "Chờ thanh toán"
+  if (pendingInvoices.length > 0) {
+    currentStep = 4;
+  }
+  // Ưu tiên 2: Đã thanh toán hết → Bước 5 "Hoàn thành"
+  else if (paidInvoicesCount > 0 && pendingInvoices.length === 0) {
+    currentStep = 5;
+  }
+  // Ưu tiên 3: Đang ngồi trên ghế khám → Bước 3 "Đang khám"
+  else if (isInChair) {
+    currentStep = 3;
+  }
+  // Ưu tiên 4: Đã check-in, đang chờ → Bước 2 "Check-in"
+  else if (isCheckedIn) {
+    currentStep = 2;
+  }
+  // Ưu tiên 5: Đã đặt lịch → Bước 1 "Đặt lịch"
+  else if (myAppointments.some(a => a.status === 'Confirmed' || a.status === 'In-Progress')) {
+    currentStep = 1;
   }
 
   const workflowSteps = [
-    { label: 'Đặt lịch', done: currentStep >= 1, active: currentStep === 1 },
-    { label: 'Check-in', done: currentStep >= 2, active: currentStep === 2 },
-    { label: 'Khám bệnh', done: currentStep >= 3, active: currentStep === 3 },
-    { label: 'Thanh toán', done: currentStep >= 4, active: currentStep === 4 },
+    { label: 'Đặt lịch',       done: currentStep >= 1, active: currentStep === 1 },
+    { label: 'Check-in',       done: currentStep >= 2, active: currentStep === 2 },
+    { label: 'Đang khám',      done: currentStep >= 3, active: currentStep === 3 },
+    { label: 'Chờ thanh toán', done: currentStep >= 4, active: currentStep === 4 },
+    { label: 'Hoàn thành',     done: currentStep >= 5, active: currentStep === 5 },
   ];
   return (
     <div className="p-stack-lg grid grid-cols-12 gap-gutter">
@@ -178,8 +190,15 @@ const PatientHome: React.FC = () => {
         <div className="bg-white rounded-xl border border-outline-variant p-6 role-accent-patient">
           <div className="flex justify-between items-center mb-6">
             <h4 className="font-headline-sm text-headline-sm">Quy trình khám bệnh</h4>
-            <span className="px-3 py-1 bg-secondary-container text-on-secondary-container text-label-md font-bold rounded-full">
-              {currentStep === 4 ? 'Hoàn thành' : (currentStep > 0 ? 'Đang thực hiện' : 'Chưa bắt đầu')}
+            <span className={`px-3 py-1 text-label-md font-bold rounded-full ${
+              currentStep === 5 ? 'bg-green-100 text-green-800' :
+              currentStep === 4 ? 'bg-amber-100 text-amber-800' :
+              currentStep > 0  ? 'bg-secondary-container text-on-secondary-container' :
+              'bg-surface-container text-on-surface-variant'
+            }`}>
+              {currentStep === 5 ? '✓ Hoàn thành' :
+               currentStep === 4 ? '⏳ Chờ thanh toán' :
+               currentStep > 0  ? 'Đang thực hiện' : 'Chưa bắt đầu'}
             </span>
           </div>
           <div className="flex items-center justify-between px-4 py-4 relative">
@@ -189,20 +208,30 @@ const PatientHome: React.FC = () => {
               style={{ width: currentStep > 0 ? `${((currentStep - 1) / (workflowSteps.length - 1)) * 100}%` : '0%' }}
             ></div>
 
-            {workflowSteps.map((milestone, i) => (
+            {workflowSteps.map((milestone, i) => {
+              const stepIcons = ['calendar_month', 'login', 'dentistry', 'payments', 'check_circle'];
+              const activeColor = i === 3
+                ? 'bg-amber-500 text-white animate-pulse'
+                : i === 4 ? 'bg-green-500 text-white'
+                : 'bg-secondary text-on-secondary animate-pulse';
+              const doneColor = i === 4 ? 'bg-green-500 text-white' : 'bg-secondary text-on-secondary';
+              return (
               <div key={i} className="z-10 flex flex-col items-center">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-md ${
-                  milestone.done ? 'bg-secondary text-on-secondary' :
-                  milestone.active ? 'bg-secondary text-on-secondary animate-pulse' :
+                  milestone.active ? activeColor :
+                  milestone.done   ? doneColor :
                   'bg-surface-container text-outline border border-outline-variant'
                 }`}>
-                <Icon name={milestone.done || milestone.active ? (milestone.active ? 'medical_services' : 'check') : 'verified'} />
-              </div>
-                <p className={`mt-2 text-label-md font-bold ${milestone.done || milestone.active ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+                  <Icon name={milestone.done && !milestone.active ? 'check' : stepIcons[i]} />
+                </div>
+                <p className={`mt-2 text-label-md font-bold text-center leading-tight ${
+                  milestone.done || milestone.active ? 'text-on-surface' : 'text-on-surface-variant'
+                }`}>
                   {milestone.label}
                 </p>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
 
