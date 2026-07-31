@@ -550,6 +550,8 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         name: newServiceData.name,
         price: newServiceData.price,
         durationMin: newServiceData.durationMin,
+        description: newServiceData.description,
+        imageUrl: newServiceData.imageUrl,
       });
       if (response.success) {
         addLog('SYSTEM', 'SUCCESS', `Cấu hình thêm dịch vụ mới thành công: ${newServiceData.name}.`);

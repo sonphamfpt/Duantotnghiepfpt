@@ -208,6 +208,7 @@ model Service {
   bufferMinutes         Int                    @default(0) @map("buffer_minutes")
   isActive              Boolean                @default(true) @map("is_active")
   description           String?
+  imageUrl              String?                @map("image_url")
   appointments          Appointment[]
   invoiceItems          InvoiceItem[]
   medicalRecordServices MedicalRecordService[]

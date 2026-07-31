@@ -9,8 +9,8 @@ import { ManagerSettings } from './manager-tabs/ManagerSettings';
 import { ManagerSchedule } from './manager-tabs/ManagerSchedule';
 import { ManagerPatients } from './manager-tabs/ManagerPatients';
 import { ManagerReviews } from './manager-tabs/ManagerReviews';
-import { ManagerAiChat } from './manager-tabs/ManagerAiChat';
 import { ManagerLogs } from './manager-tabs/ManagerLogs';
+import { ProfileSettings } from '../shared/ProfileSettings';
 
 export const ManagerDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -32,8 +32,9 @@ export const ManagerDashboard: React.FC = () => {
         return <ManagerPatients />;
       case 'reviews':
         return <ManagerReviews />;
+      case 'account':
       case 'aichat':
-        return <ManagerAiChat />;
+        return <ProfileSettings />;
       case 'logs':
         return <ManagerLogs />;
       default:

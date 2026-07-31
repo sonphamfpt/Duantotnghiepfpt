@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { BrandLogo } from '../components/BrandLogo';
@@ -16,6 +16,19 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
   const navigate = useNavigate();
   const location = useLocation();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Đóng menu khi click ra ngoài
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setShowProfileMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLogoutConfirm = () => {
     logout();
@@ -54,6 +67,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Hàng chờ thực tế', icon: 'groups', path: '/patient?tab=queue' },
           { label: 'Hồ sơ bệnh án', icon: 'folder_shared', path: '/patient?tab=records' },
           { label: 'Lịch sử giao dịch', icon: 'history', path: '/patient?tab=billing' },
+          { label: 'Cài đặt tài khoản', icon: 'manage_accounts', path: '/patient?tab=settings' },
         ];
       case 'receptionist':
         return [
@@ -62,6 +76,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Lịch hẹn phòng khám', icon: 'receipt_long', path: '/dashboard/receptionist?tab=appointments' },
           { label: 'Trung tâm công việc', icon: 'assignment_turned_in', path: '/dashboard/receptionist?tab=reminders' },
           { label: 'Lịch sử hủy lịch hẹn', icon: 'history', path: '/dashboard/receptionist?tab=history' },
+          { label: 'Cài đặt tài khoản', icon: 'manage_accounts', path: '/dashboard/receptionist?tab=settings' },
         ];
       case 'dentist':
         return [
@@ -69,12 +84,14 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Bàn khám lâm sàng', icon: 'dashboard', path: '/dashboard/dentist?tab=workspace' },
           { label: 'Hồ sơ bệnh án EMR', icon: 'folder_shared', path: '/dashboard/dentist?tab=records' },
           { label: 'Lịch làm việc', icon: 'calendar_month', path: '/dashboard/dentist?tab=schedule' },
+          { label: 'Cài đặt tài khoản', icon: 'manage_accounts', path: '/dashboard/dentist?tab=settings' },
         ];
       case 'cashier':
         return [
           { label: 'Thu phí hóa đơn', icon: 'payments', path: '/dashboard/cashier' },
           { label: 'Sổ quỹ & Báo cáo ca', icon: 'analytics', path: '/dashboard/cashier?tab=report' },
           { label: 'Lịch sử thanh toán', icon: 'history', path: '/dashboard/cashier?tab=history' },
+          { label: 'Cài đặt tài khoản', icon: 'manage_accounts', path: '/dashboard/cashier?tab=settings' },
         ];
       case 'manager':
         return [
@@ -87,7 +104,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Cấu hình & Cài đặt', icon: 'settings', path: '/dashboard/manager?tab=settings' },
           { label: 'Đánh giá & AI Phản hồi', icon: 'rate_review', path: '/dashboard/manager?tab=reviews' },
           { label: 'Nhật ký Hệ thống', icon: 'history', path: '/dashboard/manager?tab=logs' },
-          { label: 'Trợ lý AI', icon: 'smart_toy', path: '/dashboard/manager?tab=aichat' },
+          { label: 'Cài đặt tài khoản', icon: 'manage_accounts', path: '/dashboard/manager?tab=account' },
         ];
       default:
         return [];
@@ -150,15 +167,6 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
         {/* Sidebar Footer */}
         <div className="px-2 py-3 border-t border-outline-variant space-y-0.5">
-          {role === 'patient' && (
-            <button
-              onClick={() => navigate('/')}
-              className="w-full text-left text-on-surface-variant hover:bg-surface-container-high hover:text-primary rounded-lg px-3 py-2.5 flex items-center gap-3 transition-all cursor-pointer"
-            >
-              <Icon name="home" className="text-[20px] text-primary" />
-              <span className="text-xs font-semibold">Quay lại trang chủ</span>
-            </button>
-          )}
           {role === 'patient' && (
             <button
               onClick={() => navigate('/patient?tab=ai')}
@@ -226,16 +234,98 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             </button>
 
             {/* User profile widget */}
-            <div className="flex items-center gap-2 pl-3 border-l border-outline-variant">
-              <div className="text-right hidden sm:block">
-                <p className="text-xs font-semibold text-on-surface">{user?.name}</p>
-                <p className="text-[9px] text-on-surface-variant">{user?.roleName}</p>
-              </div>
-              <img
-                src={user?.avatar}
-                alt={user?.name}
-                className={`w-9 h-9 rounded-full object-cover border-2 ${getRoleAccentClass()}`}
-              />
+            <div className="relative" ref={profileMenuRef}>
+              <button
+                onClick={() => setShowProfileMenu(prev => !prev)}
+                className="flex items-center gap-2 pl-3 border-l border-outline-variant hover:opacity-80 transition-opacity cursor-pointer"
+              >
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs font-semibold text-on-surface">{user?.name}</p>
+                  <p className="text-[9px] text-on-surface-variant">{user?.roleName}</p>
+                </div>
+                <div className="relative">
+                  <img
+                    src={user?.avatar}
+                    alt={user?.name}
+                    className={`w-9 h-9 rounded-full object-cover border-2 ${getRoleAccentClass()}`}
+                  />
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></span>
+                </div>
+              </button>
+
+              {/* Profile Dropdown */}
+              {showProfileMenu && (
+                <div className="absolute right-0 top-12 w-64 bg-white rounded-2xl shadow-xl border border-outline-variant/60 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                  {/* Header */}
+                  <div className={`px-4 py-4 flex items-center gap-3 border-b border-outline-variant/50 bg-gradient-to-r from-primary/5 to-transparent`}>
+                    <div className="relative shrink-0">
+                      <img
+                        src={user?.avatar}
+                        alt={user?.name}
+                        className={`w-12 h-12 rounded-full object-cover border-2 ${getRoleAccentClass()}`}
+                      />
+                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-on-surface truncate">{user?.name}</p>
+                      <p className="text-[10px] text-on-surface-variant truncate">{user?.phone || 'Chưa cập nhật SĐT'}</p>
+                      <span className={`mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border ${roleConfig.badge}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${roleConfig.dot}`}></span>
+                        {user?.roleName}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Menu items */}
+                  <div className="p-1.5 space-y-0.5">
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        const settingsPath =
+                          role === 'patient' ? '/patient?tab=settings' :
+                          role === 'dentist' ? '/dashboard/dentist?tab=settings' :
+                          role === 'receptionist' ? '/dashboard/receptionist?tab=settings' :
+                          role === 'cashier' ? '/dashboard/cashier?tab=settings' :
+                          role === 'manager' ? '/dashboard/manager?tab=account' : '/';
+                        navigate(settingsPath);
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-on-surface hover:bg-surface-container transition-colors text-left cursor-pointer"
+                    >
+                      <Icon name="manage_accounts" className="text-[18px] text-primary" />
+                      <span className="font-medium text-xs">Cài đặt tài khoản</span>
+                    </button>
+
+                    <button
+                      onClick={() => { setShowProfileMenu(false); navigate('/queue-board'); }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-on-surface hover:bg-surface-container transition-colors text-left cursor-pointer"
+                    >
+                      <Icon name="monitor" className="text-[18px] text-on-surface-variant" />
+                      <span className="font-medium text-xs">Bảng hàng chờ TV</span>
+                    </button>
+
+                    {role === 'patient' && (
+                      <button
+                        onClick={() => { setShowProfileMenu(false); navigate('/'); }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-on-surface hover:bg-surface-container transition-colors text-left cursor-pointer"
+                      >
+                        <Icon name="home" className="text-[18px] text-primary" />
+                        <span className="font-medium text-xs">Về trang chủ</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Divider + Logout */}
+                  <div className="p-1.5 border-t border-outline-variant/50">
+                    <button
+                      onClick={() => { setShowProfileMenu(false); setShowLogoutConfirm(true); }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-error hover:bg-error-container/30 transition-colors text-left cursor-pointer"
+                    >
+                      <Icon name="logout" className="text-[18px]" />
+                      <span className="font-bold text-xs">Đăng xuất</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>

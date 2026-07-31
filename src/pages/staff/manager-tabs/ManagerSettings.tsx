@@ -45,6 +45,8 @@ const ServicesTab: React.FC = () => {
   const [newName, setNewName] = useState('');
   const [newPrice, setNewPrice] = useState('');
   const [newDuration, setNewDuration] = useState('30');
+  const [newDescription, setNewDescription] = useState('');
+  const [newImageUrl, setNewImageUrl] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Tải TẤT CẢ dịch vụ (kể cả đã tắt) để manager quản lý được đầy đủ
@@ -90,12 +92,30 @@ const ServicesTab: React.FC = () => {
     await fetchAllServices(); // refresh local list ngay sau khi toggle
   };
 
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setNewImageUrl(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAddService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName || !newPrice || !newDuration) return;
     setSaving(true);
-    await addService({ name: newName, price: parseInt(newPrice), durationMin: parseInt(newDuration) });
-    setNewName(''); setNewPrice(''); setNewDuration('30'); setShowAdd(false);
+    await addService({
+      name: newName,
+      price: parseInt(newPrice),
+      durationMin: parseInt(newDuration),
+      description: newDescription || undefined,
+      imageUrl: newImageUrl || undefined,
+    });
+    setNewName(''); setNewPrice(''); setNewDuration('30'); setNewDescription(''); setNewImageUrl(''); setShowAdd(false);
     setSaving(false);
     await fetchAllServices(); // refresh local list
   };
@@ -121,8 +141,14 @@ const ServicesTab: React.FC = () => {
           <div key={service.id} className={`bg-slate-50 p-4 rounded-xl border relative overflow-hidden flex flex-col justify-between transition-all ${service.isActive ? 'border-outline-variant/50 hover:border-purple-600' : 'border-outline-variant/30 opacity-60'}`}>
             <div className={`absolute left-0 top-0 bottom-0 w-1.5 transition-colors ${service.isActive ? 'bg-purple-600' : 'bg-slate-300'}`} />
             <div className="space-y-2">
+              {service.imageUrl && (
+                <img src={service.imageUrl} alt={service.name} className="w-full h-24 object-cover rounded-lg mb-2 border border-slate-200" />
+              )}
               <span className="text-[9px] font-bold text-outline-variant font-data-mono uppercase">ID: {service.id}</span>
-              <h4 className="font-bold text-xs text-on-surface leading-snug min-h-8">{service.name}</h4>
+              <h4 className="font-bold text-xs text-on-surface leading-snug min-h-6">{service.name}</h4>
+              {service.description && (
+                <p className="text-[10px] text-on-surface-variant line-clamp-2 leading-relaxed">{service.description}</p>
+              )}
               {editingId === service.id ? (
                 <div className="flex items-center gap-1.5 pt-1">
                   <input type="number" value={editingPrice} onChange={e => setEditingPrice(e.target.value)} className="w-24 bg-white border border-outline-variant rounded px-2 py-1 text-xs font-bold font-data-mono focus:outline-none" />
@@ -161,7 +187,7 @@ const ServicesTab: React.FC = () => {
       {/* Add Service Modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl border border-outline-variant max-w-sm w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-xl border border-outline-variant max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-primary text-on-primary flex justify-between items-center rounded-t-xl">
               <h3 className="font-bold text-sm flex items-center gap-2"><Icon name="add_box" /> Thêm Dịch Vụ Mới</h3>
               <button onClick={() => setShowAdd(false)} className="text-on-primary cursor-pointer"><Icon name="close" /></button>
@@ -180,6 +206,52 @@ const ServicesTab: React.FC = () => {
                   <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">Thời gian (Phút) *</label>
                   <input type="number" required value={newDuration} onChange={e => setNewDuration(e.target.value)} className="w-full border border-outline-variant rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">Mô tả dịch vụ</label>
+                <textarea rows={3} placeholder="Mô tả chi tiết về quy trình hoặc lợi ích dịch vụ..." value={newDescription} onChange={e => setNewDescription(e.target.value)} className="w-full border border-outline-variant rounded-lg px-3 py-2 text-xs font-medium focus:outline-none resize-none" />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-on-surface-variant mb-1">Ảnh dịch vụ</label>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer px-3 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold hover:bg-purple-100 transition flex items-center gap-1.5 shadow-sm">
+                      <Icon name="upload_file" className="text-base" />
+                      Tải ảnh từ máy tính
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageFileChange}
+                      />
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-medium">hoặc dán URL</span>
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Hoặc dán đường dẫn URL ảnh (https://...)"
+                    value={newImageUrl.startsWith('data:image') ? '[Ảnh đã chọn từ máy]' : newImageUrl}
+                    onChange={e => setNewImageUrl(e.target.value)}
+                    className="w-full border border-outline-variant rounded-lg px-3 py-2 text-xs font-medium focus:outline-none"
+                  />
+                </div>
+
+                {newImageUrl && (
+                  <div className="mt-2.5 p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
+                    <img src={newImageUrl} alt="Xem trước" className="w-14 h-14 object-cover rounded-md border shadow-sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold text-slate-700">Xem trước ảnh dịch vụ</p>
+                      <button
+                        type="button"
+                        onClick={() => setNewImageUrl('')}
+                        className="text-[10px] text-red-600 hover:underline font-semibold mt-0.5 cursor-pointer"
+                      >
+                        Xóa ảnh
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end gap-3 pt-2 border-t border-outline-variant">
                 <button type="button" onClick={() => setShowAdd(false)} className="px-4 py-2 border border-outline text-on-surface rounded-lg text-xs font-bold cursor-pointer">Hủy</button>

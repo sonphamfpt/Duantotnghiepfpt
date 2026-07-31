@@ -155,22 +155,22 @@ async function main() {
   });
 
   const services = [
-    { name: 'Lấy cao răng & Vệ sinh răng miệng nâng cao', price: 300000, durationMinutes: 20 },
-    { name: 'Tẩy trắng răng thẩm mỹ nhanh bằng Laser', price: 2500000, durationMinutes: 45 },
-    { name: 'Trám răng composite thẩm mỹ (mỗi răng)', price: 450000, durationMinutes: 25 },
-    { name: 'Nhổ răng khôn thường (hàm trên)', price: 1750000, durationMinutes: 30 },
-    { name: 'Nhổ răng khôn mọc lệch (tiểu phẫu hàm dưới)', price: 3500000, durationMinutes: 60 },
-    { name: 'Điều trị tủy răng nội nha định vị chóp', price: 1200000, durationMinutes: 45 },
-    { name: 'Trồng răng Implant Straumann (Thuỵ Sĩ)', price: 25000000, durationMinutes: 60 },
-    { name: 'Trồng răng Implant Dentium (Hàn Quốc)', price: 15000000, durationMinutes: 60 },
-    { name: 'Niềng răng mắc cài kim loại tự buộc', price: 30000000, durationMinutes: 45 },
-    { name: 'Niềng răng khay trong suốt Invisalign', price: 80000000, durationMinutes: 45 },
-    { name: 'Khám răng tổng quát & Lập kế hoạch điều trị', price: 100000, durationMinutes: 15 },
-    { name: 'Bọc răng sứ Cercon HT toàn sứ thẩm mỹ', price: 5000000, durationMinutes: 60 },
-    { name: 'Gắn đá kim cương nha khoa thẩm mỹ', price: 500000, durationMinutes: 20 },
-    { name: 'Tiểu phẫu cắt chóp răng & Bơm rửa tủy', price: 3000000, durationMinutes: 45 },
-    { name: 'Chụp X-quang Panorama toàn hàm', price: 150000, durationMinutes: 10 },
-    { name: 'Chụp phim CT ConeBeam 3D cắt lớp', price: 500000, durationMinutes: 15 }
+    { name: 'Lấy cao răng & Vệ sinh răng miệng nâng cao', price: 300000, durationMinutes: 20, imageUrl: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Tẩy trắng răng thẩm mỹ nhanh bằng Laser', price: 2500000, durationMinutes: 45, imageUrl: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Trám răng composite thẩm mỹ (mỗi răng)', price: 450000, durationMinutes: 25, imageUrl: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Nhổ răng khôn thường (hàm trên)', price: 1750000, durationMinutes: 30, imageUrl: 'https://images.unsplash.com/photo-1609840114035-3c981b782dfe?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Nhổ răng khôn mọc lệch (tiểu phẫu hàm dưới)', price: 3500000, durationMinutes: 60, imageUrl: 'https://images.unsplash.com/photo-1609840114035-3c981b782dfe?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Điều trị tủy răng nội nha định vị chóp', price: 1200000, durationMinutes: 45, imageUrl: 'https://images.unsplash.com/photo-1629909615184-74f495363b67?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Trồng răng Implant Straumann (Thuỵ Sĩ)', price: 25000000, durationMinutes: 60, imageUrl: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Trồng răng Implant Dentium (Hàn Quốc)', price: 15000000, durationMinutes: 60, imageUrl: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Niềng răng mắc cài kim loại tự buộc', price: 30000000, durationMinutes: 45, imageUrl: 'https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Niềng răng khay trong suốt Invisalign', price: 80000000, durationMinutes: 45, imageUrl: 'https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Khám răng tổng quát & Lập kế hoạch điều trị', price: 100000, durationMinutes: 15, imageUrl: 'https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Bọc răng sứ Cercon HT toàn sứ thẩm mỹ', price: 5000000, durationMinutes: 60, imageUrl: 'https://images.unsplash.com/photo-1600170311833-c2cf5280ce49?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Gắn đá kim cương nha khoa thẩm mỹ', price: 500000, durationMinutes: 20, imageUrl: 'https://images.unsplash.com/photo-1600170311833-c2cf5280ce49?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Tiểu phẫu cắt chóp răng & Bơm rửa tủy', price: 3000000, durationMinutes: 45, imageUrl: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Chụp X-quang Panorama toàn hàm', price: 150000, durationMinutes: 10, imageUrl: 'https://images.unsplash.com/photo-1559757175-7cb057fba93c?auto=format&fit=crop&w=800&q=80' },
+    { name: 'Chụp phim CT ConeBeam 3D cắt lớp', price: 500000, durationMinutes: 15, imageUrl: 'https://images.unsplash.com/photo-1559757175-7cb057fba93c?auto=format&fit=crop&w=800&q=80' }
   ];
 
   for (const s of services) {
@@ -182,6 +182,7 @@ async function main() {
         durationMinutes: s.durationMinutes,
         bufferMinutes: 15,
         isActive: true,
+        imageUrl: s.imageUrl,
       }
     });
   }

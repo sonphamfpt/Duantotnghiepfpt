@@ -6,6 +6,9 @@ import { AppError } from '../../middlewares/errorHandler';
 import { normalizeOtpPhone, otpHelper } from './otp';
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env';
+import bcrypt from 'bcrypt';
+import path from 'path';
+import fs from 'fs';
 
 export class AuthController {
   /**
@@ -184,6 +187,91 @@ export class AuthController {
       return res.status(200).json({
         message: 'Đặt lại mật khẩu mới thành công! Vui lòng đăng nhập lại.',
       });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  /**
+   * POST /api/auth/avatar — Upload ảnh đại diện
+   */
+  async uploadAvatar(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) throw new AppError(401, 'Yêu cầu xác thực.', 'UNAUTHORIZED');
+
+      if (!req.file) throw new AppError(400, 'Không có file ảnh nào được gửi lên.', 'NO_FILE');
+
+      // Xóa avatar cũ nếu là file local
+      const existingUser = await prisma.user.findUnique({ where: { userId: BigInt(userId) } });
+      if (existingUser?.avatarUrl && existingUser.avatarUrl.startsWith('/avatars/')) {
+        const oldPath = path.join(__dirname, '../../public', existingUser.avatarUrl);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+
+      const avatarUrl = `/avatars/${req.file.filename}`;
+      await prisma.user.update({
+        where: { userId: BigInt(userId) },
+        data: { avatarUrl },
+      });
+
+      return res.status(200).json({
+        message: 'Cập nhật ảnh đại diện thành công!',
+        data: { avatarUrl: `http://localhost:5000${avatarUrl}` },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  /**
+   * PUT /api/auth/change-password — Đổi mật khẩu
+   */
+  async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) throw new AppError(401, 'Yêu cầu xác thực.', 'UNAUTHORIZED');
+
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        throw new AppError(400, 'Thiếu mật khẩu hiện tại hoặc mật khẩu mới.', 'VALIDATION_ERROR');
+      }
+      if (newPassword.length < 8) {
+        throw new AppError(400, 'Mật khẩu mới phải có ít nhất 8 ký tự.', 'VALIDATION_ERROR');
+      }
+
+      const user = await prisma.user.findUnique({ where: { userId: BigInt(userId) } });
+      if (!user || !user.passwordHash) {
+        throw new AppError(404, 'Không tìm thấy tài khoản.', 'USER_NOT_FOUND');
+      }
+
+      const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!isMatch) {
+        throw new AppError(400, 'Mật khẩu hiện tại không chính xác.', 'WRONG_PASSWORD');
+      }
+
+      const newHash = await bcrypt.hash(newPassword, 10);
+      await prisma.user.update({
+        where: { userId: BigInt(userId) },
+        data: { passwordHash: newHash },
+      });
+
+      return res.status(200).json({ message: 'Đổi mật khẩu thành công!' });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  /**
+   * PUT /api/auth/profile — Cập nhật thông tin cá nhân theo Role
+   */
+  async updateProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) throw new AppError(401, 'Yêu cầu xác thực.', 'UNAUTHORIZED');
+
+      const result = await authService.updateProfile(userId, req.body);
+      return res.status(200).json(result);
     } catch (error) {
       return next(error);
     }

@@ -6,6 +6,13 @@ import { Icon } from '../../components/Icon';
 const CATEGORIES = ['Tất cả chuyên khoa', 'Bảo tồn & Vi Phẫu', 'Phẫu thuật Hàm Mặt & Implant', 'Phục Hình Thẩm Mỹ', 'Chỉnh Nha & Niềng Răng'];
 const DEFAULT_DOCTOR_AVATAR = 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=600&h=800&fit=crop';
 
+const BACKEND_BASE = 'http://localhost:5000';
+const getDoctorAvatar = (avatarUrl?: string) => {
+  if (!avatarUrl) return DEFAULT_DOCTOR_AVATAR;
+  if (avatarUrl.startsWith('http')) return avatarUrl;
+  return `${BACKEND_BASE}${avatarUrl}`;
+};
+
 export const Doctors: React.FC = () => {
   const { dentists } = useClinic();
   const navigate = useNavigate();
@@ -17,6 +24,7 @@ export const Doctors: React.FC = () => {
 
   const enrichedDentists = dentists.map(d => ({
     ...d,
+    avatar: getDoctorAvatar(d.avatar),
     displayTitle: d.degree || 'Bác sĩ nha khoa',
     displayName: d.name,
     shortBio: d.bio || d.specialty || d.role,

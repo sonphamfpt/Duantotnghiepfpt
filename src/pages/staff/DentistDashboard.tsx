@@ -12,6 +12,7 @@ import { ToothState } from '../../types/clinic';
 import { DentistQueue } from './dentist-tabs/DentistQueue';
 import { DentistRecords } from './dentist-tabs/DentistRecords';
 import { DentistSchedule } from './dentist-tabs/DentistSchedule';
+import { ProfileSettings } from '../shared/ProfileSettings';
 
 const AVAILABLE_DRUGS = [
   { id: 'D-01', name: 'Paracetamol 500mg', type: 'Viên', defaultInstruction: 'Uống 1 viên mỗi 6 giờ khi đau, sau ăn.' },
@@ -1604,6 +1605,7 @@ export const DentistDashboard: React.FC = () => {
     case 'workspace': return <DentistHome />;
     case 'records': return <DentistRecords />;
     case 'schedule': return <DentistSchedule dentistId={dentistId} />;
+    case 'settings': return <div className="p-container-padding-desktop"><ProfileSettings /></div>;
     default: return <DentistQueue />;
   }
 };

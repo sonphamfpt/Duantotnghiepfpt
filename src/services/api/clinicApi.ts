@@ -54,7 +54,7 @@ export const clinicApi = {
       body: JSON.stringify(patient),
     }),
 
-  addService: (data: { name: string; price: number; durationMin: number }) =>
+  addService: (data: { name: string; price: number; durationMin: number; description?: string; imageUrl?: string }) =>
     request<any>('/services', {
       method: 'POST',
       body: JSON.stringify(data),

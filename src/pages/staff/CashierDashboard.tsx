@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import { CashierBilling } from './cashier-tabs/CashierBilling';
 import { CashierReport } from './cashier-tabs/CashierReport';
 import { CashierHistory } from './cashier-tabs/CashierHistory';
+import { ProfileSettings } from '../shared/ProfileSettings';
 
 export const CashierDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -16,6 +17,8 @@ export const CashierDashboard: React.FC = () => {
         return <CashierReport />;
       case 'history':
         return <CashierHistory />;
+      case 'settings':
+        return <ProfileSettings />;
       default:
         return <CashierBilling />;
     }

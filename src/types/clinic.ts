@@ -4,6 +4,8 @@ export interface Service {
   price: number;
   durationMin: number;
   isActive: boolean;
+  description?: string;
+  imageUrl?: string;
 }
 
 export interface Dentist {

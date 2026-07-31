@@ -4,7 +4,7 @@ import { useClinic } from '../../context/ClinicContext';
 import { Icon } from '../../components/Icon';
 
 const DEFAULT_SERVICE_IMAGE =
-  'https://images.pexels.com/photos/3845625/pexels-photo-3845625.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop';
+  'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80';
 
 const ServiceImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
   const [imgSrc, setImgSrc] = useState(src);
@@ -47,7 +47,7 @@ const SERVICE_META: Record<string, {
     desc: 'Loại bỏ mảng bám, cao răng cứng đầu trên răng và dưới nướu, ngăn ngừa viêm nướu và hôi miệng hiệu quả lâu dài.',
     duration: '15 – 30 phút',
     highlights: ['Dụng cụ siêu âm hiện đại', 'Đánh bóng răng sau cạo', 'Khuyên dùng mỗi 6 tháng'],
-    image: 'https://images.pexels.com/photos/3845625/pexels-photo-3845625.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop',
+    image: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=800&q=80',
     accentColor: '#0d9488',
     bgColor: 'bg-teal-50',
     textColor: 'text-teal-700',
@@ -61,7 +61,7 @@ const SERVICE_META: Record<string, {
     badge: 'HOT',
     badgeColor: 'bg-rose-500 text-white',
     highlights: ['Công nghệ Philips Zoom', 'Không ê buốt', 'Hiệu quả ngay sau 1 lần'],
-    image: 'https://images.pexels.com/photos/6627536/pexels-photo-6627536.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop',
+    image: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=800&q=80',
     accentColor: '#eab308',
     bgColor: 'bg-yellow-50',
     textColor: 'text-yellow-700',
@@ -73,7 +73,7 @@ const SERVICE_META: Record<string, {
     desc: 'Phục hồi hình dáng và chức năng nhai cho răng sứt mẻ, sâu bằng Composite cao cấp, màu sắc trùng khớp tự nhiên.',
     duration: '30 – 45 phút',
     highlights: ['Composite A3-shade matching', 'Không cần mài răng nhiều', 'Bền đến 7 năm'],
-    image: 'https://images.pexels.com/photos/3845557/pexels-photo-3845557.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop',
+    image: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=800&q=80',
     accentColor: '#2563eb',
     bgColor: 'bg-blue-50',
     textColor: 'text-blue-700',
@@ -85,7 +85,7 @@ const SERVICE_META: Record<string, {
     desc: 'Phẫu thuật nhổ răng khôn mọc lệch, mọc ngầm bằng sóng siêu âm Piezotome, hạn chế tối đa sưng đau và chảy máu.',
     duration: '45 – 60 phút',
     highlights: ['Sóng siêu âm Piezotome', 'Gây tê không đau', 'Hồi phục nhanh 2–3 ngày'],
-    image: 'https://images.pexels.com/photos/3779708/pexels-photo-3779708.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop',
+    image: 'https://images.unsplash.com/photo-1609840114035-3c981b782dfe?auto=format&fit=crop&w=800&q=80',
     accentColor: '#dc2626',
     bgColor: 'bg-red-50',
     textColor: 'text-red-700',
@@ -97,7 +97,7 @@ const SERVICE_META: Record<string, {
     desc: 'Điều trị tủy triệt để bằng máy trâm xoay, loại bỏ tủy viêm, trám kín ống tủy — bảo tồn tối đa răng thật.',
     duration: '60 – 90 phút',
     highlights: ['Máy trâm xoay ProTaper', 'X-quang định vị ống tủy', 'Không đau sau điều trị'],
-    image: 'https://images.unsplash.com/photo-1629909615184-74f495363b67?auto=format&fit=crop&w=600&q=80',
+    image: 'https://images.unsplash.com/photo-1629909615184-74f495363b67?auto=format&fit=crop&w=800&q=80',
     accentColor: '#7c3aed',
     bgColor: 'bg-purple-50',
     textColor: 'text-purple-700',
@@ -111,7 +111,7 @@ const SERVICE_META: Record<string, {
     badge: 'PREMIUM',
     badgeColor: 'bg-indigo-600 text-white',
     highlights: ['Implant Straumann Thụy Sĩ', 'Bảo hành 25 năm', 'Tỷ lệ thành công 98.7%'],
-    image:  'https://images.unsplash.com/photo-1588776814546-1ffedac39b40?auto=format&fit=crop&w=600&q=80',
+    image: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80',
     accentColor: '#4f46e5',
     bgColor: 'bg-indigo-50',
     textColor: 'text-indigo-700',
@@ -125,7 +125,7 @@ const SERVICE_META: Record<string, {
     badge: 'PHỔ BIẾN',
     badgeColor: 'bg-emerald-600 text-white',
     highlights: ['Invisalign & mắc cài sứ', 'Theo dõi kỹ thuật số', 'Kế hoạch cá nhân hóa'],
-    image: 'https://images.pexels.com/photos/6627536/pexels-photo-6627536.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop',
+    image: 'https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&fit=crop&w=800&q=80',
     accentColor: '#059669',
     bgColor: 'bg-emerald-50',
     textColor: 'text-emerald-700',
@@ -139,7 +139,8 @@ const SERVICE_META: Record<string, {
     badge: 'MIỄN PHÍ',
     badgeColor: 'bg-green-500 text-white',
     highlights: ['Chụp X-quang toàn hàm', 'Phân tích AI hỗ trợ chẩn đoán', 'Miễn phí lần đầu'],
-    image: 'https://images.unsplash.com/photo-1609840114035-3c981b782dfe?auto=format&fit=crop&w=600&q=80',    accentColor: '#16a34a',
+    image: 'https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?auto=format&fit=crop&w=800&q=80',
+    accentColor: '#16a34a',
     bgColor: 'bg-green-50',
     textColor: 'text-green-700',
   },
@@ -150,7 +151,7 @@ const SERVICE_META: Record<string, {
     desc: 'Mão sứ toàn sứ Zirconia độ trong cao, phủ lên răng hư, đổi màu, tạo hình lại nụ cười hoàn hảo bền vững.',
     duration: '2 – 3 buổi hẹn',
     highlights: ['Zirconia IPS e.max', 'Màu sắc tự nhiên như răng thật', 'Không gây dị ứng'],
-    image: 'https://images.pexels.com/photos/6627421/pexels-photo-6627421.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop',
+    image: 'https://images.unsplash.com/photo-1600170311833-c2cf5280ce49?auto=format&fit=crop&w=800&q=80',
     accentColor: '#db2777',
     bgColor: 'bg-pink-50',
     textColor: 'text-pink-700',
@@ -162,7 +163,7 @@ const SERVICE_META: Record<string, {
     desc: 'Khám, trám, nhổ sữa và phòng ngừa sâu răng cho trẻ em từ 3 tuổi, môi trường thân thiện giúp trẻ không sợ nha sĩ.',
     duration: '15 – 30 phút',
     highlights: ['Chuyên gia nhi khoa', 'Phòng khám màu sắc vui', 'Trám Fluor phòng ngừa'],
-    image: 'https://images.pexels.com/photos/6627421/pexels-photo-6627421.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop',
+    image: 'https://images.unsplash.com/photo-1551076805-e1869033e561?auto=format&fit=crop&w=800&q=80',
     accentColor: '#f59e0b',
     bgColor: 'bg-amber-50',
     textColor: 'text-amber-700',
@@ -174,7 +175,7 @@ const SERVICE_META: Record<string, {
     desc: 'Điều trị cười hở nướu, cắt viền nướu bất đối xứng và điều trị viêm nha chu mãn tính bằng công nghệ Laser Er:YAG.',
     duration: '45 – 90 phút',
     highlights: ['Laser Er:YAG không đau', 'Hồi phục nhanh 48h', 'Kết quả thẩm mỹ rõ ngay'],
-    image: 'https://images.pexels.com/photos/3845624/pexels-photo-3845624.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop',
+    image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=800&q=80',
     accentColor: '#0891b2',
     bgColor: 'bg-cyan-50',
     textColor: 'text-cyan-700',
@@ -331,7 +332,7 @@ export const Services: React.FC = () => {
                 {/* Image Header */}
                 <div className="relative h-44 overflow-hidden">
                   <ServiceImage
-                    src={meta.image}
+                    src={(svc as any).imageUrl || meta.image}
                     alt={svc.name}
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                   />

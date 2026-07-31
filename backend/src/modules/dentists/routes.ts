@@ -7,6 +7,12 @@ import { requireRole } from '../../middlewares/roleGuard';
 
 const router = Router();
 
+const formatDentistAvatar = (url?: string | null) => {
+  if (!url) return 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=150&h=150&q=80';
+  if (url.startsWith('http')) return url;
+  return `http://localhost:5000${url}`;
+};
+
 // ─── GET /api/dentists ─────────────────────────────────────────────────────────
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -34,7 +40,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       bio: d.bio || 'Chuyên gia phục hình sứ thẩm mỹ.',
       motto: d.motto || 'Nụ cười của bạn là hạnh phúc của chúng tôi.',
       cases: d.casesHandled || '500+ ca',
-      avatar: d.user.avatarUrl || 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=150&h=150&q=80',
+      avatar: formatDentistAvatar(d.user.avatarUrl),
       education: d.education.map(e => e.description),
       clinicalStrengths: d.clinicalStrengths.map(s => s.description),
       certifications: d.certifications.map(c => c.description),
@@ -80,7 +86,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       bio: d.bio || '',
       motto: d.motto || '',
       casesHandled: d.casesHandled || '',
-      avatar: d.user.avatarUrl || 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=150&h=150&q=80',
+      avatar: formatDentistAvatar(d.user.avatarUrl),
       education: d.education.map(e => e.description),
       clinicalStrengths: d.clinicalStrengths.map(s => s.description),
       certifications: d.certifications.map(c => c.description),

@@ -4,6 +4,14 @@ import { useClinic } from '../../context/ClinicContext';
 import { Icon } from '../../components/Icon';
 
 
+const BACKEND_BASE = 'http://localhost:5000';
+const DEFAULT_DOCTOR_AVATAR = 'https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=600&h=800&fit=crop';
+const getDoctorAvatar = (avatarUrl?: string) => {
+  if (!avatarUrl) return DEFAULT_DOCTOR_AVATAR;
+  if (avatarUrl.startsWith('http')) return avatarUrl;
+  return `${BACKEND_BASE}${avatarUrl}`;
+};
+
 export const DoctorDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -83,7 +91,7 @@ export const DoctorDetail: React.FC = () => {
               {/* Photo Card */}
               <div className="bg-white border border-[#e2e8f0] p-6 shadow-sm flex flex-col items-center">
                 <div className="w-56 h-56 rounded-full overflow-hidden border-4 border-white shadow-md bg-white mb-6">
-                  <img src={dentist.avatar} alt={dentist.name} className="w-full h-full object-cover" />
+                  <img src={getDoctorAvatar(dentist.avatar)} alt={dentist.name} className="w-full h-full object-cover" />
                 </div>
                 
                 {/* Stats */}

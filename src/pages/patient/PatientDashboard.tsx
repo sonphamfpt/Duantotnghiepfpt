@@ -12,6 +12,7 @@ import { PatientAppointments } from './tabs/PatientAppointments';
 import { PatientQueue } from './tabs/PatientQueue';
 import { PatientRecords } from './tabs/PatientRecords';
 import { PatientBilling } from './tabs/PatientBilling';
+import { ProfileSettings } from '../shared/ProfileSettings';
 
 // ─── Home Tab (Dashboard Overview) ────────────────────────────────────────────
 const PatientHome: React.FC = () => {
@@ -413,6 +414,7 @@ export const PatientDashboard: React.FC = () => {
       case 'queue':        return <PatientQueue />;
       case 'records':      return <PatientRecords />;
       case 'billing':      return <PatientBilling />;
+      case 'settings':     return <div className="p-container-padding-desktop"><ProfileSettings /></div>;
       default:             return <PatientHome />;
     }
   };

@@ -8,13 +8,14 @@ import { ForgotPasswordModal } from '../../components/ForgotPasswordModal';
 import { clinicApi } from '../../services/api/clinicApi';
 
 const DEMO_ACCOUNTS = [
-  { phone: '0909000002', password: '12345678', role: 'receptionist' as UserRole, label: 'Lễ Tân',    icon: 'folder_shared',       color: 'hover:border-orange-500 hover:bg-orange-50/50 text-orange-700 bg-orange-50/30 border-orange-100 hover:shadow-orange-100/50' },
-  { phone: '0909000014', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. N. Hương', icon: 'dentistry',           color: 'hover:border-blue-500 hover:bg-blue-50/50 text-blue-700 bg-blue-50/30 border-blue-100 hover:shadow-blue-100/50' },
-  { phone: '0909000011', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. Lê Minh',  icon: 'dentistry',           color: 'hover:border-indigo-500 hover:bg-indigo-50/50 text-indigo-700 bg-indigo-50/30 border-indigo-100 hover:shadow-indigo-100/50' },
-  { phone: '0909000013', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. H. Nam',   icon: 'dentistry',           color: 'hover:border-cyan-500 hover:bg-cyan-50/50 text-cyan-700 bg-cyan-50/30 border-cyan-100 hover:shadow-cyan-100/50' },
-  { phone: '0909000003', password: '12345678', role: 'cashier'      as UserRole, roleLabel: 'Thu Ngân', label: 'Thu Ngân',  icon: 'payments',            color: 'hover:border-amber-500 hover:bg-amber-50/50 text-amber-700 bg-amber-50/30 border-amber-100 hover:shadow-amber-100/50' },
-  { phone: '0909000001', password: '12345678', role: 'manager'      as UserRole, label: 'Quản Lý',  icon: 'admin_panel_settings', color: 'hover:border-purple-500 hover:bg-purple-50/50 text-purple-700 bg-purple-50/30 border-purple-100 hover:shadow-purple-100/50' },
-  { phone: '0901234567', password: '12345678', role: 'patient'      as UserRole, label: 'Bệnh Nhân', icon: 'person',              color: 'hover:border-green-500 hover:bg-green-50/50 text-green-700 bg-green-50/30 border-green-100 hover:shadow-green-100/50' },
+  { phone: '0909000002', password: '12345678', role: 'receptionist' as UserRole, label: 'Lễ Tân',       icon: 'folder_shared',       color: 'hover:border-orange-500 hover:bg-orange-50/50 text-orange-700 bg-orange-50/30 border-orange-100 hover:shadow-orange-100/50' },
+  { phone: '0909000011', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. Lê Minh',   icon: 'dentistry',           color: 'hover:border-indigo-500 hover:bg-indigo-50/50 text-indigo-700 bg-indigo-50/30 border-indigo-100 hover:shadow-indigo-100/50' },
+  { phone: '0909000012', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. H. Nam',    icon: 'dentistry',           color: 'hover:border-cyan-500 hover:bg-cyan-50/50 text-cyan-700 bg-cyan-50/30 border-cyan-100 hover:shadow-cyan-100/50' },
+  { phone: '0909000013', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. Mai Lan',   icon: 'dentistry',           color: 'hover:border-teal-500 hover:bg-teal-50/50 text-teal-700 bg-teal-50/30 border-teal-100 hover:shadow-teal-100/50' },
+  { phone: '0909000014', password: '12345678', role: 'dentist'      as UserRole, label: 'BS. N. Hương',  icon: 'dentistry',           color: 'hover:border-blue-500 hover:bg-blue-50/50 text-blue-700 bg-blue-50/30 border-blue-100 hover:shadow-blue-100/50' },
+  { phone: '0909000003', password: '12345678', role: 'cashier'      as UserRole, label: 'Thu Ngân',     icon: 'payments',            color: 'hover:border-amber-500 hover:bg-amber-50/50 text-amber-700 bg-amber-50/30 border-amber-100 hover:shadow-amber-100/50' },
+  { phone: '0909000001', password: '12345678', role: 'manager'      as UserRole, label: 'Quản Lý',     icon: 'admin_panel_settings', color: 'hover:border-purple-500 hover:bg-purple-50/50 text-purple-700 bg-purple-50/30 border-purple-100 hover:shadow-purple-100/50' },
+  { phone: '0901234567', password: '12345678', role: 'patient'      as UserRole, label: 'Bệnh Nhân',    icon: 'person',              color: 'hover:border-green-500 hover:bg-green-50/50 text-green-700 bg-green-50/30 border-green-100 hover:shadow-green-100/50' },
 ];
 
 export const LoginRegister: React.FC = () => {
@@ -892,10 +893,10 @@ export const LoginRegister: React.FC = () => {
             </div>
 
             {/* Demo Account Grid cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2">
               {DEMO_ACCOUNTS.map((acc) => (
                 <button
-                  key={acc.role}
+                  key={acc.phone}
                   type="button"
                   onClick={() => handleFillDemo(acc)}
                   className={`border text-[10.5px] font-black p-2.5 rounded-2xl transition-all active:scale-95 cursor-pointer flex flex-col items-center justify-center gap-1.5 shadow-sm text-center ${acc.color}`}

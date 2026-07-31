@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
 
 // ─── Module Routers ───────────────────────────────────────────────────────────
 import appointmentsRouter from './modules/appointments/routes';
@@ -25,7 +26,9 @@ import { env } from './config/env';
 const app = express();
 
 // 1. Bảo mật và Cấu hình CORS
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(cors({
   origin: env.ALLOWED_ORIGINS.split(',').map(o => o.trim()),
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
@@ -35,6 +38,9 @@ app.use(cors({
 // 2. Chuyển đổi JSON Body đầu vào
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// 2b. Serve static files (avatar images)
+app.use('/avatars', express.static(path.join(__dirname, 'public/avatars')));
 
 // 3. Đường dẫn gốc kiểm tra trạng thái hoạt động
 app.get('/', (req, res) => {

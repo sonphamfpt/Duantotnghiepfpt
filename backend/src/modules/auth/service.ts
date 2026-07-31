@@ -235,6 +235,8 @@ export class AuthService {
         role: user.role.code,
         fullName: user.fullName,
         phone: user.phone,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
         dentistId,
         patientId,
       },
@@ -259,17 +261,37 @@ export class AuthService {
 
     let dentistId: string | undefined;
     let patientId: string | undefined;
+    let patientProfile: any = null;
+    let dentistProfile: any = null;
 
     if (user.role.code === RoleCode.dentist) {
       const dentist = await prisma.dentist.findUnique({
         where: { userId: user.userId },
       });
-      if (dentist) dentistId = dentist.dentistId.toString();
+      if (dentist) {
+        dentistId = dentist.dentistId.toString();
+        dentistProfile = {
+          specialty: dentist.specialty,
+          degree: dentist.degree,
+          experienceYears: dentist.experienceYears,
+          bio: dentist.bio,
+          motto: dentist.motto,
+        };
+      }
     } else if (user.role.code === RoleCode.patient) {
       const patient = await prisma.patient.findUnique({
         where: { userId: user.userId },
       });
-      if (patient) patientId = patient.patientId.toString();
+      if (patient) {
+        patientId = patient.patientId.toString();
+        patientProfile = {
+          dateOfBirth: patient.dateOfBirth ? patient.dateOfBirth.toISOString().split('T')[0] : null,
+          gender: patient.gender,
+          address: patient.address,
+          criticalAllergy: patient.criticalAllergy,
+          medicalCondition: patient.medicalCondition,
+        };
+      }
     }
 
     return {
@@ -281,6 +303,8 @@ export class AuthService {
       role: user.role.code,
       dentistId,
       patientId,
+      patientProfile,
+      dentistProfile,
       permissions: user.role.code === RoleCode.manager
         ? { admission: true, clinical: true, checkout: true, settings: true } // Manager bypass toàn bộ
         : user.staffPermission
@@ -292,6 +316,70 @@ export class AuthService {
             }
           : null,
     };
+  }
+
+  /**
+   * Cập nhật thông tin cá nhân tùy theo Role
+   */
+  async updateProfile(userId: string, body: any) {
+    const user = await prisma.user.findUnique({
+      where: { userId: BigInt(userId) },
+      include: { role: true },
+    });
+    if (!user) throw new AppError(404, 'Không tìm thấy tài khoản.', 'USER_NOT_FOUND');
+
+    const { fullName, email, dateOfBirth, gender, address, criticalAllergy, medicalCondition, specialty, degree, experienceYears, bio, motto } = body;
+
+    return await prisma.$transaction(async (tx) => {
+      // 1. Update User basic info
+      const updateUserData: any = {};
+      if (fullName && fullName.trim()) updateUserData.fullName = fullName.trim();
+      if (email !== undefined) updateUserData.email = email ? email.trim() : null;
+
+      if (Object.keys(updateUserData).length > 0) {
+        await tx.user.update({
+          where: { userId: user.userId },
+          data: updateUserData,
+        });
+      }
+
+      // 2. Update Patient specific info if role is Patient
+      if (user.role.code === RoleCode.patient) {
+        const patient = await tx.patient.findUnique({ where: { userId: user.userId } });
+        if (patient) {
+          await tx.patient.update({
+            where: { patientId: patient.patientId },
+            data: {
+              fullName: fullName && fullName.trim() ? fullName.trim() : patient.fullName,
+              dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+              gender: gender !== undefined ? gender : patient.gender,
+              address: address !== undefined ? address : patient.address,
+              criticalAllergy: criticalAllergy !== undefined ? criticalAllergy : patient.criticalAllergy,
+              medicalCondition: medicalCondition !== undefined ? medicalCondition : patient.medicalCondition,
+            },
+          });
+        }
+      }
+
+      // 3. Update Dentist specific info if role is Dentist
+      if (user.role.code === RoleCode.dentist) {
+        const dentist = await tx.dentist.findUnique({ where: { userId: user.userId } });
+        if (dentist) {
+          await tx.dentist.update({
+            where: { dentistId: dentist.dentistId },
+            data: {
+              specialty: specialty !== undefined ? specialty : dentist.specialty,
+              degree: degree !== undefined ? degree : dentist.degree,
+              experienceYears: experienceYears !== undefined ? (experienceYears ? Number(experienceYears) : null) : dentist.experienceYears,
+              bio: bio !== undefined ? bio : dentist.bio,
+              motto: motto !== undefined ? motto : dentist.motto,
+            },
+          });
+        }
+      }
+
+      return { message: 'Cập nhật thông tin cá nhân thành công!' };
+    });
   }
 
   /**

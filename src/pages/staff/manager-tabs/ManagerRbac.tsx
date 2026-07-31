@@ -142,8 +142,6 @@ export const ManagerRbac: React.FC = () => {
     } catch (err) {
       console.error('Lỗi khi thay đổi trạng thái:', err);
       alert('Không thể thay đổi trạng thái hoạt động.');
-    } finally {
-      setConfirmLock(null);
     }
   };
 

@@ -9,6 +9,7 @@ import { ReceptionistQueue } from './receptionist-tabs/ReceptionistQueue';
 import { ReceptionistAppointments } from './receptionist-tabs/ReceptionistAppointments';
 import { ReceptionistReminders } from './receptionist-tabs/ReceptionistReminders';
 import { ReceptionistCancelHistory } from './receptionist-tabs/ReceptionistCancelHistory';
+import { ProfileSettings } from '../shared/ProfileSettings';
 
 
 // ─── Home: Bàn tiếp nhận ──────────────────────────────────────────────────────
@@ -311,7 +312,7 @@ export const ReceptionistDashboard: React.FC = () => {
     case 'appointments': return <ReceptionistAppointments />;
     case 'reminders': return <ReceptionistReminders />;
     case 'history': return <ReceptionistCancelHistory />;
-
+    case 'settings': return <div className="p-container-padding-desktop"><ProfileSettings /></div>;
     default: return <ReceptionistHome />;
   }
 };

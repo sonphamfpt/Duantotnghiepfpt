@@ -26,6 +26,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       category: s.category?.name || 'Điều trị chung',
       isActive: s.isActive,
       description: s.description || 'Dịch vụ điều trị răng miệng chất lượng cao.',
+      imageUrl: s.imageUrl || null,
     }));
 
     return res.status(200).json({ success: true, data: formatted });
@@ -63,7 +64,7 @@ router.get('/all', authGuard, requireRole('manager'), async (req: Request, res: 
 // ─── POST /api/services ────────────────────────────────────────────────────────
 router.post('/', authGuard, requireRole('manager'), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, price, durationMin } = req.body;
+    const { name, price, durationMin, description, imageUrl } = req.body;
     if (!name || !price || !durationMin) {
       throw new AppError(400, 'Tất cả các thông tin là bắt buộc.', 'VALIDATION_ERROR');
     }
@@ -73,6 +74,8 @@ router.post('/', authGuard, requireRole('manager'), async (req: Request, res: Re
         name,
         price: Number(price),
         durationMinutes: Number(durationMin),
+        description: description || null,
+        imageUrl: imageUrl || null,
         isActive: true,
       },
     });
@@ -92,16 +95,21 @@ router.put('/:id', authGuard, requireRole('manager'), async (req: Request, res: 
   try {
     const parts = req.params.id.split('-');
     const serviceIdNum = BigInt(parts[1] || parts[0]);
-    const { price } = req.body;
+    const { price, imageUrl, description, name } = req.body;
+    const updateData: any = {};
+    if (price !== undefined) updateData.price = Number(price);
+    if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
+    if (description !== undefined) updateData.description = description;
+    if (name !== undefined) updateData.name = name;
 
     const updated = await prisma.service.update({
       where: { serviceId: serviceIdNum },
-      data: { price: Number(price) },
+      data: updateData,
     });
 
     return res.status(200).json({
       success: true,
-      message: 'Cập nhật giá dịch vụ thành công.',
+      message: 'Cập nhật dịch vụ thành công.',
       data: updated,
     });
   } catch (err) {

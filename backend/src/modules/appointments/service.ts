@@ -443,28 +443,28 @@ export class AppointmentsService {
       },
     });
 
-    // 3. Nghiệp vụ: Đếm số lần hủy lịch của bệnh nhân trong 30 ngày gần đây
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // 3. Nghiệp vụ: Đếm số lần hủy lịch của bệnh nhân trong 7 ngày gần đây
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const cancelCount = await prisma.appointment.count({
       where: {
         patientId: appointment.patientId,
         status: 'Cancelled',
         cancelledAt: {
-          gte: thirtyDaysAgo,
+          gte: sevenDaysAgo,
         },
       },
     });
 
-    // Nếu hủy lịch từ 3 lần trở lên trong 30 ngày, tự động khóa tài khoản
+    // Nếu hủy lịch từ 4 lần trở lên trong 7 ngày, tự động khóa tài khoản
     let autoLocked = false;
-    if (cancelCount >= 3) {
+    if (cancelCount >= 4) {
       await prisma.patient.update({
         where: { patientId: appointment.patientId },
         data: {
           isLocked: true,
-          lockedReason: `Tự động khóa do hủy lịch hẹn ${cancelCount} lần trong vòng 30 ngày.`,
+          lockedReason: `Tự động khóa do hủy lịch hẹn ${cancelCount} lần trong vòng 7 ngày.`,
         },
       });
       autoLocked = true;
@@ -490,7 +490,7 @@ export class AppointmentsService {
         data: {
           module: 'RECEPTION',
           logType: 'WARN',
-          message: `Hủy lịch hẹn #A-${id} của bệnh nhân ${patientLabel}. Lý do: ${cancelReason}. Tổng lần hủy (30 ngày): ${cancelCount}.`,
+          message: `Hủy lịch hẹn #A-${id} của bệnh nhân ${patientLabel}. Lý do: ${cancelReason}. Tổng lần hủy (7 ngày): ${cancelCount}.`,
         },
       });
 
@@ -499,7 +499,7 @@ export class AppointmentsService {
           data: {
             module: 'SYSTEM',
             logType: 'WARN',
-            message: `Tự động khóa tài khoản bệnh nhân ${patientLabel} (${patientInfo?.phone || ''}) do hủy lịch ${cancelCount} lần trong 30 ngày.`,
+            message: `Tự động khóa tài khoản bệnh nhân ${patientLabel} (${patientInfo?.phone || ''}) do hủy lịch ${cancelCount} lần trong 7 ngày.`,
           },
         });
       }
