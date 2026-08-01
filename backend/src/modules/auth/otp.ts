@@ -28,8 +28,8 @@ const formatTtl = (seconds: number): string => {
 
 const purposeLabel: Record<OtpPurpose, string> = {
   register: 'Đăng ký',
-  booking:  'Đặt lịch',
-  forgot:   'Quên mật khẩu',
+  booking: 'Đặt lịch',
+  forgot: 'Quên mật khẩu',
 };
 
 /**
@@ -37,8 +37,8 @@ const purposeLabel: Record<OtpPurpose, string> = {
  * Ví dụ: otp:register:0901234567, otp_count:booking:0901234567
  */
 const buildKeys = (purpose: OtpPurpose, phone: string) => ({
-  otpKey:   `otp:${purpose}:${phone}`,
-  lockKey:  `otp_locked:${purpose}:${phone}`,
+  otpKey: `otp:${purpose}:${phone}`,
+  lockKey: `otp_locked:${purpose}:${phone}`,
   countKey: `otp_count:${purpose}:${phone}`,
   failsKey: `otp_fails:${purpose}:${phone}`,
 });
