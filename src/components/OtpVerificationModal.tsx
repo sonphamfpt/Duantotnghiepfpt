@@ -300,16 +300,16 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
         </div>
 
         <div className="p-6 space-y-5">
-          {/* Simulated SMS Banner */}
-          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl p-4 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-20 h-20 bg-amber-200/30 rounded-full -translate-y-1/2 translate-x-1/2" />
+          {/* SMS thật Banner */}
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-300 rounded-xl p-4 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-green-200/30 rounded-full -translate-y-1/2 translate-x-1/2" />
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-2">
-                <Icon name="sms" className="text-amber-700 text-[18px]" />
-                <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">Tin nhắn mô phỏng (Demo)</span>
+                <Icon name="sms" className="text-green-700 text-[18px]" />
+                <span className="text-xs font-bold text-green-800 uppercase tracking-wider">Tin nhắn SMS đã được gửi</span>
               </div>
-              <p className="text-xs text-amber-900 leading-relaxed font-semibold">
-                Vì đây là phiên bản thử nghiệm, hệ thống đã in mã OTP ra dòng lệnh <strong className="text-amber-950">(Console Log)</strong> của máy chủ Backend. Bạn hãy xem trong Terminal chạy backend để lấy mã nhập nhé!
+              <p className="text-xs text-green-900 leading-relaxed font-semibold">
+                Mã OTP 6 chữ số đã được gửi qua <strong className="text-green-950">Tin nhắn SMS</strong> đến số điện thoại của bạn. Vui lòng kiểm tra hộp thư SMS!
               </p>
             </div>
           </div>

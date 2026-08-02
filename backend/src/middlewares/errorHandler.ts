@@ -20,8 +20,13 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  // 1. Log lỗi ra console phục vụ debug
-  console.error('💥 Error caught by handler:', err);
+  // 1. Chỉ log lỗi hệ thống nghiêm trọng (500+) ra console
+  //    Bỏ qua các lỗi nghiệp vụ thông thường: 401, 403, 404, 422, 429
+  const isAppError = err instanceof AppError;
+  const shouldLog = !isAppError || err.statusCode >= 500;
+  if (shouldLog) {
+    console.error('💥 [SERVER ERROR]:', err);
+  }
 
   // 2. Lỗi do Validate input Zod
   if (err instanceof ZodError) {

@@ -54,7 +54,7 @@ interface ClinicContextType {
   swapShifts: (shiftId1: string, shiftId2: string, conflictAppointmentIds?: string[]) => Promise<any>;
   transferShift: (shiftId: string, targetDentistId: string, conflictAppointmentIds?: string[]) => Promise<any>;
   changeShiftRoom: (shiftId: string, roomId: string) => void;
-  addShift: (shift: any) => void;
+  addShift: (shift: any) => Promise<{ success: boolean; error?: string; message?: string }>;
   deleteShift: (shiftId: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   resolveShiftConflict_Update: (notifId: string, appointmentId: string) => Promise<void>;
   resolveShiftConflict_Cancel: (notifId: string, appointmentId: string) => Promise<void>;
@@ -91,7 +91,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         clinicApi.getPatients(),
         appointmentApi.getAppointments(),
         queueApi.getQueue(),
-        invoiceApi.getInvoices(),
+        invoiceApi.getInvoices({ skipAuthRedirect: true }),
         shiftApi.getShifts(),
         shiftApi.getNotifications(),
         clinicApi.getLogs(),
@@ -732,14 +732,16 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
               dentistId: shift.dentistId,
               workDate: shift.date,
               shiftType: shift.shiftType,
-              roomId: shift.room,
             });
             if (res.success) {
               addLog('SYSTEM', 'SUCCESS', `Thêm ca trực mới cho ${shift.dentistName} thành công.`);
               await refreshAllData();
+              return { success: true, message: res.message };
             }
-          } catch (err) {
+            return { success: false, error: res.message || 'Không thể thêm ca trực.' };
+          } catch (err: any) {
             console.error('Lỗi thêm ca trực:', err);
+            return { success: false, error: err?.message || 'Không thể thêm ca trực.' };
           }
         },
         deleteShift: async (shiftId: string) => {

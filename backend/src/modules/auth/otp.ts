@@ -52,6 +52,17 @@ export const otpHelper = {
    */
   async generateOtp(phone: string, purpose: OtpPurpose = 'register'): Promise<string> {
     const phoneTrim = normalizeOtpPhone(phone);
+
+    // Validate định dạng số điện thoại Việt Nam
+    const vnPhoneRegex = /^(03|05|07|08|09)\d{8}$/;
+    if (!vnPhoneRegex.test(phoneTrim)) {
+      throw new AppError(
+        400,
+        'Số điện thoại không hợp lệ. Vui lòng nhập số điện thoại Việt Nam 10 chữ số (đầu số 03, 05, 07, 08, 09).',
+        'INVALID_PHONE_NUMBER'
+      );
+    }
+
     const { otpKey, lockKey, countKey } = buildKeys(purpose, phoneTrim);
     const label = purposeLabel[purpose];
 
@@ -110,7 +121,7 @@ export const otpHelper = {
     await redis.set(otpKey, code, 'EX', OTP_TTL);
 
     console.log('\n======================================================');
-    console.log(`✉️  [SMS SIMULATION][${label}] Gửi OTP đến SĐT: ${phoneTrim}`);
+    console.log(`✉️  [SMS OTP REALTIME][${label}] Gửi OTP đến SĐT: ${phoneTrim}`);
     console.log(`🔑 MÃ XÁC THỰC OTP: ${code}`);
     console.log(`⏰ Hạn sử dụng: ${OTP_TTL} giây`);
     console.log(`📊 Số lần đã gửi trong giờ: ${currentSends + 1}/${MAX_SENDS}`);

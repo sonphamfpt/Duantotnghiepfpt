@@ -45,12 +45,18 @@ export async function request<T>(endpoint: string, options: RequestInit = {}, co
     const errorCode = resData.error?.code || '';
     const errorMsg = resData.error?.message || resData.message || `Lỗi kết nối máy chủ (HTTP ${response.status})`;
 
-    // 401: Token hết hạn hoặc tài khoản bị khoá → tự động đăng xuất và redirect
+    // 401: Token hết hạn hoặc tài khoản bị khoá → tự động đăng xuất và redirect (chỉ khi đang ở trang riêng tư và có token)
     if (response.status === 401 && !config?.skipAuthRedirect) {
       const isInactive = errorCode === 'USER_INACTIVE';
+      const hadToken = !!token;
       localStorage.removeItem('goodsmile_token');
       localStorage.removeItem('goodsmile_user');
-      if (!window.location.pathname.startsWith('/login')) {
+
+      const currentPath = window.location.pathname;
+      const publicPaths = ['/login', '/', '/book', '/services', '/dentists', '/about'];
+      const isPublicPath = publicPaths.some(p => currentPath === p || (p !== '/' && currentPath.startsWith(p)));
+
+      if (!isPublicPath && hadToken) {
         const msg = isInactive
           ? 'Tài khoản của bạn đã bị ngưng hoạt động. Bạn sẽ được đăng xuất ngay.'
           : 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';

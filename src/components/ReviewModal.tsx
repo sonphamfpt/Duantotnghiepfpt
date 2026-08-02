@@ -10,6 +10,9 @@ interface ReviewModalProps {
   appointmentId?: string;
   serviceId?: string;
   serviceName?: string;
+  initialRating?: number;
+  initialComment?: string;
+  onSuccess?: (data: any) => void;
 }
 
 export const ReviewModal: React.FC<ReviewModalProps> = ({
@@ -19,13 +22,24 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
   appointmentId,
   serviceId,
   serviceName,
+  initialRating = 5,
+  initialComment = '',
+  onSuccess,
 }) => {
   const { addReview } = useClinic();
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(initialRating);
   const [hoverRating, setHoverRating] = useState(0);
-  const [comment, setComment] = useState('');
+  const [comment, setComment] = useState(initialComment);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<ServiceReviewItem | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setRating(initialRating);
+      setComment(initialComment);
+      setResult(null);
+    }
+  }, [isOpen, initialRating, initialComment]);
 
   if (!isOpen) return null;
 
@@ -46,10 +60,10 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
         comment: comment.trim(),
       });
 
-      if (res.data) {
-        setResult(res.data);
-      } else {
-        onClose();
+      const reviewData = res?.data || res || { rating, comment: comment.trim() };
+      setResult(reviewData);
+      if (onSuccess) {
+        onSuccess(reviewData);
       }
     } catch (err: any) {
       alert(err?.message || 'Có lỗi xảy ra khi gửi đánh giá.');

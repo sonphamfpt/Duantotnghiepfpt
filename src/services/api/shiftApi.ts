@@ -62,7 +62,7 @@ export const shiftApi = {
     });
   },
 
-  createShift: (data: { dentistId: string; workDate: string; shiftType: string; roomId: number | string }) => {
+  createShift: (data: { dentistId: string; workDate: string; shiftType: string; roomId?: number | string }) => {
     const rawDentistId = data.dentistId.split('-')[1] || data.dentistId;
     return request<any>('/shifts', {
       method: 'POST',
@@ -70,7 +70,7 @@ export const shiftApi = {
         dentistId: rawDentistId,
         workDate: data.workDate,
         shiftType: data.shiftType,
-        roomId: data.roomId,
+        ...(data.roomId ? { roomId: data.roomId } : {}),
       }),
     });
   },

@@ -120,7 +120,7 @@ export const LoginRegister: React.FC = () => {
   };
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
-  const isValidVNPhone = (p: string) => /^(0[3|5|7|8|9])[0-9]{8}$|^(0[1-9])[0-9]{9}$/.test(p);
+  const isValidVNPhone = (p: string) => /^(03|05|07|08|09)\d{8}$/.test(p);
   const getPasswordStrength = (pw: string): number => {
     if (!pw) return 0;
     let s = 0;

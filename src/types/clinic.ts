@@ -193,6 +193,8 @@ export interface ServiceReviewItem {
   patientId?: string;
   patientName: string;
   patientPhone?: string;
+  appointmentId?: string;
+  serviceId?: string;
   serviceName: string;
   dentistName?: string;
   rating: number;

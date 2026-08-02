@@ -42,16 +42,49 @@ export const Home: React.FC = () => {
     { name: 'Lê Phương Linh', role: 'Giáo viên', rating: 5, comment: 'Tẩy trắng răng xong kết quả rõ ngay! Được miễn phí khám ban đầu, báo giá rõ ràng trước khi làm. Nhân viên lễ tân thân thiện, cho mình uống nước chờ. Rất hài lòng!', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=80&h=80&q=80', aiReply: 'GoodSmile trân trọng cảm ơn cô Phương Linh! Chúc cô luôn giữ vững nụ cười rạng rỡ và tự tin mỗi ngày.' },
   ];
 
-  const displayReviews = dbReviews && dbReviews.length > 0
-    ? dbReviews.map(r => ({
-        name: r.patientName,
-        role: r.serviceName || 'Bệnh nhân GoodSmile',
-        rating: r.rating,
-        comment: r.comment,
-        aiReply: r.aiReply,
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&h=80&q=80',
-      }))
-    : staticReviews;
+  const displayReviews = React.useMemo(() => {
+    const formattedDb = (dbReviews || []).map(r => ({
+      name: r.patientName || 'Bệnh nhân GoodSmile',
+      role: r.serviceName || 'Bệnh nhân khám nha khoa',
+      rating: r.rating || 5,
+      comment: r.comment,
+      aiReply: r.aiReply,
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&h=80&q=80',
+    }));
+    return [...formattedDb, ...staticReviews];
+  }, [dbReviews]);
+
+  const [currentReviewIdx, setCurrentReviewIdx] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Auto slide every 4 seconds unless hovered
+  useEffect(() => {
+    if (isHovered || displayReviews.length <= 3) return;
+    const interval = setInterval(() => {
+      setCurrentReviewIdx(prev => (prev + 1) % displayReviews.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [displayReviews.length, isHovered]);
+
+  const handleNextReviews = () => {
+    setCurrentReviewIdx(prev => (prev + 1) % displayReviews.length);
+  };
+
+  const handlePrevReviews = () => {
+    setCurrentReviewIdx(prev => (prev - 1 + displayReviews.length) % displayReviews.length);
+  };
+
+  // Get exactly 3 visible reviews at a time (wrapping around circularly)
+  const visibleReviews = React.useMemo(() => {
+    if (!displayReviews || displayReviews.length === 0) return [];
+    const len = displayReviews.length;
+    if (len <= 3) return displayReviews;
+    return [
+      displayReviews[currentReviewIdx % len],
+      displayReviews[(currentReviewIdx + 1) % len],
+      displayReviews[(currentReviewIdx + 2) % len],
+    ];
+  }, [displayReviews, currentReviewIdx]);
 
   const stats = [
     { icon: <FaUsers />, val: '15,000+', label: 'Bệnh nhân hài lòng' },
@@ -502,29 +535,62 @@ export const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* ── Customer Reviews ── */}
-      <section className="px-6 md:px-16 py-16 bg-white">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-10">
-            <h2 className="font-headline-lg text-headline-lg text-on-surface">Khách Hàng Nói Gì Về GoodSmile?</h2>
-            <div className="flex items-center justify-center gap-1 mt-2">
-              {[...Array(5)].map((_, i) => (
-                <FaStar key={i} className="text-amber-400 text-[14px]" />
-              ))}
-              <span className="text-sm font-bold text-on-surface ml-2">4.9/5</span>
-              <span className="text-sm text-outline ml-1">(1.240 đánh giá)</span>
+      {/* ── Customer Reviews 3-Card Auto Carousel ── */}
+      <section className="px-6 md:px-16 py-16 bg-white overflow-hidden">
+        <div className="max-w-7xl mx-auto space-y-8">
+          
+          {/* Header with Navigation Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div>
+              <h2 className="font-headline-lg text-headline-lg text-on-surface">Khách Hàng Nói Gì Về GoodSmile?</h2>
+              <div className="flex items-center gap-1 mt-2">
+                {[...Array(5)].map((_, i) => (
+                  <FaStar key={i} className="text-amber-400 text-[14px]" />
+                ))}
+                <span className="text-sm font-bold text-on-surface ml-2">4.9/5</span>
+                <span className="text-sm text-outline ml-1">(1.240+ đánh giá trải nghiệm thực tế)</span>
+              </div>
+            </div>
+
+            {/* Slider Controls */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePrevReviews}
+                className="w-10 h-10 rounded-full bg-surface-container-high hover:bg-primary hover:text-white border border-outline-variant flex items-center justify-center text-on-surface transition-all shadow-2xs cursor-pointer active:scale-95"
+                title="Đánh giá trước"
+              >
+                <Icon name="arrow_back" className="text-lg" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNextReviews}
+                className="w-10 h-10 rounded-full bg-surface-container-high hover:bg-primary hover:text-white border border-outline-variant flex items-center justify-center text-on-surface transition-all shadow-2xs cursor-pointer active:scale-95"
+                title="Đánh giá tiếp theo"
+              >
+                <Icon name="arrow_forward" className="text-lg" />
+              </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {displayReviews.map((r, i) => (
-              <div key={i} className="bg-surface-container-low rounded-2xl border border-outline-variant p-6 space-y-4 hover:shadow-md transition-all flex flex-col justify-between">
+
+          {/* 3 Visible Cards Grid with Smooth Transition */}
+          <div
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            className="grid grid-cols-1 md:grid-cols-3 gap-5"
+          >
+            {visibleReviews.map((r, i) => (
+              <div
+                key={`${r.name}-${i}-${currentReviewIdx}`}
+                className="bg-surface-container-low rounded-2xl border border-outline-variant p-6 space-y-4 hover:shadow-lg transition-all duration-500 ease-in-out flex flex-col justify-between hover:border-primary/30 animate-in fade-in zoom-in-95"
+              >
                 <div className="space-y-3">
                   <div className="flex items-center gap-1">
                     {[...Array(r.rating || 5)].map((_, starIdx) => (
                       <FaStar key={starIdx} className="text-amber-400 text-[14px]" />
                     ))}
                   </div>
-                  <p className="text-sm text-on-surface-variant leading-relaxed">"{r.comment}"</p>
+                  <p className="text-sm text-on-surface-variant leading-relaxed line-clamp-4">"{r.comment}"</p>
                   
                   {r.aiReply && (
                     <div className="bg-primary/5 border border-primary/10 rounded-xl p-3 text-xs text-on-surface leading-relaxed mt-2 space-y-1">
@@ -532,22 +598,36 @@ export const Home: React.FC = () => {
                         <Icon name="smart_toy" className="text-sm" />
                         <span>GoodSmile AI Phản hồi:</span>
                       </div>
-                      <p className="italic text-slate-600">"{r.aiReply}"</p>
+                      <p className="italic text-slate-600 line-clamp-3">"{r.aiReply}"</p>
                     </div>
                   )}
                 </div>
 
                 <div className="flex items-center gap-3 pt-3 border-t border-outline-variant/30 mt-2">
-                  <img src={r.avatar} alt={r.name} className="w-9 h-9 rounded-full object-cover border border-outline-variant" />
-                  <div>
-                    <p className="font-bold text-xs text-on-surface">{r.name}</p>
-                    <p className="text-[10px] text-outline">{r.role}</p>
+                  <img src={r.avatar} alt={r.name} className="w-9 h-9 rounded-full object-cover border border-outline-variant shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-on-surface truncate">{r.name}</p>
+                    <p className="text-[10px] text-outline truncate">{r.role}</p>
                   </div>
-                  <span className="ml-auto text-[10px] text-outline flex items-center gap-0.5">
-                    <MdVerified className="text-[14px] text-green-500" /> Đã xác minh
+                  <span className="ml-auto text-[10px] text-outline flex items-center gap-0.5 shrink-0">
+                    <MdVerified className="text-[14px] text-green-500" /> Trải nghiệm thật
                   </span>
                 </div>
               </div>
+            ))}
+          </div>
+
+          {/* Indicator Dots */}
+          <div className="flex justify-center items-center gap-2 pt-2">
+            {displayReviews.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentReviewIdx(idx)}
+                className={`h-2 rounded-full transition-all cursor-pointer ${
+                  idx === currentReviewIdx ? 'w-6 bg-primary' : 'w-2 bg-slate-300 hover:bg-slate-400'
+                }`}
+                title={`Chuyển tới đánh giá ${idx + 1}`}
+              />
             ))}
           </div>
         </div>

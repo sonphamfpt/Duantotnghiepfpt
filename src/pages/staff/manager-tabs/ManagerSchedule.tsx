@@ -176,6 +176,16 @@ export const ManagerSchedule: React.FC = () => {
     }
   }, [showAddModal, addForm.dentistId, addForm.date]);
 
+  // Tự động điền phòng khám cố định khi chọn bác sĩ
+  useEffect(() => {
+    if (addForm.dentistId) {
+      const dentist = dentists.find(d => d.id === addForm.dentistId);
+      if (dentist && dentist.room) {
+        setAddForm(p => ({ ...p, room: dentist.room }));
+      }
+    }
+  }, [addForm.dentistId, dentists]);
+
   // Detail/edit modal
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -324,31 +334,27 @@ export const ManagerSchedule: React.FC = () => {
       return;
     }
 
-    // 3. Check room overlap conflict (2 doctors in same room on same shift and date)
-    const isRoomOccupied = doctorShifts.some(
-      s => s.room === addForm.room && s.date === addForm.date && (s.shiftType === addForm.shiftType || s.shiftType === 'Full' || addForm.shiftType === 'Full')
-    );
-    if (isRoomOccupied) {
-      showAlert({
-        title: 'Xung đột phòng khám',
-        message: `Phòng khám ${addForm.room} đã có bác sĩ khác đăng ký trực trong ${addForm.shiftType === 'Morning' ? 'Ca sáng' : addForm.shiftType === 'Afternoon' ? 'Ca chiều' : 'Cả ngày'} ngày ${addForm.date}. Vui lòng chọn phòng khác!`,
-        type: 'warning',
-      });
-      return;
-    }
 
     setIsSubmittingAdd(true);
     try {
-      await addShift({
+      const res = await addShift({
         dentistId: addForm.dentistId,
         dentistName: dentist.name,
         date: addForm.date,
         shiftType: addForm.shiftType,
         room: addForm.room,
       });
+
+      if (res && res.error) {
+        showAlert({ title: 'Không thể thêm ca trực', message: res.error, type: 'warning' });
+        return;
+      }
+
       showAlert({ title: 'Thành công', message: `Đã thêm ca trực mới cho ${dentist.name} thành công!`, type: 'success' });
       setShowAddModal(false);
       setAddForm({ dentistId: '', date: '', shiftType: 'Morning', room: ALL_ROOMS[0] });
+    } catch (err: any) {
+      showAlert({ title: 'Lỗi', message: err?.message || 'Không thể thêm ca trực.', type: 'error' });
     } finally {
       setIsSubmittingAdd(false);
     }
@@ -990,19 +996,6 @@ export const ManagerSchedule: React.FC = () => {
                 })()}
               </div>
 
-              {/* Room */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Phòng khám *</label>
-                <select
-                  value={addForm.room}
-                  onChange={e => setAddForm(prev => ({ ...prev, room: e.target.value }))}
-                  className="w-full bg-slate-50 border border-outline-variant rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none cursor-pointer"
-                >
-                  {ALL_ROOMS.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
             </div>
 
             {/* Footer */}

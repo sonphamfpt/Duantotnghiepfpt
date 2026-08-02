@@ -78,48 +78,77 @@ export const DentistRecords: React.FC = () => {
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
   const patientRecords = medicalRecords.filter(r => r.patientId === selectedPatientId);
 
-  const patientFiles = React.useMemo(() => {
-    const list: any[] = [];
-    patientRecords.forEach(rec => {
-      // EMR PDF file
-      list.push({
-        id: `EMR-PDF-${rec.id}`,
-        type: 'pdf' as const,
-        title: `Hồ sơ bệnh án điện tử EMR_${rec.id}.pdf`,
-        size: rec.size || '1.5 MB',
-        isEmrPdf: true,
-        record: rec,
-        date: rec.date
+  // State lưu trữ tài liệu / ảnh X-quang do Bác sĩ tải lên theo bệnh nhân (Mặc định rỗng {})
+  const [uploadedFilesMap, setUploadedFilesMap] = useState<Record<string, any[]>>({});
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedPatientId || !e.target.files || e.target.files.length === 0) return;
+    
+    const newFilesList: any[] = [];
+    Array.from(e.target.files).forEach((file, index) => {
+      const isImg = file.type.startsWith('image/');
+      const fileUrl = isImg ? URL.createObjectURL(file) : '';
+      newFilesList.push({
+        id: `FILE-${Date.now()}-${index}`,
+        type: isImg ? 'image' : 'pdf',
+        category: isImg ? 'xray' : 'document',
+        title: file.name,
+        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+        date: new Date().toLocaleDateString('vi-VN'),
+        url: fileUrl,
+        uploadedBy: 'Bác sĩ điều trị',
       });
-      // Attached images
+    });
+
+    setUploadedFilesMap(prev => ({
+      ...prev,
+      [selectedPatientId]: [...(prev[selectedPatientId] || []), ...newFilesList]
+    }));
+    
+    alert(`🎉 Đã tải lên thành công ${newFilesList.length} tài liệu/phim X-quang!`);
+    e.target.value = '';
+  };
+
+  const handleDeleteFile = (fileId: string) => {
+    if (!selectedPatientId) return;
+    if (window.confirm('Bạn có chắc chắn muốn xóa tài liệu này khỏi hồ sơ bệnh nhân?')) {
+      setUploadedFilesMap(prev => ({
+        ...prev,
+        [selectedPatientId]: (prev[selectedPatientId] || []).filter(f => f.id !== fileId)
+      }));
+    }
+  };
+
+  const patientFiles = React.useMemo(() => {
+    if (!selectedPatientId) return [];
+    const customFiles = uploadedFilesMap[selectedPatientId] || [];
+    
+    // Tổng hợp file đính kèm thực tế từ các ca khám
+    const recordFiles: any[] = [];
+    patientRecords.forEach(rec => {
       if (rec.files) {
         rec.files.forEach((f: any) => {
-          if (f.type === 'image') {
-            list.push({
-              ...f,
-              date: rec.date,
-              parentRecord: rec
-            });
+          if (!customFiles.some(c => c.id === f.id)) {
+            recordFiles.push({ ...f, date: rec.date });
           }
         });
       }
-      // If the record itself is an image type
-      if (rec.type === 'image') {
-        if (!list.some(f => f.id === rec.id)) {
-          list.push({
+      if (rec.type === 'image' && rec.url) {
+        if (!customFiles.some(c => c.id === rec.id) && !recordFiles.some(c => c.id === rec.id)) {
+          recordFiles.push({
             id: rec.id,
             type: 'image' as const,
-            title: rec.title,
-            size: rec.size,
+            title: rec.title || 'Ảnh phim X-quang',
+            size: rec.size || '1.5 MB',
             url: rec.url,
-            date: rec.date,
-            parentRecord: rec
+            date: rec.date
           });
         }
       }
     });
-    return list;
-  }, [patientRecords]);
+
+    return [...customFiles, ...recordFiles];
+  }, [selectedPatientId, uploadedFilesMap, patientRecords]);
 
   const sections = [
     { key: 'timeline' as const, label: 'Lịch sử điều trị', icon: 'timeline' },
@@ -297,7 +326,7 @@ export const DentistRecords: React.FC = () => {
               {[
                 { label: 'Dị ứng', value: selectedPatient.criticalAllergy, alert: selectedPatient.criticalAllergy !== 'Không' },
                 { label: 'Bệnh lý nền', value: selectedPatient.condition || 'Bình thường', alert: false },
-                { label: 'Hồ sơ lưu trữ', value: `${patientRecords.length} tài liệu`, alert: false },
+                { label: 'Hồ sơ lưu trữ', value: `${patientFiles.length} tài liệu`, alert: false },
               ].map((item, idx) => (
                 <div key={item.label} className={`py-4 px-6 text-center flex flex-col justify-center ${item.alert ? 'bg-red-50/60' : ''} ${idx < 2 ? 'border-r border-slate-100' : ''}`}>
                   <p className={`text-[10px] font-bold uppercase tracking-wider ${item.alert ? 'text-red-600' : 'text-slate-500'}`}>{item.label}</p>
@@ -391,45 +420,125 @@ export const DentistRecords: React.FC = () => {
             </div>
           )}
 
-          {/* Files */}
+          {/* Files / X-Ray Upload Tab */}
           {activeSection === 'files' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {patientFiles.map(file => {
-                const typeConf = TYPE_CONFIG[file.type as keyof typeof TYPE_CONFIG];
-                return (
-                  <div
-                    key={file.id}
-                    onClick={() => {
-                      if (file.isEmrPdf) {
-                        setViewEMRRecord(file.record);
-                      } else {
-                        setViewRecord(file);
-                        setZoomScale(1);
-                        setRotateDegree(0);
-                      }
-                    }}
-                    className="bg-white rounded-xl border border-outline-variant p-4 flex items-center gap-3 hover:shadow-md cursor-pointer transition-all group"
-                  >
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${typeConf?.color || ''}`}>
-                      <Icon name={typeConf?.icon || 'description'} className="text-[26px]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-on-surface text-sm truncate">{file.title}</p>
-                      <p className="text-xs text-on-surface-variant">{file.date} • {file.size}</p>
-                    </div>
-                    <button
-                      onClick={e => { e.stopPropagation(); alert(`Tải xuống: ${file.title}`); }}
-                      className="p-2 text-on-surface-variant hover:text-primary opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+            <div className="space-y-5 animate-in fade-in duration-200">
+              {/* Toolbar Header */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div>
+                  <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <Icon name="folder_shared" className="text-primary text-[20px]" />
+                    Thư viện Ảnh X-quang & Tài liệu Lâm sàng
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Danh sách phim X-quang (Panorama, Cận chóp, CT 3D) và tài liệu đính kèm của bệnh nhân <strong>{selectedPatient?.name}</strong>
+                  </p>
+                </div>
+              </div>
+
+              {/* Files Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {patientFiles.map((file) => {
+                  const isImage = file.type === 'image' || file.url;
+                  return (
+                    <div
+                      key={file.id}
+                      className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col justify-between hover:shadow-md transition-all group relative overflow-hidden"
                     >
-                      <Icon name="download" className="text-[20px]" />
-                    </button>
-                  </div>
-                );
-              })}
+                      {/* Image Preview Thumbnail */}
+                      {isImage ? (
+                        <div
+                          onClick={() => {
+                            setViewRecord(file);
+                            setZoomScale(1);
+                            setRotateDegree(0);
+                          }}
+                          className="w-full h-44 rounded-xl bg-slate-900 overflow-hidden relative mb-3 cursor-pointer group/img border border-slate-200 shadow-inner"
+                        >
+                          <img
+                            src={file.url || 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=800&auto=format&fit=crop&q=80'}
+                            alt={file.title}
+                            className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-300 opacity-90 group-hover/img:opacity-100"
+                          />
+                          <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-white gap-2 backdrop-blur-[2px]">
+                            <Icon name="zoom_in" className="text-2xl" />
+                            <span className="text-xs font-bold">Xem phim X-quang</span>
+                          </div>
+                          <span className="absolute top-2 left-2 px-2.5 py-0.5 bg-emerald-600/90 backdrop-blur-md text-white text-[9px] font-black rounded-md uppercase tracking-wider shadow-sm">
+                            Phim X-Quang
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="w-full h-24 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 mb-3">
+                          <Icon name="picture_as_pdf" className="text-4xl" />
+                        </div>
+                      )}
+
+                      {/* File details */}
+                      <div className="space-y-1">
+                        <h5 className="font-bold text-slate-800 text-xs line-clamp-1" title={file.title}>
+                          {file.title}
+                        </h5>
+                        <div className="flex justify-between items-center text-[10px] text-slate-500 font-medium">
+                          <span>{file.date} • {file.size || '1.2 MB'}</span>
+                          {file.uploadedBy && <span className="text-primary font-bold">{file.uploadedBy}</span>}
+                        </div>
+                      </div>
+
+                      {/* Card Action bar */}
+                      <div className="pt-3 mt-3 border-t border-slate-100 flex justify-between items-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isImage) {
+                              setViewRecord(file);
+                              setZoomScale(1);
+                              setRotateDegree(0);
+                            } else {
+                              alert(`Đang mở file: ${file.title}`);
+                            }
+                          }}
+                          className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Icon name={isImage ? "zoom_in" : "open_in_new"} className="text-sm" />
+                          {isImage ? 'Phóng to phim' : 'Mở file'}
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => alert(`Tải xuống: ${file.title}`)}
+                            className="p-1.5 text-slate-500 hover:text-primary hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            title="Tải file"
+                          >
+                            <Icon name="download" className="text-base" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFile(file.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            title="Xóa tài liệu"
+                          >
+                            <Icon name="delete" className="text-base" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
               {patientFiles.length === 0 && (
-                <div className="col-span-2 text-center py-12 bg-white rounded-2xl border border-outline-variant">
-                  <Icon name="folder_open" className="text-[60px] text-outline" />
-                  <p className="text-on-surface-variant mt-3">Chưa có tài liệu nào</p>
+                <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 space-y-3">
+                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                    <Icon name="folder_open" className="text-3xl" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-700 text-sm">Chưa có ảnh phim X-quang hay tài liệu đính kèm nào</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Bệnh nhân <strong>{selectedPatient?.name}</strong> chưa có phim chụp X-quang hay file xét nghiệm nào được lưu trong các lần khám trước.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

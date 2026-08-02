@@ -5,7 +5,7 @@ export const invoiceApi = {
   /**
    * Lấy danh sách toàn bộ hóa đơn
    */
-  getInvoices: () => request<Invoice[]>('/invoices'),
+  getInvoices: (config?: { skipAuthRedirect?: boolean }) => request<Invoice[]>('/invoices', {}, config),
 
   /**
    * Thanh toán hóa đơn (dùng số dư ví hoặc tiền mặt/chuyển khoản)
@@ -29,6 +29,26 @@ export const invoiceApi = {
     return request<any>(`/invoices/patients/${rawPatientId}/recharge`, {
       method: 'POST',
       body: JSON.stringify({ amount }),
+    });
+  },
+
+  /**
+   * Tạo link thanh toán VNPay Sandbox cho hóa đơn
+   */
+  createVnPayUrl: (invoiceId: string, returnUrl?: string) => {
+    const rawInvoiceId = invoiceId.split('-')[1] || invoiceId;
+    return request<{ checkoutUrl: string; amount: number; invoiceId: string }>(`/invoices/${rawInvoiceId}/create-vnpay-url`, {
+      method: 'POST',
+      body: JSON.stringify({ returnUrl }),
+    });
+  },
+
+  /**
+   * Xác nhận kết quả thanh toán VNPay khi redirect về
+   */
+  verifyVnPayReturn: (queryString: string) => {
+    return request<any>(`/invoices/vnpay-return${queryString}`, {
+      method: 'GET',
     });
   },
 };

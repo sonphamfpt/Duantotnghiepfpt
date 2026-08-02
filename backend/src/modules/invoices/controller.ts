@@ -114,3 +114,41 @@ export async function getPatientBillingHandler(req: Request, res: Response, next
     return next(err);
   }
 }
+
+/**
+ * Tạo URL thanh toán VNPay
+ */
+export async function createVnPayUrlHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const invoiceId = parseId(req.params.id);
+    const { returnUrl } = req.body || {};
+    const ipAddr = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+
+    const data = await service.createVnPayUrlForInvoice(invoiceId, returnUrl, ipAddr);
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+/**
+ * Xử lý Callback ReturnUrl / IPN từ VNPay
+ */
+export async function vnPayReturnHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const vnpParams = req.query;
+    const data = await service.handleVnPayReturn(vnpParams as Record<string, any>);
+
+    return res.status(200).json({
+      success: true,
+      data: serializeBigInt(data),
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+

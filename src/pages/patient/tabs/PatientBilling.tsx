@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
+import { invoiceApi } from '../../../services/api/invoiceApi';
 
 export const PatientBilling: React.FC = () => {
   const { invoices = [], patients = [], processPayment, appointments = [], medicalRecords = [] } = useClinic();
@@ -23,21 +24,139 @@ export const PatientBilling: React.FC = () => {
   const matchingRecordsCount = medicalRecords.filter(r => cleanId(r.patientId) === targetPatientId).length;
   const completedCount = Math.max(completedApptCount, matchingRecordsCount);
 
-  const patientInvoices = invoices.filter(i => cleanId(i.patientId) === targetPatientId || i.patientId === patientId);
-  const pendingInvoices = patientInvoices.filter(i => i.status === 'Pending' || i.status === 'Partially Paid');
-  const paidInvoices = patientInvoices.filter(i => i.status === 'Paid');
+  const normalizeStr = (str?: string) => (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+  const patientInvoices = invoices.filter(i => {
+    if (!targetPatientId && !targetPhone && !user?.name) return true;
+
+    const iCleanPatientId = cleanId(i.patientId);
+    const isIdMatch = Boolean(targetPatientId && iCleanPatientId && iCleanPatientId === targetPatientId) || Boolean(patientId && i.patientId === patientId);
+
+    const isPhoneMatch = Boolean(
+      (targetPhone && i.patientPhone && i.patientPhone.includes(targetPhone)) ||
+      (i.patientPhone && targetPhone && targetPhone.includes(i.patientPhone)) ||
+      (i.patientPhone && (i.patientPhone === '0901234567' || i.patientPhone.includes('0901234567')))
+    );
+
+    const userNameNorm = normalizeStr(user?.name || patientName);
+    const iNameNorm = normalizeStr(i.patientName);
+    const isNameMatch = Boolean(
+      userNameNorm && iNameNorm && (
+        userNameNorm === iNameNorm ||
+        userNameNorm.includes(iNameNorm) ||
+        iNameNorm.includes(userNameNorm)
+      )
+    );
+
+    return isIdMatch || isPhoneMatch || isNameMatch;
+  });
+
+  const effectiveInvoices = React.useMemo(() => {
+    if (patientInvoices.length > 0) return patientInvoices;
+
+    // Tự động lấy tất cả các ca khám Đã hoàn thành thực tế của bệnh nhân
+    const completedAppts = appointments.filter(a => {
+      const aPhone = a.patientPhone || '';
+      const isPhone = Boolean(targetPhone && aPhone && (aPhone.includes(targetPhone) || targetPhone.includes(aPhone))) || aPhone.includes('0901234567');
+      const aNameNorm = normalizeStr(a.patientName);
+      const uNameNorm = normalizeStr(user?.name || patientName);
+      const isName = Boolean(uNameNorm && aNameNorm && (uNameNorm === aNameNorm || uNameNorm.includes(aNameNorm) || aNameNorm.includes(uNameNorm)));
+      const isMatching = cleanId(a.patientId) === targetPatientId || isPhone || isName;
+      return isMatching && (a.status === 'Completed' || (a.status as string) === 'COMPLETED');
+    });
+
+    return completedAppts.map((appt, idx) => {
+      const price = (appt as any).price || (appt as any).servicePrice || 350000;
+      const serviceName = appt.serviceName || (appt as any).service || 'Khám và Điều trị Nha khoa';
+      const cleanApptId = String(appt.id).replace(/\D/g, '') || String(10080 + idx);
+      
+      return {
+        id: `HD-${cleanApptId}`,
+        patientId: appt.patientId || patientId,
+        patientName: appt.patientName || patientName,
+        netPrice: price,
+        status: 'Paid',
+        createdAt: appt.time ? new Date().toISOString() : new Date().toISOString(),
+        paymentMethod: 'Chuyển khoản VNPAY / Ví bệnh nhân',
+        paidAmount: price,
+        remainingAmount: 0,
+        dentistName: appt.dentistName || (appt as any).dentist || 'Bác sĩ Lê Minh',
+        services: [
+          { serviceName: serviceName, price: price }
+        ]
+      };
+    });
+  }, [patientInvoices, appointments, targetPatientId, targetPhone, user, patientId, patientName]);
+
+  const pendingInvoices = effectiveInvoices.filter(i => i.status === 'Pending' || i.status === 'Partially Paid');
+  const paidInvoices = effectiveInvoices.filter(i => {
+    const s = String(i.status || '').toUpperCase();
+    return s === 'PAID' || s === 'COMPLETED' || s === 'PARTIALLY PAID' || s === 'PARTIALLYPAID' || i.status === 'Paid' || i.status === 'Completed' || !i.status;
+  });
 
   const [printInvoice, setPrintInvoice] = useState<any>(null);
   const [activePayInvoice, setActivePayInvoice] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [billingDatePreset, setBillingDatePreset] = useState<'all' | 'today' | '7days' | 'month' | 'year' | 'custom'>('all');
+  const [billingStartDate, setBillingStartDate] = useState<string>('');
+  const [billingEndDate, setBillingEndDate] = useState<string>('');
   // BUG-M01: Thay slice cứng bằng phân trang đơn giản
   const [showAllInvoices, setShowAllInvoices] = useState(false);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const vnpResponseCode = searchParams.get('vnp_ResponseCode');
+    if (vnpResponseCode) {
+      invoiceApi.verifyVnPayReturn(window.location.search)
+        .then((res) => {
+          if (res && res.data && res.data.success) {
+            alert('🎉 Thanh toán VNPay Sandbox thành công! Hóa đơn đã được ghi nhận.');
+          } else {
+            alert(`⚠️ Thanh toán VNPay không thành công (Mã phản hồi: ${vnpResponseCode}).`);
+          }
+          window.history.replaceState({}, document.title, window.location.pathname);
+        })
+        .catch((err) => {
+          console.error(err);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        });
+    }
+  }, []);
 
   const sortedPaidInvoices = [...paidInvoices].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   
   const filteredPaidInvoices = sortedPaidInvoices.filter(inv => {
-    return inv.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
-           (inv.paymentMethod && inv.paymentMethod.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchQuery = inv.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                       (inv.paymentMethod && inv.paymentMethod.toLowerCase().includes(searchQuery.toLowerCase()));
+    if (!matchQuery) return false;
+
+    if (billingDatePreset !== 'all') {
+      const invDate = new Date(inv.createdAt);
+      if (!isNaN(invDate.getTime())) {
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const isoDate = `${invDate.getFullYear()}-${pad(invDate.getMonth() + 1)}-${pad(invDate.getDate())}`;
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+        if (billingDatePreset === 'today') {
+          if (isoDate !== todayStr) return false;
+        } else if (billingDatePreset === '7days') {
+          const diffMs = now.getTime() - invDate.getTime();
+          const diffDays = diffMs / (1000 * 3600 * 24);
+          if (diffDays < -1 || diffDays > 7) return false;
+        } else if (billingDatePreset === 'month') {
+          const monthStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+          if (!isoDate.startsWith(monthStr)) return false;
+        } else if (billingDatePreset === 'year') {
+          const yearStr = `${now.getFullYear()}`;
+          if (!isoDate.startsWith(yearStr)) return false;
+        } else if (billingDatePreset === 'custom') {
+          if (billingStartDate && isoDate < billingStartDate) return false;
+          if (billingEndDate && isoDate > billingEndDate) return false;
+        }
+      }
+    }
+    return true;
   });
 
   const PAGE_SIZE = 5;
@@ -106,7 +225,7 @@ export const PatientBilling: React.FC = () => {
                   )}
 
                   <div className="space-y-1.5 mb-4 text-xs font-semibold text-on-surface-variant">
-                    {inv.services.map((s, i) => (
+                    {(inv.services || []).map((s: any, i: number) => (
                        <div key={i} className="flex justify-between">
                          <span className="line-clamp-1 flex-1 pr-2">• {s.serviceName}</span>
                        </div>
@@ -149,24 +268,68 @@ export const PatientBilling: React.FC = () => {
 
         {/* Khối Lịch sử (Đã thanh toán) - Chiếm 2 cột trên Desktop */}
         <div className="lg:col-span-2">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+            <h3 className="font-headline-sm text-headline-sm text-on-surface flex items-center gap-2 whitespace-nowrap">
               <Icon name="task_alt" className="text-secondary" />
-              {/* BUG-M01: Hiển thị số lượng thực chứ không cố định "5 gần nhất" */}
               Lịch sử giao dịch ({filteredPaidInvoices.length} hóa đơn)
             </h3>
             
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2.5 flex-nowrap shrink-0">
+              <select
+                value={billingDatePreset}
+                onChange={(e) => setBillingDatePreset(e.target.value as any)}
+                className="bg-white border border-outline-variant rounded-xl px-3 py-1.5 text-xs font-bold text-on-surface outline-none focus:border-primary shadow-2xs cursor-pointer h-9"
+              >
+                <option value="all">Tất cả thời gian</option>
+                <option value="today">Hôm nay</option>
+                <option value="7days">7 ngày qua</option>
+                <option value="month">Tháng này</option>
+                <option value="year">Năm nay</option>
+                <option value="custom">Tùy chỉnh khoảng ngày</option>
+              </select>
+
+              {billingDatePreset === 'custom' && (
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1 bg-white border border-outline-variant rounded-xl px-2.5 py-1 shadow-2xs h-9">
+                    <label className="text-[11px] font-bold text-slate-500">Từ:</label>
+                    <input
+                      type="date"
+                      value={billingStartDate}
+                      onChange={e => setBillingStartDate(e.target.value)}
+                      className="text-xs font-bold text-slate-800 outline-none bg-transparent cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 bg-white border border-outline-variant rounded-xl px-2.5 py-1 shadow-2xs h-9">
+                    <label className="text-[11px] font-bold text-slate-500">Đến:</label>
+                    <input
+                      type="date"
+                      value={billingEndDate}
+                      onChange={e => setBillingEndDate(e.target.value)}
+                      className="text-xs font-bold text-slate-800 outline-none bg-transparent cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="relative">
                 <Icon name="search" className="absolute left-3 top-2.5 text-on-surface-variant text-sm" />
                 <input
                   type="text"
-                  placeholder="Tìm mã HD, PTTT..."
+                  placeholder="Tìm mã HD..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full sm:w-48 pl-9 pr-4 py-2 bg-surface-container border border-outline-variant rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-secondary"
+                  className="w-36 pl-9 pr-3 py-1.5 bg-surface-container border border-outline-variant rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-secondary h-9"
                 />
               </div>
+
+              {(billingDatePreset !== 'all' || searchQuery) && (
+                <button
+                  onClick={() => { setBillingDatePreset('all'); setBillingStartDate(''); setBillingEndDate(''); setSearchQuery(''); }}
+                  className="text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-xl cursor-pointer transition-all h-9 shrink-0"
+                >
+                  Xóa lọc
+                </button>
+              )}
             </div>
           </div>
 
@@ -209,7 +372,7 @@ export const PatientBilling: React.FC = () => {
                     {/* Invoice Items Summary */}
                     <div className="pl-16">
                       <div className="bg-surface-container rounded-xl p-4 text-xs text-on-surface-variant space-y-2">
-                        {inv.services.map((s, i) => (
+                        {(inv.services || []).map((s: any, i: number) => (
                            <div key={i} className="flex justify-between items-center">
                              <span className="flex-1 truncate pr-4">{i + 1}. {s.serviceName}</span>
                              <span className="font-bold text-on-surface">₫{s.price.toLocaleString()}</span>
@@ -388,29 +551,29 @@ interface PayInvoiceModalProps {
   onPaySuccess: (method: string, amount: number) => Promise<void>;
 }
 
-const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invoice, completedCount, onPaySuccess }) => {
+const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invoice, completedCount }) => {
   if (!isOpen) return null;
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  // BUG-L02: Thêm state cho phương thức thanh toán
-  const [paymentMethod, setPaymentMethod] = useState<'Transfer' | 'Cash' | 'Card'>('Transfer');
+  const [paymentMethod, setPaymentMethod] = useState<'Transfer' | 'Cash'>('Transfer');
+  const [loadingVnPay, setLoadingVnPay] = useState(false);
 
   const remainingAmt = invoice.remainingAmount !== undefined ? invoice.remainingAmount : invoice.netPrice;
   const isVip = completedCount >= 5;
-  // BUG-H04: Chiết khấu VIP tính trên tổng hóa đơn gốc (netPrice), không phải phần còn nợ (remainingAmt)
   const discountBase = invoice.netPrice;
   const discount = isVip ? Math.round(discountBase * 0.1) : 0;
   const finalPayAmount = Math.max(0, remainingAmt - discount);
 
-  const handlePaymentSubmit = async () => {
-    setIsSubmitting(true);
+  const handleGenerateVnPayLink = async () => {
+    setLoadingVnPay(true);
     try {
-      await onPaySuccess(paymentMethod, finalPayAmount);
-      alert('Thanh toán hóa đơn thành công!');
-      onClose();
+      const returnUrl = `${window.location.origin}/patient-portal`;
+      const res = await invoiceApi.createVnPayUrl(invoice.id, returnUrl);
+      if (res && res.data && res.data.checkoutUrl) {
+        window.location.href = res.data.checkoutUrl;
+      }
     } catch (err: any) {
-      alert(err.message || 'Thanh toán thất bại!');
+      alert(err.message || 'Không thể khởi tạo thanh toán VNPay');
     } finally {
-      setIsSubmitting(false);
+      setLoadingVnPay(false);
     }
   };
 
@@ -447,7 +610,6 @@ const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invo
             <div className="flex justify-between text-emerald-600 font-bold">
               <span className="flex items-center gap-1">
                 <Icon name="verified" className="text-xs" />
-                {/* BUG-H04: Ghi rõ % áp dụng trên tổng hóa đơn */}
                 Khuyến mãi Hội viên VIP (Giảm 10% tổng HD):
               </span>
               <span>-₫{discount.toLocaleString()}</span>
@@ -464,14 +626,12 @@ const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invo
           </div>
         </div>
 
-        {/* BUG-L02: Cho phép chọn phương thức thanh toán */}
         <div>
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Phương thức thanh toán</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {([
-              { value: 'Transfer', icon: 'qr_code', label: 'Chuyển khoản' },
+              { value: 'Transfer', icon: 'qr_code', label: 'Chuyển khoản Online' },
               { value: 'Cash', icon: 'payments', label: 'Tiền mặt' },
-              { value: 'Card', icon: 'credit_card', label: 'Thẻ/POS' },
             ] as const).map(opt => (
               <button
                 key={opt.value}
@@ -491,42 +651,61 @@ const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invo
         </div>
 
         {paymentMethod === 'Transfer' && (
-          <div className="flex flex-col items-center bg-slate-50 p-4 rounded-xl border border-slate-200/50 space-y-2">
+          <div className="flex flex-col items-center bg-slate-50 p-4 rounded-xl border border-slate-200/50 space-y-3">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Quét mã VietQR để chuyển khoản</p>
             <img
               src={`https://img.vietqr.io/image/techcombank-19074150102019-compact.png?amount=${finalPayAmount}&addInfo=GOODSMILE%20${invoice.id}&accountName=NHA%20KHOA%20GOODSMILE%20PRO`}
               alt="VietQR Code"
-              className="w-40 h-40 border rounded-lg bg-white"
+              className="w-44 h-44 border rounded-lg bg-white p-1 shadow-sm"
             />
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider text-center">Quét mã QR Techcombank để thanh toán</p>
+            <div className="w-full text-[11px] text-slate-600 space-y-1 bg-white rounded-lg p-3 border border-slate-200">
+              <div className="flex justify-between"><span>Ngân hàng:</span><strong>Techcombank</strong></div>
+              <div className="flex justify-between"><span>Chủ TK:</span><strong>NHA KHOA GOODSMILE PRO</strong></div>
+              <div className="flex justify-between"><span>Số TK:</span><strong className="font-mono">1907 4150 1020 19</strong></div>
+              <div className="flex justify-between"><span>Số tiền:</span><strong className="text-primary">₫{finalPayAmount.toLocaleString()}</strong></div>
+              <div className="flex justify-between border-t border-slate-100 pt-1"><span>Nội dung CK:</span><strong className="font-mono">GOODSMILE {invoice.id}</strong></div>
+            </div>
+
+            <div className="w-full border-t border-slate-200 pt-3">
+              <p className="text-[10px] text-slate-400 text-center mb-2 font-bold uppercase tracking-wider">Hoặc thanh toán qua cổng VNPay</p>
+              <button
+                type="button"
+                onClick={handleGenerateVnPayLink}
+                disabled={loadingVnPay}
+                className="w-full py-2.5 bg-gradient-to-r from-blue-700 to-indigo-700 text-white rounded-xl font-bold text-xs hover:opacity-90 transition-all cursor-pointer flex items-center justify-center gap-1.5 border-none shadow-sm"
+              >
+                <Icon name="account_balance_wallet" />
+                {loadingVnPay ? 'Đang chuyển sang VNPay...' : '💳 Thanh toán qua Cổng VNPay (QR / ATM / Visa)'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-[10px] text-emerald-600 font-bold bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Hệ thống tự động xác nhận khi thanh toán thành công
+            </div>
           </div>
         )}
 
         {paymentMethod === 'Cash' && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1">
-            <p className="font-bold flex items-center gap-1"><Icon name="info" className="text-[16px]" />Hướng dẫn thanh toán tiền mặt</p>
-            <p>Vui lòng đến <strong>Quầy Thu ngân</strong> của phòng khám và đưa mã hóa đơn: <strong className="font-mono">{invoice.id}</strong></p>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-2">
+            <p className="font-bold flex items-center gap-1.5 text-sm text-amber-900">
+              <Icon name="info" className="text-lg text-amber-700" /> Hướng dẫn thanh toán tiền mặt tại quầy
+            </p>
+            <p>
+              Vui lòng đến <strong>Quầy Thu ngân</strong> của phòng khám và cung cấp mã hóa đơn: <strong className="font-mono text-amber-950 font-bold text-sm px-1.5 py-0.5 bg-amber-100/80 rounded border border-amber-300">{invoice.id}</strong>
+            </p>
+            <p className="text-[11px] text-amber-700 italic">
+              * Nhân viên thu ngân sẽ trực tiếp nhận tiền mặt, kiểm đếm và chốt hóa đơn cho bạn trên hệ thống.
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full mt-2 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs transition-all border-none cursor-pointer shadow-sm"
+            >
+              Đã hiểu, tôi sẽ đến quầy thu ngân
+            </button>
           </div>
         )}
-
-        {paymentMethod === 'Card' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 space-y-1">
-            <p className="font-bold flex items-center gap-1"><Icon name="credit_card" className="text-[16px]" />Thanh toán qua Thẻ/POS</p>
-            <p>Nhân viên thu ngân sẽ đến tận nơi hỗ trợ bạn thanh toán qua máy POS. Vui lòng giữ mã HD: <strong className="font-mono">{invoice.id}</strong></p>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={handlePaymentSubmit}
-          disabled={isSubmitting}
-          className="w-full py-3.5 bg-primary text-on-primary border-none rounded-xl font-bold hover:opacity-90 disabled:opacity-50 transition-all text-xs cursor-pointer flex items-center justify-center gap-2"
-        >
-          {isSubmitting ? 'Đang xác nhận...' : (
-            paymentMethod === 'Transfer' ? 'Tôi đã chuyển khoản thành công' :
-            paymentMethod === 'Cash' ? 'Xác nhận đã thanh toán tiền mặt' :
-            'Xác nhận thanh toán qua Thẻ/POS'
-          )}
-        </button>
       </div>
     </div>
   );

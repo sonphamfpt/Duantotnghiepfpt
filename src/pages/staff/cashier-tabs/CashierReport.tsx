@@ -7,7 +7,7 @@ export const CashierReport: React.FC = () => {
   const { invoices, addLog } = useClinic();
 
   // Shift details
-  const initialCash = 15200000; // 15.2M VND starter fund
+  const [initialCash, setInitialCash] = useState<number>(2000000); // 2.0M VND starter cash float (thực tế)
   const todayDateStr = new Date().toDateString();
   const STORAGE_CLOSING_KEY = 'goodsmile_shift_closing_history';
 
@@ -51,6 +51,22 @@ export const CashierReport: React.FC = () => {
   const handleResetShiftTime = () => {
     setShiftStartTime(null);
     localStorage.removeItem('goodsmile_shift_start_time');
+  };
+
+  // Tự động chia mệnh giá tiền đếm sao cho khớp chính xác với ngăn kéo lý thuyết
+  const handleAutoFillBills = () => {
+    let target = expectedPhysicalCash;
+    const denoms = [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000];
+    const newCounts: Record<number, number> = { 500000: 0, 200000: 0, 100000: 0, 50000: 0, 20000: 0, 10000: 0, 5000: 0, 2000: 0, 1000: 0 };
+
+    for (const d of denoms) {
+      if (target >= d) {
+        const qty = Math.floor(target / d);
+        newCounts[d] = qty;
+        target -= qty * d;
+      }
+    }
+    setBillCounts(newCounts);
   };
 
   // Form states
@@ -134,11 +150,23 @@ export const CashierReport: React.FC = () => {
       : `Hụt -${Math.abs(discrepancy).toLocaleString()}đ`;
 
     const newLog = {
+      id: `SHIFT-CLOSE-${Date.now()}`,
       date: `${dateStr} - ${currentShift}`,
       time: timeStr,
+      cashierName: 'Nguyễn Thu Ngân',
+      totalRevenue: totalCollected,
+      cashRevenue: cashIncome,
+      nonCashRevenue: nonCashIncome,
+      initialCash: initialCash,
+      expectedCash: expectedPhysicalCash,
+      actualCash: actualCash,
+      discrepancy: discrepancy,
+      notes: reportNotes || 'Chốt sổ bình thường',
       status: statusText,
       isError: discrepancy !== 0,
       warning: discrepancy > 0,
+      billCounts: { ...billCounts },
+      invoiceCount: todayInvoices.length,
     };
 
     setClosingHistory(prev => {
@@ -221,43 +249,93 @@ export const CashierReport: React.FC = () => {
                 <p className="text-2xl font-black text-blue-700 font-data-mono">₫{totalCollected.toLocaleString()}</p>
                 <p className="text-[10px] text-slate-400 font-bold mt-1.5 flex items-center gap-1">
                   <Icon name="shopping_bag" className="text-xs" />
-                  Đã thu {todayInvoices.length} hóa đơn trong hôm nay
+                  Đã thu {todayInvoices.length} hóa đơn trong ca
                 </p>
               </div>
             </div>
 
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50/40 rounded-full translate-x-8 -translate-y-8 pointer-events-none" />
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tiền Mặt Ngăn Kéo (Lý thuyết)</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Doanh Thu Tiền Mặt (Cash)</span>
               <div>
-                <p className="text-2xl font-black text-emerald-700 font-data-mono">₫{expectedPhysicalCash.toLocaleString()}</p>
+                <p className="text-2xl font-black text-emerald-700 font-data-mono">₫{cashIncome.toLocaleString()}</p>
                 <p className="text-[10px] text-slate-400 font-bold mt-1.5 flex items-center gap-1">
-                  <Icon name="info" className="text-xs" />
-                  Gồm ₫{initialCash.toLocaleString()} vốn đầu ca
+                  <Icon name="payments" className="text-xs" />
+                  + ₫{initialCash.toLocaleString()} vốn = ₫{expectedPhysicalCash.toLocaleString()} (Ngăn kéo lý thuyết)
                 </p>
               </div>
             </div>
 
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between h-32 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50/40 rounded-full translate-x-8 -translate-y-8 pointer-events-none" />
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Chuyển Khoản & Thẻ POS</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Chuyển Khoản VietQR & VNPAY</span>
               <div>
                 <p className="text-2xl font-black text-purple-700 font-data-mono">₫{nonCashIncome.toLocaleString()}</p>
                 <p className="text-[10px] text-slate-400 font-bold mt-1.5 flex items-center gap-1">
                   <Icon name="account_balance" className="text-xs" />
-                  Chuyển thẳng tài khoản phòng khám
+                  Chuyển thẳng TK Ngân hàng / Cổng VNPAY
                 </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Phân rã chi tiết thu tiền ca trực */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <h4 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Icon name="pie_chart" className="text-blue-600 text-sm" />
+                Chi Tiết Phân Rã Doanh Thu Theo Phương Thức Thanh Toán
+              </h4>
+              <span className="text-[10px] font-bold text-slate-400">Đối soát cuối ca</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-150 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                    <Icon name="payments" className="text-base" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-emerald-950">Tiền Mặt (Thu tại quầy)</p>
+                    <p className="text-[10px] text-emerald-700">Kiểm đếm vào ngăn kéo tiền mặt</p>
+                  </div>
+                </div>
+                <strong className="font-mono text-sm text-emerald-800 font-extrabold">₫{cashIncome.toLocaleString()}</strong>
+              </div>
+
+              <div className="p-3.5 bg-purple-50/60 rounded-xl border border-purple-150 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                    <Icon name="account_balance_wallet" className="text-base" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-purple-950">Chuyển Khoản (VietQR / VNPay)</p>
+                    <p className="text-[10px] text-purple-700">Tự động vào TK Ngân hàng / Cổng VNPay</p>
+                  </div>
+                </div>
+                <strong className="font-mono text-sm text-purple-800 font-extrabold">₫{nonCashIncome.toLocaleString()}</strong>
               </div>
             </div>
           </div>
 
           {/* Form: Cash verification & discrepancies */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5">
-            <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+            <div className="border-b border-slate-200 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
                 <Icon name="calculate" className="text-amber-600 text-lg" />
                 Kiểm Kê Tiền Mặt Ngăn Kéo Thực Tế
               </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAutoFillBills}
+                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-2xs"
+                  title="Tự động chia tờ tiền khớp vừa đủ với số dư ngăn kéo lý thuyết"
+                >
+                  <Icon name="bolt" className="text-sm text-amber-600 font-bold" />
+                  Đếm nhanh (Khớp quỹ)
+                </button>
+              </div>
             </div>
 
             {isSubmitted ? (

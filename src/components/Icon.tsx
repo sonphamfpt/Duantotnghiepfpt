@@ -313,6 +313,7 @@ export type IconName =
   | 'inbox'
   | 'playlist_remove'
   | 'settings'
+  | 'manage_accounts'
   | 'add'
   | 'add_box'
   | 'history_edu'

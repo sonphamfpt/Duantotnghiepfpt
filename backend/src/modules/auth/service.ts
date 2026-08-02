@@ -132,7 +132,7 @@ export class AuthService {
         patientId: result.patient.patientId.toString(),
       },
       env.JWT_SECRET,
-      { expiresIn: '1d' }
+      { expiresIn: '7d' }
     );
 
     return {
@@ -225,7 +225,7 @@ export class AuthService {
         patientId,
       },
       env.JWT_SECRET,
-      { expiresIn: '1d' }
+      { expiresIn: '7d' }
     );
 
     return {

@@ -26,13 +26,14 @@ export async function createReview(params: CreateReviewParams) {
     throw new AppError(404, 'Không tìm thấy hồ sơ bệnh nhân.', 'PATIENT_NOT_FOUND');
   }
 
-  // 2. Nếu có appointmentId -> Kiểm tra xem đã đánh giá chưa
+  // 2. Nếu có appointmentId -> Kiểm tra xem đã đánh giá chưa, nếu có thì CẬP NHẬT bài cũ
+  let existingReviewId: bigint | null = null;
   if (appointmentId) {
     const existing = await prisma.serviceReview.findUnique({
       where: { appointmentId },
     });
     if (existing) {
-      throw new AppError(409, 'Lịch hẹn này đã được đánh giá.', 'REVIEW_ALREADY_EXISTS');
+      existingReviewId = existing.reviewId;
     }
   }
 
@@ -69,31 +70,41 @@ export async function createReview(params: CreateReviewParams) {
     comment,
   });
 
-  // 6. Lưu vào CSDL — gắn lý do kiểm duyệt vào aiReply nếu bị ẩn
+  // 6. Lưu vào CSDL (Tạo mới hoặc Cập nhật nếu đã từng đánh giá)
   const finalAiReply = moderation.isAppropriate
     ? aiReply
     : `[🛡️ AI MODERATION — ${moderation.confidence}] Bình luận bị ẩn tự động. Lý do: ${moderation.reason}`;
 
-  const review = await prisma.serviceReview.create({
-    data: {
-      patientId,
-      appointmentId,
-      serviceId: finalServiceId,
-      rating,
-      comment,
-      sentiment,
-      aiReply: finalAiReply,
-      aiRepliedAt: new Date(),
-      status: autoStatus,
-    },
-    include: {
-      patient: { include: { user: true } },
-      service: true,
-      appointment: { include: { dentist: { include: { user: true } } } },
-    },
-  });
+  const reviewPayload = {
+    patientId,
+    appointmentId,
+    serviceId: finalServiceId,
+    rating,
+    comment,
+    sentiment,
+    aiReply: finalAiReply,
+    aiRepliedAt: new Date(),
+    status: autoStatus,
+  };
 
-  return review;
+  const includePayload = {
+    patient: { include: { user: true } },
+    service: true,
+    appointment: { include: { dentist: { include: { user: true } } } },
+  };
+
+  if (existingReviewId) {
+    return await prisma.serviceReview.update({
+      where: { reviewId: existingReviewId },
+      data: reviewPayload,
+      include: includePayload,
+    });
+  }
+
+  return await prisma.serviceReview.create({
+    data: reviewPayload,
+    include: includePayload,
+  });
 }
 
 /**

@@ -100,18 +100,19 @@ export async function createShift(data: {
   dentistId: bigint;
   workDate: Date;
   shiftType: 'Morning' | 'Afternoon' | 'Full';
-  roomId: number | string;
+  roomId?: number | string;
 }) {
   // 1. Validate ca trong quá khứ & real-time ngày hôm nay
-  const nowVn = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  const todayStr = nowVn.toISOString().split('T')[0];
+  const now = new Date();
+  const todayStr = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+  const currentHourVn = parseInt(now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false }).split(':')[0], 10);
   const workDateStr = data.workDate.toISOString().split('T')[0];
+
   if (workDateStr < todayStr) {
     throw new AppError(400, 'Không thể xếp ca trực cho ngày trong quá khứ.', 'PAST_SHIFT_INVALID');
   }
 
   if (workDateStr === todayStr) {
-    const currentHourVn = nowVn.getUTCHours();
     const startHour = data.shiftType === 'Afternoon' ? 14 : 8;
     if (currentHourVn >= startHour) {
       throw new AppError(
@@ -164,13 +165,30 @@ export async function createShift(data: {
 
   const sc = shiftHours[data.shiftType];
 
+  // Tự động tìm phòng cố định của bác sĩ qua defaultRoomId
   let finalRoomId = 1;
-  if (typeof data.roomId === 'string') {
+  if (!data.roomId) {
+    // Không gửi roomId → tự lookup qua Dentist.defaultRoomId
+    const dentist = await prisma.dentist.findUnique({
+      where: { dentistId: data.dentistId },
+      select: { defaultRoomId: true },
+    });
+    if (dentist?.defaultRoomId) {
+      finalRoomId = dentist.defaultRoomId;
+    }
+  } else if (typeof data.roomId === 'string') {
     const room = await prisma.room.findFirst({
       where: { name: data.roomId },
     });
     if (room) {
       finalRoomId = room.roomId;
+    } else {
+      // Tên phòng không khớp → fallback lookup qua Dentist.defaultRoomId
+      const dentist = await prisma.dentist.findUnique({
+        where: { dentistId: data.dentistId },
+        select: { defaultRoomId: true },
+      });
+      if (dentist?.defaultRoomId) finalRoomId = dentist.defaultRoomId;
     }
   } else {
     finalRoomId = Number(data.roomId);
@@ -642,7 +660,7 @@ export async function updateShiftRoom(shiftId: bigint, roomId: number) {
     throw new AppError(404, 'Không tìm thấy ca trực.', 'SHIFT_NOT_FOUND');
   }
 
-  const todayStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
   const shiftDateStr = shift.workDate.toISOString().split('T')[0];
   if (shiftDateStr < todayStr) {
     throw new AppError(400, 'PAST_SHIFT_EDIT_LOCKED', 'Ca trực trong quá khứ đã hoàn tất. Không thể thay đổi phòng khám.');

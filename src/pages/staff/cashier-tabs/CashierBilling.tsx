@@ -2,14 +2,18 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { calculateRevenueStats } from '../../../utils/revenueUtils';
+import { invoiceApi } from '../../../services/api/invoiceApi';
 
 export const CashierBilling: React.FC = () => {
   const { invoices, processPayment, patients } = useClinic();
 
   // State
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card' | 'Transfer'>('Cash');
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card' | 'Transfer' | 'VNPAY'>('Cash');
+  const [vnpayUrl, setVnpayUrl] = useState<string | null>(null);
+  const [vnpayQrImg, setVnpayQrImg] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingVnPay, setLoadingVnPay] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [showReceipt, setShowReceipt] = useState(false);
@@ -22,6 +26,41 @@ export const CashierBilling: React.FC = () => {
   const [isPartialPay, setIsPartialPay] = useState<boolean>(false);
 
   const [receiptDateFilter, setReceiptDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'all'>('today');
+
+  // Lắng nghe kết quả redirect từ VNPay
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const vnpResponseCode = searchParams.get('vnp_ResponseCode');
+    const vnpTxnRef = searchParams.get('vnp_TxnRef');
+
+    if (vnpResponseCode) {
+      let targetInvId = '';
+      if (vnpTxnRef) {
+        const rawId = vnpTxnRef.split('_')[0];
+        targetInvId = rawId.startsWith('I-') ? rawId : `I-${rawId}`;
+      }
+
+      invoiceApi.verifyVnPayReturn(window.location.search)
+        .then((res) => {
+          if (res && res.data && (res.data.success || res.data.isSuccess || res.data.data?.id)) {
+            const confirmedId = res.data.data?.id ? `I-${res.data.data.id}` : targetInvId;
+            if (confirmedId) {
+              setSelectedInvoiceId(confirmedId);
+            }
+            setToastMessage(`🎉 Hóa đơn ${confirmedId || targetInvId} đã thanh toán qua Cổng VNPay Sandbox thành công!`);
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 5000);
+          } else {
+            alert(`⚠️ Thanh toán VNPay không thành công (Mã phản hồi: ${vnpResponseCode}).`);
+          }
+          window.history.replaceState({}, document.title, window.location.pathname);
+        })
+        .catch((err) => {
+          console.error(err);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        });
+    }
+  }, []);
 
   // Filtering Pending Invoices
   const pendingInvoices = invoices.filter(
@@ -108,10 +147,56 @@ export const CashierBilling: React.FC = () => {
     }
   }, [selectedInvoiceId, invoices]);
 
+  // Tự động sinh mã QR VNPAY khi Thu ngân chọn phương thức VNPAY
+  useEffect(() => {
+    if (paymentMethod === 'VNPAY' && activeInvoice && activeInvoice.status !== 'Paid') {
+      setLoadingVnPay(true);
+      const returnUrl = `${window.location.origin}/dashboard/cashier`;
+      invoiceApi.createVnPayUrl(activeInvoice.id, returnUrl)
+        .then((res) => {
+          if (res?.data?.checkoutUrl) {
+            const url = res.data.checkoutUrl;
+            setVnpayUrl(url);
+            setVnpayQrImg(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(url)}`);
+          }
+        })
+        .catch((err) => console.error(err))
+        .finally(() => setLoadingVnPay(false));
+    }
+  }, [paymentMethod, activeInvoice?.id]);
+
+  // Tự động phát hiện khi hóa đơn được thanh toán thành công qua Webhook / WebSocket
+  useEffect(() => {
+    if (activeInvoice && activeInvoice.status === 'Paid') {
+      setToastMessage(`🎉 Hóa đơn I-${activeInvoice.id} (${activeInvoice.patientName || 'Khách hàng'}) đã được thanh toán thành công!`);
+      setShowToast(true);
+      const timer = setTimeout(() => {
+        setShowToast(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeInvoice?.status, activeInvoice?.id, activeInvoice?.patientName]);
+
   // Extract unique Rooms & Dentists dynamically from pending invoices to populate filter selects
   const pendingList = invoices.filter(i => i.status === 'Pending');
   const uniqueRooms = ['All', ...Array.from(new Set(pendingList.map(i => i.room).filter(Boolean) as string[]))];
   const uniqueDentists = ['All', ...Array.from(new Set(pendingList.map(i => i.dentistName).filter(Boolean) as string[]))];
+
+  const handleCreateVnPayUrl = async () => {
+    if (!activeInvoice) return;
+    setLoadingVnPay(true);
+    try {
+      const returnUrl = `${window.location.origin}/dashboard/cashier`;
+      const res = await invoiceApi.createVnPayUrl(activeInvoice.id, returnUrl);
+      if (res && res.data && res.data.checkoutUrl) {
+        window.location.href = res.data.checkoutUrl;
+      }
+    } catch (err: any) {
+      alert(err.message || 'Không thể tạo link VNPay');
+    } finally {
+      setLoadingVnPay(false);
+    }
+  };
 
   const handleConfirmPayment = async () => {
     if (!selectedInvoiceId || !activeInvoice) return;
@@ -124,7 +209,8 @@ export const CashierBilling: React.FC = () => {
     setIsProcessing(true);
 
     try {
-      await processPayment(selectedInvoiceId, paymentMethod, paymentVal);
+      const actualMethod = paymentMethod === 'VNPAY' ? 'Transfer' : paymentMethod;
+      await processPayment(selectedInvoiceId, actualMethod, paymentVal);
       setToastMessage(
         paymentVal === remainingToPay
           ? `Đã thanh toán thành công hóa đơn ${selectedInvoiceId}!`
@@ -542,237 +628,385 @@ export const CashierBilling: React.FC = () => {
 
             </div>
 
-            {/* Right side: Payment Methods & VietQR Card dynamic mockup */}
-            <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-6">
-              
-              <div className="space-y-3">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Chọn phương thức thanh toán</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('Cash')}
-                    className={`flex flex-col items-center gap-1.5 p-3.5 border-2 rounded-xl cursor-pointer transition-all ${
-                      paymentMethod === 'Cash'
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-slate-200 hover:border-blue-600/20 text-slate-500'
-                    }`}
-                  >
-                    <Icon name="payments" className="text-2xl" />
-                    <span className="text-[10px] font-extrabold">Tiền mặt</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('Transfer')}
-                    className={`flex flex-col items-center gap-1.5 p-3.5 border-2 rounded-xl cursor-pointer transition-all ${
-                      paymentMethod === 'Transfer'
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-slate-200 hover:border-blue-600/20 text-slate-500'
-                    }`}
-                  >
-                    <Icon name="qr_code_2" className="text-2xl" />
-                    <span className="text-[10px] font-extrabold">Chuyển khoản</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('Card')}
-                    className={`flex flex-col items-center gap-1.5 p-3.5 border-2 rounded-xl cursor-pointer transition-all ${
-                      paymentMethod === 'Card'
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-slate-200 hover:border-blue-600/20 text-slate-500'
-                    }`}
-                  >
-                    <Icon name="credit_card" className="text-2xl" />
-                    <span className="text-[10px] font-extrabold">Thẻ / POS</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Conditional Rendering for Payment details */}
-              {paymentMethod === 'Transfer' && (
-                <div className="animate-in slide-in-from-top-3 duration-200">
-                  {/* VietQR Dynamic Card Mockup in Blue styling */}
-                  <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 text-white rounded-2xl p-5 shadow-lg border border-blue-500/30 relative overflow-hidden flex flex-col items-center">
-                    <div className="w-full flex justify-between items-center mb-3">
-                      <div className="flex items-center">
-                        <svg className="h-4.5 w-auto" viewBox="0 0 70 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M2 4 L7 14 L15 1 L11 1 L7 9 L4 4 Z" fill="#EF4444" />
-                          <text x="17" y="14" fill="#EF4444" fontSize="13" fontWeight="900" fontFamily="system-ui, sans-serif">iet</text>
-                          <text x="36" y="14" fill="#3B82F6" fontSize="13" fontWeight="900" fontFamily="system-ui, sans-serif">QR</text>
-                        </svg>
-                      </div>
-                      <div className="px-2 py-0.5 bg-white/10 rounded-md text-[8px] font-bold text-blue-200 border border-white/20">
-                        NAPAS 247
-                      </div>
-                    </div>
-                    
-                    <div className="bg-white p-2 rounded-2xl shadow-md mb-4 flex items-center justify-center overflow-hidden">
-                      <img 
-                        src={`https://img.vietqr.io/image/techcombank-19074150102019-compact.png?amount=${payVal}&addInfo=GOODSMILE%20${activeInvoice.id}&accountName=NHA%20KHOA%20GOODSMILE%20PRO`}
-                        alt="VietQR Code" 
-                        className="w-36 h-36 object-contain" 
-                      />
-                    </div>
-                    
-                    <div className="w-full text-left space-y-1.5 bg-white/5 rounded-xl p-3 border border-white/10 text-xs text-blue-100">
-                      <div className="flex justify-between">
-                        <span className="opacity-70">Chủ tài khoản:</span>
-                        <span className="font-bold text-white">NHA KHOA GOODSMILE PRO</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="opacity-70">Số tài khoản:</span>
-                        <span className="font-bold font-data-mono text-blue-200">1907 4150 1020 19</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="opacity-70">Số tiền chuyển:</span>
-                        <span className="font-extrabold text-blue-300">₫{payVal.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between border-t border-white/10 pt-1.5">
-                        <span className="opacity-70">Nội dung CK:</span>
-                        <span className="font-extrabold text-blue-200 font-mono">GOODSMILE {activeInvoice.id}</span>
-                      </div>
-                    </div>
+            {/* Right side: Payment Methods or Fully Paid Banner */}
+            {activeInvoice.status === 'Paid' || remaining === 0 ? (
+              <div className="lg:col-span-5 bg-white rounded-2xl border border-emerald-200 p-6 shadow-sm space-y-5 animate-in fade-in zoom-in-95 duration-200">
+                <div className="bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 text-white rounded-2xl p-6 shadow-lg border border-emerald-500/30 text-center space-y-3 relative overflow-hidden">
+                  <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center mx-auto shadow-inner">
+                    <Icon name="check_circle" className="text-4xl text-white font-bold" />
                   </div>
-                </div>
-              )}
-
-              {paymentMethod === 'Card' && (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-600 animate-in slide-in-from-top-3 duration-200 flex items-start gap-2.5">
-                  <Icon name="info" className="text-blue-650 font-bold" />
                   <div>
-                    <p className="font-bold text-slate-700">Yêu cầu quẹt thẻ ngân hàng</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Sử dụng thiết bị POS tại quầy thu ngân để tiến hành thanh toán thẻ (ATM, Visa, Mastercard) cho khách hàng. Click "Hoàn tất đóng phí" sau khi giao dịch POS thành công.
+                    <span className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-black uppercase tracking-wider text-emerald-100">
+                      TỰ ĐỘNG HOÀN TẤT
+                    </span>
+                    <h3 className="font-extrabold text-xl text-white mt-1.5">HÓA ĐƠN ĐÃ THANH TOÁN</h3>
+                    <p className="text-xs text-emerald-100 mt-1 leading-relaxed">
+                      Giao dịch đã được hệ thống tự động xác nhận và cập nhật trạng thái <strong>Paid</strong> thành công. Lễ tân không cần bấm đóng phí nữa!
                     </p>
                   </div>
-                </div>
-              )}
 
-              {paymentMethod === 'Cash' && (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-600 animate-in slide-in-from-top-3 duration-200 flex items-start gap-2.5">
-                  <Icon name="payments" className="text-blue-650 font-bold" />
-                  <div>
-                    <p className="font-bold text-slate-700">Yêu cầu thu tiền mặt</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Nhận và kiểm đếm tiền mặt trực tiếp từ khách hàng. Thực hiện trả lại tiền thừa (nếu có) trước khi hoàn tất đóng phí trên hệ thống.
-                    </p>
+                  <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 text-xs space-y-1.5 text-emerald-50 border border-white/15 text-left">
+                    <div className="flex justify-between items-center">
+                      <span>Mã hóa đơn:</span>
+                      <strong className="font-mono text-white bg-white/20 px-1.5 py-0.5 rounded">I-{activeInvoice.id}</strong>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Bệnh nhân:</span>
+                      <strong className="text-white">{activeInvoice.patientName || activePatient?.name}</strong>
+                    </div>
+                    <div className="flex justify-between items-center border-t border-white/10 pt-1.5">
+                      <span>Tổng tiền đã thu:</span>
+                      <strong className="text-amber-300 font-extrabold text-sm">₫{activeInvoice.totalPrice.toLocaleString()}</strong>
+                    </div>
                   </div>
                 </div>
-              )}
 
-              {/* Option to pay partially */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 text-xs">
-                <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isPartialPay}
-                    onChange={(e) => {
-                      setIsPartialPay(e.target.checked);
-                      if (activeInvoice) {
-                        const rem = activeInvoice.remainingAmount !== undefined ? activeInvoice.remainingAmount : activeInvoice.netPrice;
-                        setPayAmountInput(rem.toString());
-                      }
-                    }}
-                    className="w-4 h-4 rounded text-blue-650 focus:ring-blue-500 border-slate-300 cursor-pointer"
-                  />
-                  <span>Thanh toán từng phần (Trả góp / Tạm ứng)</span>
-                </label>
-
-                {isPartialPay && (
-                  <div className="space-y-2.5 animate-in fade-in duration-200">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Số tiền thanh toán kỳ này</span>
-                      <div className="relative">
-                        <span className="absolute left-3 top-2 text-slate-500 font-bold text-xs">₫</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={remaining}
-                          value={payAmountInput}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9]/g, '');
-                            setPayAmountInput(val);
-                          }}
-                          placeholder="Nhập số tiền..."
-                          className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5">
-                      {[500000, 1000000, 2000000, 5000000, 10000000].map((val) => {
-                        if (val >= remaining) return null;
-                        return (
-                          <button
-                            key={val}
-                            type="button"
-                            onClick={() => setPayAmountInput(val.toString())}
-                            className="px-2.5 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold text-slate-650 hover:bg-slate-50 cursor-pointer"
-                          >
-                            ₫{val.toLocaleString()}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {payVal <= 0 ? (
-                      <p className="text-[10px] text-rose-500 font-bold">Vui lòng nhập số tiền lớn hơn 0đ</p>
-                    ) : payVal > remaining ? (
-                      <p className="text-[10px] text-rose-500 font-bold">
-                        Không vượt quá số tiền còn nợ (₫{remaining.toLocaleString()})
-                      </p>
-                    ) : (
-                      <div className="flex justify-between items-center bg-blue-50/50 p-2 rounded text-[10px] font-bold text-blue-700 border border-blue-100/30">
-                        <span>Dư nợ còn lại sau kỳ này:</span>
-                        <span className="font-mono">₫{(remaining - payVal).toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Checkout actions using Green or Blue colors */}
-              <div className="pt-4 border-t border-slate-100 flex flex-col gap-2">
-                <button
-                  onClick={handleConfirmPayment}
-                  disabled={isProcessing || isPayAmountInvalid}
-                  className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer text-xs ${
-                    isProcessing || isPayAmountInvalid
-                      ? 'bg-slate-200 text-slate-400 shadow-none cursor-not-allowed'
-                      : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
-                  }`}
-                >
-                  {isProcessing ? (
-                    <>
-                      <Icon name="progress_activity" className="animate-spin text-sm" />
-                      Đang thực hiện thanh toán...
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="check_circle" className="text-sm" />
-                      Hoàn Tất Đóng Phí (₫{payVal.toLocaleString()})
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeInvoice) {
+                <div className="space-y-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
                       setPrintingInvoiceId(activeInvoice.id);
                       setShowReceipt(true);
-                    }
-                  }}
-                  className="w-full py-2.5 border border-slate-200 text-slate-700 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all cursor-pointer text-xs"
-                >
-                  <Icon name="print" className="text-sm" />
-                  Xem trước & In hóa đơn K80
-                </button>
+                    }}
+                    className="w-full py-3.5 bg-blue-650 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all border-none cursor-pointer"
+                  >
+                    <Icon name="print" className="text-base" />
+                    In Phiếu Thu / Hóa Đơn Cho Khách
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInvoiceId(null)}
+                    className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all border-none cursor-pointer"
+                  >
+                    <Icon name="arrow_back" className="text-base" />
+                    Quay Lại Danh Sách Chờ Thanh Toán
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-6">
+                
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Chọn phương thức thanh toán</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('Cash')}
+                      className={`flex flex-col items-center gap-1.5 p-3 border-2 rounded-xl cursor-pointer transition-all ${
+                        paymentMethod === 'Cash'
+                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-bold'
+                          : 'border-slate-200 hover:border-blue-600/20 text-slate-500'
+                      }`}
+                    >
+                      <Icon name="payments" className="text-xl" />
+                      <span className="text-[10px] font-extrabold">Tiền mặt</span>
+                    </button>
 
-            </div>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('Transfer')}
+                      className={`flex flex-col items-center gap-1.5 p-3 border-2 rounded-xl cursor-pointer transition-all ${
+                        paymentMethod === 'Transfer'
+                          ? 'border-blue-600 bg-blue-50 text-blue-700 font-bold'
+                          : 'border-slate-200 hover:border-blue-600/20 text-slate-500'
+                      }`}
+                    >
+                      <Icon name="qr_code_2" className="text-xl" />
+                      <span className="text-[10px] font-extrabold">VietQR</span>
+                    </button>
 
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('VNPAY')}
+                      className={`flex flex-col items-center gap-1.5 p-3 border-2 rounded-xl cursor-pointer transition-all ${
+                        paymentMethod === 'VNPAY'
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-800 font-bold shadow-sm ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 hover:border-emerald-600/30 text-slate-500 bg-white'
+                      }`}
+                    >
+                      <div className="h-5 flex items-center justify-center">
+                        <svg className="h-5 w-auto" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <rect width="40" height="40" rx="9" fill="#005baa" />
+                          <path d="M10 11L18 29H23L31 11H25.5L20.2 22.8L15.2 11H10Z" fill="white" />
+                          <path d="M22 17.5L26.5 11H31L24.8 19.8L22 17.5Z" fill="#e11b22" />
+                        </svg>
+                      </div>
+                      <span className="text-[10px] font-extrabold tracking-tight">VNPAY</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Conditional Rendering cho VNPAY */}
+                {paymentMethod === 'VNPAY' && (
+                  <div className="animate-in slide-in-from-top-3 duration-200">
+                    <div className="bg-gradient-to-br from-emerald-800 via-teal-900 to-slate-900 text-white rounded-2xl p-5 shadow-xl border border-emerald-500/30 relative overflow-hidden flex flex-col items-center">
+                      
+                      {/* Background Glow Deco */}
+                      <div className="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                      <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-teal-500/10 rounded-full blur-2xl pointer-events-none"></div>
+
+                      {/* Header Icon + Brand Badge */}
+                      <div className="flex flex-col items-center mb-3 text-center relative z-10">
+                        <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/25 shadow-lg mb-2 p-2.5">
+                          <svg className="w-full h-full drop-shadow" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect width="40" height="40" rx="10" fill="#005baa" />
+                            <path d="M10 11L18 29H23L31 11H25.5L20.2 22.8L15.2 11H10Z" fill="white" />
+                            <path d="M22 17.5L26.5 11H31L24.8 19.8L22 17.5Z" fill="#e11b22" />
+                          </svg>
+                        </div>
+                        <span className="font-black text-sm text-white uppercase tracking-wider flex items-center gap-1.5">
+                          CỔNG THANH TOÁN VNPAY ONLINE
+                        </span>
+                        <span className="mt-1 px-2.5 py-0.5 bg-emerald-400/20 border border-emerald-300/40 rounded-full text-[9px] font-black text-emerald-200 uppercase tracking-wide">
+                          VNPAY SANDBOX TEST MODE
+                        </span>
+                      </div>
+
+                      {/* Hộp tóm tắt thông tin hóa đơn thanh toán */}
+                      <div className="w-full bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/15 text-xs space-y-2 mb-4 relative z-10">
+                        <div className="flex justify-between items-center text-emerald-100">
+                          <span>Mã hóa đơn:</span>
+                          <strong className="font-mono text-white bg-white/20 px-2 py-0.5 rounded font-bold">I-{activeInvoice.id}</strong>
+                        </div>
+                        <div className="flex justify-between items-center text-emerald-100">
+                          <span>Bệnh nhân:</span>
+                          <strong className="text-white font-bold">{activeInvoice.patientName || activePatient?.name || 'Khách hàng'}</strong>
+                        </div>
+                        <div className="flex justify-between items-center border-t border-white/10 pt-2">
+                          <span className="text-emerald-100 font-medium">Số tiền thanh toán:</span>
+                          <strong className="text-emerald-300 font-extrabold text-base">₫{payVal.toLocaleString()}</strong>
+                        </div>
+                      </div>
+
+                      {/* Nút bấm chuyển hướng sang VNPay Gateway */}
+                      {loadingVnPay ? (
+                        <div className="w-full py-3.5 bg-white/20 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 relative z-10">
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                          Đang kết nối cổng VNPay...
+                        </div>
+                      ) : vnpayUrl ? (
+                        <a
+                          href={vnpayUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full py-3.5 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all border-none cursor-pointer text-center no-underline relative z-10"
+                        >
+                          <Icon name="open_in_new" className="text-base" />
+                          MỞ CỔNG VNPAY THANH TOÁN (SANDBOX)
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleCreateVnPayUrl}
+                          className="w-full py-3.5 bg-white hover:bg-emerald-50 text-emerald-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all border-none cursor-pointer relative z-10"
+                        >
+                          Tạo lại liên kết VNPay
+                        </button>
+                      )}
+
+                      <p className="text-[10px] text-emerald-100/80 text-center mt-3 leading-relaxed relative z-10">
+                        * Bấm nút trên để mở cổng thanh toán VNPay. Sau khi hoàn tất giao dịch, hệ thống sẽ tự động hiển thị thông báo thành công cho Lễ tân và chốt hóa đơn <strong>I-{activeInvoice.id}</strong>.
+                      </p>
+                    </div>
+
+                    {/* Badge tự động nhận tiền thời gian thực VNPAY */}
+                    <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 flex items-center justify-between text-xs text-emerald-800">
+                      <div className="flex items-center gap-2">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <span className="font-bold text-[11px]">VNPAY IPN tự động lắng nghe...</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-full font-mono font-bold">Auto PAID</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Conditional Rendering for VietQR Transfer */}
+                {paymentMethod === 'Transfer' && (
+                  <div className="animate-in slide-in-from-top-3 duration-200">
+                    {/* VietQR Dynamic Card Mockup in Blue styling */}
+                    <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-slate-900 text-white rounded-2xl p-5 shadow-lg border border-blue-500/30 relative overflow-hidden flex flex-col items-center">
+                      <div className="w-full flex justify-between items-center mb-3">
+                        <div className="flex items-center">
+                          <svg className="h-4.5 w-auto" viewBox="0 0 70 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M2 4 L7 14 L15 1 L11 1 L7 9 L4 4 Z" fill="#EF4444" />
+                            <text x="17" y="14" fill="#EF4444" fontSize="13" fontWeight="900" fontFamily="system-ui, sans-serif">iet</text>
+                            <text x="36" y="14" fill="#3B82F6" fontSize="13" fontWeight="900" fontFamily="system-ui, sans-serif">QR</text>
+                          </svg>
+                        </div>
+                        <div className="px-2 py-0.5 bg-white/10 rounded-md text-[8px] font-bold text-blue-200 border border-white/20">
+                          NAPAS 247
+                        </div>
+                      </div>
+                      
+                      <div className="bg-white p-2 rounded-2xl shadow-md mb-4 flex items-center justify-center overflow-hidden">
+                        <img 
+                          src={`https://img.vietqr.io/image/techcombank-19074150102019-compact.png?amount=${payVal}&addInfo=GOODSMILE%20${activeInvoice.id}&accountName=NHA%20KHOA%20GOODSMILE%20PRO`}
+                          alt="VietQR Code" 
+                          className="w-36 h-36 object-contain" 
+                        />
+                      </div>
+                      
+                      <div className="w-full text-left space-y-1.5 bg-white/5 rounded-xl p-3 border border-white/10 text-xs text-blue-100">
+                        <div className="flex justify-between">
+                          <span className="opacity-70">Chủ tài khoản:</span>
+                          <span className="font-bold text-white">NHA KHOA GOODSMILE PRO</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="opacity-70">Số tài khoản:</span>
+                          <span className="font-bold font-data-mono text-blue-200">1907 4150 1020 19</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="opacity-70">Số tiền chuyển:</span>
+                          <span className="font-extrabold text-blue-300">₫{payVal.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-white/10 pt-1.5">
+                          <span className="opacity-70">Nội dung CK:</span>
+                          <span className="font-extrabold text-blue-200 font-mono">GOODSMILE {activeInvoice.id}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Badge tự động nhận tiền thời gian thực */}
+                    <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 flex items-center justify-between text-xs text-emerald-800">
+                      <div className="flex items-center gap-2">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <span className="font-bold text-[11px]">Đang lắng nghe giao dịch tự động...</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-full font-mono font-bold">Real-time Webhook</span>
+                    </div>
+                  </div>
+                )}
+
+                {paymentMethod === 'Cash' && (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-600 animate-in slide-in-from-top-3 duration-200 flex items-start gap-2.5">
+                    <Icon name="payments" className="text-blue-650 font-bold" />
+                    <div>
+                      <p className="font-bold text-slate-700">Yêu cầu thu tiền mặt</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Nhận và kiểm đếm tiền mặt trực tiếp từ khách hàng. Thực hiện trả lại tiền thừa (nếu có) trước khi hoàn tất đóng phí trên hệ thống.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Option to pay partially */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 text-xs">
+                  <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isPartialPay}
+                      onChange={(e) => {
+                        setIsPartialPay(e.target.checked);
+                        if (activeInvoice) {
+                          const rem = activeInvoice.remainingAmount !== undefined ? activeInvoice.remainingAmount : activeInvoice.netPrice;
+                          setPayAmountInput(rem.toString());
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-blue-650 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                    />
+                    <span>Thanh toán từng phần (Trả góp / Tạm ứng)</span>
+                  </label>
+
+                  {isPartialPay && (
+                    <div className="space-y-2.5 animate-in fade-in duration-200">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase">Số tiền thanh toán kỳ này</span>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-slate-500 font-bold text-xs">₫</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={remaining}
+                            value={payAmountInput}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9]/g, '');
+                              setPayAmountInput(val);
+                            }}
+                            placeholder="Nhập số tiền..."
+                            className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {[500000, 1000000, 2000000, 5000000, 10000000].map((val) => {
+                          if (val >= remaining) return null;
+                          return (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setPayAmountInput(val.toString())}
+                              className="px-2.5 py-1 bg-white border border-slate-200 rounded text-[10px] font-bold text-slate-650 hover:bg-slate-50 cursor-pointer"
+                            >
+                              ₫{val.toLocaleString()}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {payVal <= 0 ? (
+                        <p className="text-[10px] text-rose-500 font-bold">Vui lòng nhập số tiền lớn hơn 0đ</p>
+                      ) : payVal > remaining ? (
+                        <p className="text-[10px] text-rose-500 font-bold">
+                          Không vượt quá số tiền còn nợ (₫{remaining.toLocaleString()})
+                        </p>
+                      ) : (
+                        <div className="flex justify-between items-center bg-blue-50/50 p-2 rounded text-[10px] font-bold text-blue-700 border border-blue-100/30">
+                          <span>Dư nợ còn lại sau kỳ này:</span>
+                          <span className="font-mono">₫{(remaining - payVal).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Checkout actions using Green or Blue colors */}
+                <div className="pt-4 border-t border-slate-100 flex flex-col gap-2">
+                  <button
+                    onClick={handleConfirmPayment}
+                    disabled={isProcessing || isPayAmountInvalid}
+                    className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer text-xs ${
+                      isProcessing || isPayAmountInvalid
+                        ? 'bg-slate-200 text-slate-400 shadow-none cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
+                    }`}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Icon name="progress_activity" className="animate-spin text-sm" />
+                        Đang thực hiện thanh toán...
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="check_circle" className="text-sm" />
+                        Hoàn Tất Đóng Phí (₫{payVal.toLocaleString()})
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeInvoice) {
+                        setPrintingInvoiceId(activeInvoice.id);
+                        setShowReceipt(true);
+                      }
+                    }}
+                    className="w-full py-2.5 border border-slate-200 text-slate-700 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all cursor-pointer text-xs"
+                  >
+                    <Icon name="print" className="text-sm" />
+                    Xem trước & In hóa đơn K80
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

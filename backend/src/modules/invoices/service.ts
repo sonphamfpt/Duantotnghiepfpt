@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../middlewares/errorHandler';
 import { PaymentMethod, WalletTxType, InvoiceStatus, LogModule, LogType } from '@prisma/client';
+import { socketManager } from '../../config/socket';
 
 /**
  * Lấy danh sách tất cả hóa đơn trong hệ thống
@@ -322,3 +323,95 @@ export async function getPatientBilling(patientId: bigint) {
     walletTransactions,
   };
 }
+
+/**
+ * Tạo URL thanh toán VNPay cho hóa đơn
+ */
+export async function createVnPayUrlForInvoice(
+  invoiceId: bigint,
+  returnUrl?: string,
+  ipAddr?: string
+) {
+  const invoice = await prisma.invoice.findUnique({
+    where: { invoiceId },
+    include: { patient: true },
+  });
+
+  if (!invoice) {
+    throw new AppError(404, 'INVOICE_NOT_FOUND', 'Hóa đơn không tồn tại.');
+  }
+
+  if (invoice.status === 'Paid') {
+    throw new AppError(400, 'INVOICE_ALREADY_PAID', 'Hóa đơn đã được thanh toán đầy đủ.');
+  }
+
+  const remaining = Number(invoice.remainingAmount);
+  if (remaining <= 0) {
+    throw new AppError(400, 'INVALID_PAYMENT_AMOUNT', 'Số tiền còn lại không hợp lệ.');
+  }
+
+  const { vnpayHelper } = await import('../../config/vnpay');
+
+  const checkoutUrl = vnpayHelper.createPaymentUrl({
+    invoiceId: String(invoiceId),
+    amount: remaining,
+    orderInfo: `Thanh toan hoa don INV${invoiceId}`,
+    ipAddr,
+    returnUrl,
+  });
+
+  return {
+    checkoutUrl,
+    amount: remaining,
+    invoiceId: String(invoiceId),
+  };
+}
+
+/**
+ * Xử lý kết quả trả về từ VNPay (ReturnUrl hoặc IPN)
+ */
+export async function handleVnPayReturn(vnpParams: Record<string, any>) {
+  const { vnpayHelper } = await import('../../config/vnpay');
+  const result = vnpayHelper.verifyReturn(vnpParams);
+
+  if (!result.isValid) {
+    throw new AppError(400, 'INVALID_VNPAY_SIGNATURE', 'Chữ ký VNPay không hợp lệ.');
+  }
+
+  const invoiceId = BigInt(result.invoiceId);
+  const invoice = await prisma.invoice.findUnique({
+    where: { invoiceId },
+  });
+
+  if (!invoice) {
+    throw new AppError(404, 'INVOICE_NOT_FOUND', 'Hóa đơn không tồn tại.');
+  }
+
+  if (result.isSuccess && invoice.status !== 'Paid') {
+    // Cập nhật trạng thái thanh toán
+    const updatedInvoice = await processPayment(invoiceId, {
+      amount: result.amount || Number(invoice.remainingAmount),
+      method: PaymentMethod.Transfer,
+    });
+
+    socketManager.emit('invoice:paid', {
+      invoiceId: String(invoiceId),
+      method: PaymentMethod.Transfer,
+      viaVNPay: true,
+      amount: result.amount,
+    });
+
+    return {
+      success: true,
+      message: 'Thanh toán VNPay thành công',
+      data: updatedInvoice,
+    };
+  }
+
+  return {
+    success: result.isSuccess,
+    message: result.isSuccess ? 'Hóa đơn đã được thanh toán trước đó' : `Thanh toán thất bại (Mã lỗi VNPay: ${result.responseCode})`,
+    invoice,
+  };
+}
+

@@ -11,9 +11,9 @@ interface ForgotPasswordModalProps {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Validate số điện thoại Việt Nam: bắt đầu 0, 10-11 chữ số */
+/** Validate số điện thoại Việt Nam: 10 chữ số (đầu số 03, 05, 07, 08, 09) */
 const isValidVNPhone = (phone: string) =>
-  /^(0[3|5|7|8|9])[0-9]{8}$|^(0[1-9])[0-9]{9}$/.test(phone);
+  /^(03|05|07|08|09)\d{8}$/.test(phone);
 
 /** Tính độ mạnh mật khẩu (0-4) */
 const getPasswordStrength = (pw: string): number => {

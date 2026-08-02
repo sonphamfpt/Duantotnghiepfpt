@@ -63,7 +63,7 @@ const parseAppointmentTime = (timeStr: string) => {
 };
 
 export const PatientAppointments: React.FC = () => {
-  const { appointments, cancelAppointment, dentists } = useClinic();
+  const { appointments, cancelAppointment, dentists, reviews } = useClinic();
   const { user } = useAuth();
   const navigate = useNavigate();
   // BUG-C03: Không dùng hardcode fallback P-8821 — nếu chưa login thì id rỗng
@@ -81,6 +81,9 @@ export const PatientAppointments: React.FC = () => {
   const [modalRating, setModalRating] = useState<number>(5);
   const [modalComment, setModalComment] = useState<string>('');
   const [historyFilter, setHistoryFilter] = useState<'All' | 'Completed' | 'Cancelled' | 'NoShow'>('All');
+  const [datePreset, setDatePreset] = useState<'all' | 'today' | '7days' | 'month' | 'year' | 'custom'>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
 
   // Filter appointments for the current logged-in patient
   // BUG-C03: Guard — nếu không có user thì trả về [] thay vì match sai ID
@@ -137,8 +140,37 @@ export const PatientAppointments: React.FC = () => {
   ];
 
   const filteredPastAppointments = pastAppointments.filter(a => {
-    if (historyFilter === 'All') return true;
-    return a.status === historyFilter;
+    if (historyFilter !== 'All' && a.status !== historyFilter) return false;
+
+    if (datePreset !== 'all') {
+      const apptDateStr = a.date; // e.g. "02/08/2026" or "Thứ Bảy, 01/08/2026"
+      const dateMatch = apptDateStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (dateMatch) {
+        const isoDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+        const now = new Date();
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+        if (datePreset === 'today') {
+          if (isoDate !== todayStr) return false;
+        } else if (datePreset === '7days') {
+          const apptD = new Date(isoDate);
+          const diffMs = now.getTime() - apptD.getTime();
+          const diffDays = diffMs / (1000 * 3600 * 24);
+          if (diffDays < -1 || diffDays > 7) return false;
+        } else if (datePreset === 'month') {
+          const monthStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+          if (!isoDate.startsWith(monthStr)) return false;
+        } else if (datePreset === 'year') {
+          const yearStr = `${now.getFullYear()}`;
+          if (!isoDate.startsWith(yearStr)) return false;
+        } else if (datePreset === 'custom') {
+          if (startDate && isoDate < startDate) return false;
+          if (endDate && isoDate > endDate) return false;
+        }
+      }
+    }
+    return true;
   });
 
   return (
@@ -192,16 +224,63 @@ export const PatientAppointments: React.FC = () => {
         </div>
 
         {activeTab === 'past' && (
-          <select 
-            value={historyFilter} 
-            onChange={(e) => setHistoryFilter(e.target.value as any)}
-            className="bg-white border border-outline-variant rounded-lg px-4 py-2 text-sm font-bold text-on-surface outline-none focus:border-primary shadow-sm cursor-pointer"
-          >
-            <option value="All">Tất cả trạng thái</option>
-            <option value="Completed">Đã hoàn thành</option>
-            <option value="Cancelled">Đã huỷ</option>
-            <option value="NoShow">Không đến / Quá hạn</option>
-          </select>
+          <div className="flex items-center gap-2 flex-nowrap shrink-0">
+            <select
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value as any)}
+              className="bg-white border border-outline-variant rounded-xl px-3 py-2 text-xs font-bold text-on-surface outline-none focus:border-primary shadow-2xs cursor-pointer h-9"
+            >
+              <option value="all">Tất cả thời gian</option>
+              <option value="today">Hôm nay</option>
+              <option value="7days">7 ngày qua</option>
+              <option value="month">Tháng này</option>
+              <option value="year">Năm nay</option>
+              <option value="custom">Tùy chỉnh khoảng ngày</option>
+            </select>
+
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 bg-white border border-outline-variant rounded-xl px-3 py-1.5 shadow-2xs h-9">
+                  <label className="text-xs font-bold text-slate-500">Từ:</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="text-xs font-bold text-slate-800 outline-none bg-transparent cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 bg-white border border-outline-variant rounded-xl px-3 py-1.5 shadow-2xs h-9">
+                  <label className="text-xs font-bold text-slate-500">Đến:</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="text-xs font-bold text-slate-800 outline-none bg-transparent cursor-pointer"
+                  />
+                </div>
+              </div>
+            )}
+
+            <select 
+              value={historyFilter} 
+              onChange={(e) => setHistoryFilter(e.target.value as any)}
+              className="bg-white border border-outline-variant rounded-xl px-3.5 py-2 text-xs font-bold text-on-surface outline-none focus:border-primary shadow-2xs cursor-pointer h-9"
+            >
+              <option value="All">Tất cả trạng thái</option>
+              <option value="Completed">Đã hoàn thành</option>
+              <option value="Cancelled">Đã huỷ</option>
+              <option value="NoShow">Không đến / Quá hạn</option>
+            </select>
+
+            {(datePreset !== 'all' || historyFilter !== 'All') && (
+              <button
+                onClick={() => { setDatePreset('all'); setStartDate(''); setEndDate(''); setHistoryFilter('All'); }}
+                className="text-xs font-bold text-rose-600 hover:text-rose-800 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl cursor-pointer transition-all h-9 shrink-0"
+              >
+                Xóa lọc
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -338,8 +417,21 @@ export const PatientAppointments: React.FC = () => {
         <div className="space-y-4">
           {filteredPastAppointments.map((appt) => {
             const status = STATUS_CONFIG[appt.status];
-            const currentReview = reviewMap[appt.id];
-            const userRating = currentReview ? currentReview.rating : appt.rating;
+            const apptCleanId = String(appt.id).replace('A-', '').replace('PAST-', '');
+            const existingDbReview = (reviews || []).find((r: any) => {
+              if (!r) return false;
+              const rApptId = String(r.appointmentId || '').replace('A-', '');
+              const rServiceId = String(r.serviceId || '');
+              const apptServiceId = String(appt.serviceId || '');
+              return (rApptId && rApptId === apptCleanId) ||
+                     (rServiceId && apptServiceId && rServiceId === apptServiceId) ||
+                     (r.serviceName && appt.service && r.serviceName.toLowerCase().trim() === appt.service.toLowerCase().trim());
+            }) || reviewMap[appt.id];
+            const hasReviewed = Boolean(existingDbReview || reviewMap[appt.id]);
+            const userRating = existingDbReview?.rating || (reviewMap[appt.id] ? reviewMap[appt.id].rating : appt.rating || 5);
+            const userComment = existingDbReview?.comment || reviewMap[appt.id]?.comment || '';
+            const aiResponse = (existingDbReview as any)?.aiReply;
+
             return (
               <div key={appt.id} className="bg-white rounded-xl border border-outline-variant p-6 flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow">
                 <div className="flex-1">
@@ -359,7 +451,7 @@ export const PatientAppointments: React.FC = () => {
                   {appt.status === 'Completed' && (
                     <div className="mt-4 flex flex-col gap-3">
                       <div className="flex flex-wrap items-center gap-3">
-                        <div className="bg-surface-container-low rounded-lg p-2.5 inline-flex items-center gap-3 border border-outline-variant">
+                        <div className="bg-surface-container-low rounded-xl p-2.5 inline-flex items-center gap-3 border border-outline-variant">
                           <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Đánh giá:</p>
                           <div className="flex gap-1">
                             {[1, 2, 3, 4, 5].map((star) => (
@@ -367,7 +459,7 @@ export const PatientAppointments: React.FC = () => {
                                 key={star}
                                 onClick={() => {
                                   setModalRating(star);
-                                  setModalComment(reviewMap[appt.id]?.comment || '');
+                                  setModalComment(userComment);
                                   setActiveReviewId(appt.id);
                                 }}
                                 className="text-amber-400 cursor-pointer hover:scale-125 transition-transform border-none bg-transparent"
@@ -375,7 +467,7 @@ export const PatientAppointments: React.FC = () => {
                               >
                                 <Icon
                                   name={star <= userRating ? 'star' : 'star_border'}
-                                  className="text-[24px]"
+                                  className="text-[22px]"
                                 />
                               </button>
                             ))}
@@ -384,25 +476,47 @@ export const PatientAppointments: React.FC = () => {
 
                         <button
                           onClick={() => {
-                            setModalRating(userRating || 5);
-                            setModalComment(reviewMap[appt.id]?.comment || '');
+                            setModalRating(userRating);
+                            setModalComment(userComment);
                             setActiveReviewId(appt.id);
                           }}
-                          className="px-3 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-xs font-bold hover:bg-primary hover:text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                          className={`px-3 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs active:scale-95 ${
+                            hasReviewed 
+                              ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100' 
+                              : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary hover:text-white'
+                          }`}
                         >
-                          <Icon name="rate_review" className="text-[16px]" />
-                          <span>{reviewMap[appt.id] ? 'Sửa nhận xét' : 'Nhận xét chi tiết'}</span>
+                          <Icon name={hasReviewed ? 'edit_note' : 'rate_review'} className="text-[16px]" />
+                          <span>{hasReviewed ? 'Sửa đánh giá' : 'Nhận xét chi tiết'}</span>
                         </button>
+
+                        {hasReviewed && (
+                          <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1">
+                            <Icon name="check_circle" className="text-sm text-emerald-600" />
+                            Đã đánh giá
+                          </span>
+                        )}
                       </div>
 
-                      {/* Display comment if present */}
-                      {reviewMap[appt.id]?.comment && (
-                        <div className="bg-primary/5 border border-primary/10 rounded-xl p-3.5 flex gap-3 text-sm text-on-surface leading-relaxed max-w-2xl animate-fade-in mt-1">
-                          <Icon name="chat_bubble" className="text-[20px] text-primary shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Ý kiến phản hồi từ bạn:</p>
-                            <p className="italic text-on-surface-variant">"{reviewMap[appt.id].comment}"</p>
+                      {/* Display comment & AI Response if present */}
+                      {userComment && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs text-on-surface animate-fade-in max-w-2xl mt-1">
+                          <div className="flex items-center gap-2 font-bold text-slate-700">
+                            <Icon name="chat_bubble_outline" className="text-primary text-base" />
+                            <span>Nhận xét của bạn:</span>
+                            <span className="text-amber-500 font-bold ml-auto">{userRating} ★</span>
                           </div>
+                          <p className="italic text-slate-600 pl-6">"{userComment}"</p>
+
+                          {aiResponse && (
+                            <div className="bg-blue-50/70 border border-blue-200 rounded-lg p-2.5 text-[11px] text-blue-900 mt-2 space-y-0.5 ml-4">
+                              <div className="flex items-center gap-1 font-bold text-primary">
+                                <Icon name="smart_toy" className="text-sm" />
+                                <span>Phản hồi từ AI GoodSmile:</span>
+                              </div>
+                              <p className="italic text-slate-700 pl-4">"{aiResponse}"</p>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -564,6 +678,20 @@ export const PatientAppointments: React.FC = () => {
         patientId={patientId}
         appointmentId={activeReviewId || undefined}
         serviceName={mappedAppointments.find(a => a.id === activeReviewId)?.service}
+        initialRating={modalRating}
+        initialComment={modalComment}
+        onSuccess={(data) => {
+          if (activeReviewId) {
+            setReviewMap(prev => ({
+              ...prev,
+              [activeReviewId]: {
+                rating: data?.rating || modalRating,
+                comment: data?.comment || modalComment,
+                aiReply: data?.aiReply,
+              }
+            }));
+          }
+        }}
       />
     </div>
   );

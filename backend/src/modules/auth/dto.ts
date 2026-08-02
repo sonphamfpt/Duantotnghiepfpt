@@ -18,7 +18,7 @@ export const registerSchema = z.object({
     }).min(2, "Họ và tên phải có tối thiểu 2 ký tự").max(100, "Họ và tên tối đa 100 ký tự"),
     phone: z.string({
       required_error: "Số điện thoại (phone) là bắt buộc",
-    }).regex(/^[0-9]{10,11}$/, "Số điện thoại phải là chữ số và có độ dài từ 10-11 ký tự"),
+    }).regex(/^(03|05|07|08|09)\d{8}$/, "Số điện thoại không hợp lệ. Phải là số điện thoại Việt Nam 10 chữ số (đầu 03, 05, 07, 08, 09)."),
     email: z.string().email("Định dạng email không hợp lệ").optional().or(z.literal('')),
     password: z.string({
       required_error: "Mật khẩu (password) là bắt buộc",
@@ -35,7 +35,7 @@ export const forgotPasswordOtpSchema = z.object({
   body: z.object({
     phone: z.string({
       required_error: "Số điện thoại là bắt buộc",
-    }).regex(/^[0-9]{10,11}$/, "Số điện thoại phải có 10-11 chữ số"),
+    }).regex(/^(03|05|07|08|09)\d{8}$/, "Số điện thoại không hợp lệ. Phải là số điện thoại Việt Nam 10 chữ số (đầu 03, 05, 07, 08, 09)."),
   }),
 });
 
