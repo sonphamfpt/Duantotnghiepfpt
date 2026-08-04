@@ -68,6 +68,14 @@ export const clinicApi = {
     });
   },
 
+  updateServiceDetails: (id: string, data: { price?: number; imageUrl?: string; description?: string; name?: string }) => {
+    const rawId = id.split('-')[1] || id;
+    return request<any>(`/services/${rawId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   toggleServiceActive: (id: string) => {
     const rawId = id.split('-')[1] || id;
     return request<any>(`/services/${rawId}/active`, {

@@ -8,6 +8,16 @@ export interface ApiResponse<T> {
   data?: T;
 }
 
+export const ERROR_CODE_MAP: Record<string, string> = {
+  'PATIENT_ALREADY_IN_QUEUE': 'Bệnh nhân này đã có trong hàng chờ khám hôm nay.',
+  'APPOINTMENT_NOT_FOUND': 'Không tìm thấy thông tin lịch hẹn.',
+  'APPOINTMENT_CANCELLED': 'Lịch hẹn này đã bị hủy, không thể tiếp đón.',
+  'DENTIST_NOT_FOUND': 'Không tìm thấy thông tin bác sĩ.',
+  'SHIFT_NOT_FOUND': 'Không tìm thấy ca trực của bác sĩ.',
+  'PAST_SHIFT_INVALID': 'Không thể tạo ca trực trong quá khứ.',
+  'DUPLICATE_SHIFT': 'Bác sĩ đã có ca trực vào khung giờ này.',
+};
+
 /**
  * Hàm gọi API dùng chung, tự động quản lý JWT token và parse JSON.
  */
@@ -43,7 +53,20 @@ export async function request<T>(endpoint: string, options: RequestInit = {}, co
 
   if (!response.ok) {
     const errorCode = resData.error?.code || '';
-    const errorMsg = resData.error?.message || resData.message || `Lỗi kết nối máy chủ (HTTP ${response.status})`;
+    let errorMsg = resData.error?.message || resData.message || '';
+
+    // Nếu message là mã code in hoa (ví dụ: 'PATIENT_ALREADY_IN_QUEUE'), dịch sang câu Tiếng Việt thân thiện
+    if (ERROR_CODE_MAP[errorMsg]) {
+      errorMsg = ERROR_CODE_MAP[errorMsg];
+    } else if (ERROR_CODE_MAP[errorCode] && (!errorMsg || /^[A-Z0-9_]+$/.test(errorMsg))) {
+      errorMsg = ERROR_CODE_MAP[errorCode];
+    } else if (errorCode && errorCode.includes(' ') && (!errorMsg || /^[A-Z0-9_]+$/.test(errorMsg))) {
+      errorMsg = errorCode;
+    }
+
+    if (!errorMsg || /^[A-Z0-9_]+$/.test(errorMsg)) {
+      errorMsg = `Thao tác thất bại (Mã lỗi: ${errorMsg || errorCode || response.status})`;
+    }
 
     // 401: Token hết hạn hoặc tài khoản bị khoá → tự động đăng xuất và redirect (chỉ khi đang ở trang riêng tư và có token)
     if (response.status === 401 && !config?.skipAuthRedirect) {

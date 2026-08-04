@@ -35,6 +35,31 @@ const TIER_COLORS: Record<string, string> = {
 
 // ─── Sub-Tab: Dịch vụ ─────────────────────────────────────────────────────────
 
+const DEFAULT_SERVICE_IMAGES: Record<string, string> = {
+  'S-01': 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=400&q=80',
+  'S-02': 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=400&q=80',
+  'S-03': 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=400&q=80',
+  'S-04': 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=400&q=80',
+  'S-05': 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=400&q=80',
+  'S-06': 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=400&q=80',
+  'S-07': 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=400&q=80',
+  'S-08': 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=400&q=80',
+  'S-09': 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=400&q=80',
+  'S-10': 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=400&q=80',
+  'S-11': 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=400&q=80',
+  'S-12': 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=400&q=80',
+  'S-13': 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=400&q=80',
+  'S-14': 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=400&q=80',
+  'S-15': 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=400&q=80',
+  'S-16': 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=400&q=80',
+};
+
+const getDefaultServiceImage = (service: any): string => {
+  if (service.imageUrl) return service.imageUrl;
+  if (DEFAULT_SERVICE_IMAGES[service.id]) return DEFAULT_SERVICE_IMAGES[service.id];
+  return 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=400&q=80';
+};
+
 const ServicesTab: React.FC = () => {
   const { updateServicePrice, addService, toggleServiceActive } = useClinic();
   const [allServices, setAllServices] = useState<any[]>([]);
@@ -48,6 +73,11 @@ const ServicesTab: React.FC = () => {
   const [newDescription, setNewDescription] = useState('');
   const [newImageUrl, setNewImageUrl] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Modal đổi ảnh dịch vụ
+  const [editingImageService, setEditingImageService] = useState<any | null>(null);
+  const [editImageUrlInput, setEditImageUrlInput] = useState('');
+  const [savingImage, setSavingImage] = useState(false);
 
   // Tải TẤT CẢ dịch vụ (kể cả đã tắt) để manager quản lý được đầy đủ
   const fetchAllServices = useCallback(async () => {
@@ -85,6 +115,33 @@ const ServicesTab: React.FC = () => {
     setEditingId(null);
     setSaving(false);
     await fetchAllServices(); // refresh local list
+  };
+
+  const handleSaveImage = async () => {
+    if (!editingImageService) return;
+    setSavingImage(true);
+    try {
+      await clinicApi.updateServiceDetails(editingImageService.id, { imageUrl: editImageUrlInput });
+      setEditingImageService(null);
+      setEditImageUrlInput('');
+      await fetchAllServices();
+    } catch (err: any) {
+      alert(err?.message || 'Không thể cập nhật ảnh dịch vụ.');
+    } finally {
+      setSavingImage(false);
+    }
+  };
+
+  const handleEditImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setEditImageUrlInput(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleToggle = async (id: string) => {
@@ -137,52 +194,123 @@ const ServicesTab: React.FC = () => {
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {sortedServices.map(service => (
-          <div key={service.id} className={`bg-slate-50 p-4 rounded-xl border relative overflow-hidden flex flex-col justify-between transition-all ${service.isActive ? 'border-outline-variant/50 hover:border-purple-600' : 'border-outline-variant/30 opacity-60'}`}>
-            <div className={`absolute left-0 top-0 bottom-0 w-1.5 transition-colors ${service.isActive ? 'bg-purple-600' : 'bg-slate-300'}`} />
-            <div className="space-y-2">
-              {service.imageUrl && (
-                <img src={service.imageUrl} alt={service.name} className="w-full h-24 object-cover rounded-lg mb-2 border border-slate-200" />
-              )}
-              <span className="text-[9px] font-bold text-outline-variant font-data-mono uppercase">ID: {service.id}</span>
-              <h4 className="font-bold text-xs text-on-surface leading-snug min-h-6">{service.name}</h4>
-              {service.description && (
-                <p className="text-[10px] text-on-surface-variant line-clamp-2 leading-relaxed">{service.description}</p>
-              )}
-              {editingId === service.id ? (
-                <div className="flex items-center gap-1.5 pt-1">
-                  <input type="number" value={editingPrice} onChange={e => setEditingPrice(e.target.value)} className="w-24 bg-white border border-outline-variant rounded px-2 py-1 text-xs font-bold font-data-mono focus:outline-none" />
-                  <button onClick={() => handleSavePrice(service.id)} disabled={saving} className="p-1 bg-green-600 text-white rounded text-[10px] font-bold hover:bg-green-700 cursor-pointer disabled:opacity-50">Lưu</button>
-                  <button onClick={() => setEditingId(null)} className="p-1 bg-slate-400 text-white rounded text-[10px] cursor-pointer">✕</button>
+        {sortedServices.map(service => {
+          const displayImg = getDefaultServiceImage(service);
+          return (
+            <div key={service.id} className={`bg-white rounded-xl border relative overflow-hidden flex flex-col justify-between transition-all shadow-sm hover:shadow-md ${service.isActive ? 'border-outline-variant/60 hover:border-purple-600' : 'border-outline-variant/30 opacity-60'}`}>
+              <div className={`absolute left-0 top-0 bottom-0 w-1.5 z-10 transition-colors ${service.isActive ? 'bg-purple-600' : 'bg-slate-300'}`} />
+
+              <div>
+                {/* Banner ảnh dịch vụ */}
+                <div className="relative h-28 w-full bg-slate-100 overflow-hidden group">
+                  <img src={displayImg} alt={service.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
+                  <span className="absolute top-2 left-3 bg-black/60 backdrop-blur-md text-white text-[9px] font-bold px-2 py-0.5 rounded font-data-mono uppercase">
+                    ID: {service.id}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setEditingImageService(service);
+                      setEditImageUrlInput(service.imageUrl || '');
+                    }}
+                    className="absolute bottom-2 right-2 bg-white/90 hover:bg-white text-slate-800 backdrop-blur-md text-[10px] font-bold px-2.5 py-1 rounded-lg shadow border border-white/50 flex items-center gap-1 opacity-90 hover:opacity-100 transition cursor-pointer"
+                  >
+                    <Icon name="photo_camera" className="text-xs text-purple-600" />
+                    Đổi ảnh
+                  </button>
                 </div>
-              ) : (
-                <div className="flex justify-between items-baseline pt-1">
-                  <p className="text-xs font-extrabold text-purple-700">₫{service.price.toLocaleString()}</p>
-                  {service.isActive && <button onClick={() => { setEditingId(service.id); setEditingPrice(service.price.toString()); }} className="text-[9px] text-primary hover:underline font-bold cursor-pointer">Sửa giá</button>}
+
+                <div className="p-3.5 space-y-1.5">
+                  <h4 className="font-bold text-xs text-on-surface leading-snug min-h-[32px] line-clamp-2">{service.name}</h4>
+                  {service.description && (
+                    <p className="text-[10px] text-on-surface-variant line-clamp-2 leading-relaxed">{service.description}</p>
+                  )}
+
+                  {editingId === service.id ? (
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input type="number" value={editingPrice} onChange={e => setEditingPrice(e.target.value)} className="w-24 bg-white border border-outline-variant rounded px-2 py-1 text-xs font-bold font-data-mono focus:outline-none" />
+                      <button onClick={() => handleSavePrice(service.id)} disabled={saving} className="p-1 bg-green-600 text-white rounded text-[10px] font-bold hover:bg-green-700 cursor-pointer disabled:opacity-50">Lưu</button>
+                      <button onClick={() => setEditingId(null)} className="p-1 bg-slate-400 text-white rounded text-[10px] cursor-pointer">✕</button>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-baseline pt-1">
+                      <p className="text-sm font-extrabold text-purple-700">₫{service.price.toLocaleString()}</p>
+                      {service.isActive && <button onClick={() => { setEditingId(service.id); setEditingPrice(service.price.toString()); }} className="text-[10px] text-primary hover:underline font-bold cursor-pointer">Sửa giá</button>}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+
+              <div className="px-3.5 py-2.5 border-t border-outline-variant/30 text-[10px] text-on-surface-variant flex justify-between items-center bg-slate-50/50">
+                <span className="font-medium">⏱ {service.durationMin} phút</span>
+                {/* Toggle switch – bật / tắt dịch vụ */}
+                <button
+                  onClick={() => handleToggle(service.id)}
+                  title={service.isActive ? 'Nhấn để tắt dịch vụ này' : 'Nhấn để bật lại dịch vụ này'}
+                  className="flex items-center gap-1.5 cursor-pointer select-none group"
+                >
+                  <span className={`text-[9px] font-bold transition-colors ${service.isActive ? 'text-secondary' : 'text-slate-400'}`}>
+                    {service.isActive ? 'Đang bật' : 'Đã tắt'}
+                  </span>
+                  <span className={`relative inline-flex w-8 h-4 rounded-full transition-colors duration-300 shadow-inner ${service.isActive ? 'bg-secondary' : 'bg-slate-300 group-hover:bg-slate-400'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow-md transition-transform duration-300 ${service.isActive ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </span>
+                </button>
+              </div>
             </div>
-            <div className="pt-3 border-t border-outline-variant/30 mt-3 text-[9px] text-on-surface-variant flex justify-between items-center">
-              <span>⏱ {service.durationMin} phút</span>
-              {/* Toggle switch – bật / tắt dịch vụ */}
-              <button
-                onClick={() => handleToggle(service.id)}
-                title={service.isActive ? 'Nhấn để tắt dịch vụ này' : 'Nhấn để bật lại dịch vụ này'}
-                className="flex items-center gap-1.5 cursor-pointer select-none group"
-              >
-                <span className={`text-[9px] font-bold transition-colors ${service.isActive ? 'text-secondary' : 'text-slate-400'}`}>
-                  {service.isActive ? 'Đang bật' : 'Đã tắt'}
-                </span>
-                {/* pill track */}
-                <span className={`relative inline-flex w-8 h-4 rounded-full transition-colors duration-300 shadow-inner ${service.isActive ? 'bg-secondary' : 'bg-slate-300 group-hover:bg-slate-400'}`}>
-                  {/* thumb */}
-                  <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow-md transition-transform duration-300 ${service.isActive ? 'translate-x-4' : 'translate-x-0'}`} />
-                </span>
-              </button>
+          );
+        })}
+      </div>
+
+      {/* Edit Image Modal */}
+      {editingImageService && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl border border-outline-variant max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 bg-purple-700 text-white flex justify-between items-center rounded-t-xl">
+              <h3 className="font-bold text-sm flex items-center gap-2"><Icon name="image" /> Cập Nhật Ảnh Dịch Vụ</h3>
+              <button onClick={() => setEditingImageService(null)} className="text-white cursor-pointer"><Icon name="close" /></button>
+            </div>
+            <div className="p-6 space-y-4 text-xs">
+              <p className="font-bold text-slate-800 text-sm">{editingImageService.name}</p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <label className="cursor-pointer px-3 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs font-bold hover:bg-purple-100 transition flex items-center gap-1.5 shadow-sm">
+                    <Icon name="upload_file" className="text-base" />
+                    Tải ảnh từ máy tính
+                    <input type="file" accept="image/*" className="hidden" onChange={handleEditImageFileChange} />
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-medium">hoặc dán URL</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Dán đường dẫn URL ảnh (https://...)"
+                  value={editImageUrlInput.startsWith('data:image') ? '[Ảnh chọn từ máy]' : editImageUrlInput}
+                  onChange={e => setEditImageUrlInput(e.target.value)}
+                  className="w-full border border-outline-variant rounded-lg px-3 py-2 text-xs font-medium focus:outline-none"
+                />
+              </div>
+
+              {/* Preview */}
+              {editImageUrlInput && (
+                <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
+                  <img src={editImageUrlInput} alt="Xem trước" className="w-16 h-16 object-cover rounded-md border shadow-sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-bold text-slate-700">Xem trước ảnh mới</p>
+                    <button type="button" onClick={() => setEditImageUrlInput('')} className="text-[10px] text-red-600 hover:underline font-semibold mt-0.5 cursor-pointer">Xóa ảnh</button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button type="button" onClick={() => setEditingImageService(null)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-bold hover:bg-slate-200">Hủy</button>
+                <button type="button" onClick={handleSaveImage} disabled={savingImage} className="px-4 py-2 rounded-lg bg-purple-700 text-white font-bold hover:bg-purple-800 disabled:opacity-50">
+                  {savingImage ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              </div>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       {/* Add Service Modal */}
       {showAdd && (

@@ -13,9 +13,11 @@ const TYPE_CONFIG = {
 
 const CONDITION_LABELS: Record<string, { label: string; color: string }> = {
   decay: { label: 'Sâu răng', color: 'text-amber-700 bg-amber-100 border-amber-300' },
-  treated: { label: 'Đã điều trị', color: 'text-primary bg-primary-container border-primary/30' },
+  treated: { label: 'Đã điều trị tủy', color: 'text-primary bg-primary-container border-primary/30' },
   missing: { label: 'Mất răng', color: 'text-error bg-error-container border-error/30' },
   crown: { label: 'Bọc sứ', color: 'text-purple-700 bg-purple-100 border-purple-300' },
+  bridge: { label: 'Cầu răng', color: 'text-indigo-700 bg-indigo-100 border-indigo-300' },
+  implant: { label: 'Cấy ghép Implant', color: 'text-sky-800 bg-sky-100 border-sky-400' },
   healthy: { label: 'Khỏe mạnh', color: 'text-secondary bg-secondary-container border-secondary/30' },
 };
 
@@ -162,7 +164,13 @@ export const DentistRecords: React.FC = () => {
   // Aggregate all tooth conditions from records
   const toothMap: Record<number, string> = {};
   patientRecords.forEach(r => {
-    r.teethMap?.forEach(t => { toothMap[t.toothNumber] = t.condition; });
+    r.teethMap?.forEach(t => {
+      let cond = t.condition;
+      if (t.treatment && (t.treatment.includes('[Implant]') || t.treatment.toLowerCase().includes('implant'))) {
+        cond = 'implant';
+      }
+      toothMap[t.toothNumber] = cond;
+    });
   });
 
   const mergedTeethMap = toothMap;
@@ -326,7 +334,7 @@ export const DentistRecords: React.FC = () => {
               {[
                 { label: 'Dị ứng', value: selectedPatient.criticalAllergy, alert: selectedPatient.criticalAllergy !== 'Không' },
                 { label: 'Bệnh lý nền', value: selectedPatient.condition || 'Bình thường', alert: false },
-                { label: 'Hồ sơ lưu trữ', value: `${patientFiles.length} tài liệu`, alert: false },
+                { label: 'Hồ sơ lưu trữ', value: patientFiles.length > 0 ? `${patientRecords.length} bệnh án • ${patientFiles.length} tệp` : `${patientRecords.length} bệnh án EMR`, alert: false },
               ].map((item, idx) => (
                 <div key={item.label} className={`py-4 px-6 text-center flex flex-col justify-center ${item.alert ? 'bg-red-50/60' : ''} ${idx < 2 ? 'border-r border-slate-100' : ''}`}>
                   <p className={`text-[10px] font-bold uppercase tracking-wider ${item.alert ? 'text-red-600' : 'text-slate-500'}`}>{item.label}</p>

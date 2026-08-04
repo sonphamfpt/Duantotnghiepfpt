@@ -110,7 +110,7 @@ export async function checkInPatient(data: {
   });
 
   if (existing) {
-    throw new AppError(400, 'PATIENT_ALREADY_IN_QUEUE', 'Bệnh nhân này đã có trong hàng chờ khám hôm nay.');
+    throw new AppError(400, 'Bệnh nhân này đã có trong hàng chờ khám hôm nay.', 'PATIENT_ALREADY_IN_QUEUE');
   }
 
   // [FIX 1] Kiểm tra lịch hẹn: nếu có appointmentId thì xác minh trạng thái
@@ -120,14 +120,14 @@ export async function checkInPatient(data: {
     });
 
     if (!appointment) {
-      throw new AppError(404, 'APPOINTMENT_NOT_FOUND', 'Không tìm thấy lịch hẹn tương ứng.');
+      throw new AppError(404, 'Không tìm thấy lịch hẹn tương ứng.', 'APPOINTMENT_NOT_FOUND');
     }
 
     if (appointment.status === 'Cancelled') {
       throw new AppError(
         400,
-        'APPOINTMENT_CANCELLED',
-        'Lịch hẹn này đã bị hủy. Không thể check-in bệnh nhân từ lịch hẹn đã hủy.'
+        'Lịch hẹn này đã bị hủy. Không thể check-in bệnh nhân từ lịch hẹn đã hủy.',
+        'APPOINTMENT_CANCELLED'
       );
     }
   }

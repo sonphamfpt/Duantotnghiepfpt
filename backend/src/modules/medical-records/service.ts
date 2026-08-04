@@ -48,11 +48,17 @@ export function formatMedicalRecord(rec: any): FormattedMedicalRecord {
     : 'Khám lâm sàng';
 
   const teethMap = rec.teeth && rec.teeth.length > 0
-    ? rec.teeth.map((t: any) => ({
-        toothNumber: t.toothNumber,
-        condition: t.condition,
-        treatment: t.treatmentNote || undefined,
-      }))
+    ? rec.teeth.map((t: any) => {
+        let conditionStr = t.condition;
+        if (t.treatmentNote && (t.treatmentNote.includes('[Implant]') || t.treatmentNote.toLowerCase().includes('implant'))) {
+          conditionStr = 'implant';
+        }
+        return {
+          toothNumber: t.toothNumber,
+          condition: conditionStr,
+          treatment: t.treatmentNote || undefined,
+        };
+      })
     : undefined;
 
   let prescription: any = undefined;
@@ -123,7 +129,7 @@ export async function createRecord(data: {
   treatmentPlanId?: bigint;
   teeth: Array<{
     toothNumber: number;
-    condition: 'healthy' | 'decay' | 'missing' | 'crown' | 'bridge' | 'treated';
+    condition: 'healthy' | 'decay' | 'missing' | 'crown' | 'bridge' | 'treated' | 'implant' | string;
     treatmentNote?: string;
   }>;
 }): Promise<FormattedMedicalRecord> {
@@ -185,15 +191,21 @@ export async function createRecord(data: {
       },
     });
 
-    // 2.2 Tạo các bản ghi răng điều trị
+    // 2.2 Tạo các bản ghi răng điều trị (Mapping an toàn cho DB enum)
+    const validDbConditions = ['healthy', 'decay', 'missing', 'crown', 'bridge', 'treated'];
     if (data.teeth.length > 0) {
       await tx.medicalRecordTooth.createMany({
-        data: data.teeth.map((t) => ({
-          recordId: newRecord.recordId,
-          toothNumber: t.toothNumber,
-          condition: t.condition,
-          treatmentNote: t.treatmentNote || null,
-        })),
+        data: data.teeth.map((t) => {
+          const isImplant = t.condition === 'implant';
+          const safeCondition = validDbConditions.includes(t.condition) ? t.condition : 'crown';
+          const note = isImplant ? `[Implant] ${t.treatmentNote || 'Cấy ghép Implant'}` : (t.treatmentNote || null);
+          return {
+            recordId: newRecord.recordId,
+            toothNumber: t.toothNumber,
+            condition: safeCondition as any,
+            treatmentNote: note,
+          };
+        }),
       });
     }
 

@@ -10,7 +10,7 @@ export const CreateMedicalRecordSchema = z.object({
   treatmentPlanId: z.union([z.string(), z.number()]).optional(),
   teeth: z.array(z.object({
     toothNumber: z.number().min(11).max(85),
-    condition: z.enum(['healthy', 'decay', 'missing', 'crown', 'bridge', 'treated']),
+    condition: z.enum(['healthy', 'decay', 'missing', 'crown', 'bridge', 'treated', 'implant']).or(z.string()),
     treatmentNote: z.string().optional(),
   })).optional().default([]),
 });

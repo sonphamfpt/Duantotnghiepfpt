@@ -570,6 +570,7 @@ enum ToothCondition {
   crown
   bridge
   treated
+  implant
 }
 
 enum FileType {

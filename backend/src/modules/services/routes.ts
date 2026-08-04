@@ -53,6 +53,7 @@ router.get('/all', authGuard, requireRole('manager'), async (req: Request, res: 
       category: s.category?.name || 'Điều trị chung',
       isActive: s.isActive,
       description: s.description || 'Dịch vụ điều trị răng miệng chất lượng cao.',
+      imageUrl: s.imageUrl || null,
     }));
 
     return res.status(200).json({ success: true, data: formatted });

@@ -17,7 +17,7 @@ export const ManagerOverview: React.FC = () => {
     weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric'
   });
 
-  // Lọc log của ngày hôm nay — dùng createdAt ISO từ backend (đã fix)
+  // Lọc log của ngày hôm nay — dùng createdAt ISO từ backend hoặc time
   const todayLogs = useMemo(() => {
     const todayStart = new Date(
       now.getFullYear(), now.getMonth(), now.getDate()
@@ -25,15 +25,15 @@ export const ManagerOverview: React.FC = () => {
     const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
 
     return logs.filter(log => {
-      // Ưu tiên createdAt ISO (full timestamp), fallback sang time nếu cần
-      const isoTime = (log as any).createdAt;
-      if (isoTime && !/^\d{2}:\d{2}:\d{2}$/.test(isoTime)) {
-        // ISO string đầy đủ → parse chính xác
+      const isoTime = log.createdAt;
+      if (isoTime) {
         const ms = new Date(isoTime).getTime();
-        return ms >= todayStart && ms <= todayEnd;
+        if (!isNaN(ms)) {
+          return ms >= todayStart && ms <= todayEnd;
+        }
       }
-      // Fallback: HH:MM:SS thuần (legacy) → không thể xác định ngày → bỏ qua
-      return false;
+      // Fallback: nếu log có time (HH:MM:SS) thì giữ nguyên để hiển thị
+      return !!log.time;
     });
   }, [logs, now]);
   // ───────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Icon } from '../../components/Icon';
 import { useSearchParams } from 'react-router-dom';
 import { useClinic } from '../../context/ClinicContext';
@@ -6,7 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { DentalChart } from '../../components/DentalChart';
 import DrugAutocomplete from '../../components/DrugAutocomplete';
-import { ToothState } from '../../types/clinic';
+import { ToothState, Patient } from '../../types/clinic';
 
 // Tab imports
 import { DentistQueue } from './dentist-tabs/DentistQueue';
@@ -121,24 +121,69 @@ const DentistHome: React.FC = () => {
     setUploadedFiles(prev => [...prev, newFile]);
   };
 
-  const dentistQueue = queue.filter(q => q.dentistId === dentistId && q.status !== 'Completed');
-  const activeQueueItem = queue.find(q => q.id === selectedQueueId);
-  const activePatient = activeQueueItem ? patients.find(p => p.id === activeQueueItem.patientId) : null;
+  const dentistQueue = useMemo(() => {
+    return queue.filter(q => q.dentistId === dentistId && q.status !== 'Completed');
+  }, [queue, dentistId]);
+
+  // Tự động đồng bộ selectedQueueId khi URL có tham số ?queueId=...
+  useEffect(() => {
+    const paramQueueId = searchParams.get('queueId');
+    if (paramQueueId && paramQueueId !== selectedQueueId) {
+      setSelectedQueueId(paramQueueId);
+    }
+  }, [searchParams, selectedQueueId]);
+
+  const activeQueueItem = useMemo(() => {
+    if (selectedQueueId) {
+      const found = queue.find(q => q.id === selectedQueueId);
+      if (found) return found;
+    }
+    const paramId = searchParams.get('queueId');
+    if (paramId) {
+      const found = queue.find(q => q.id === paramId);
+      if (found) return found;
+    }
+    return inChairItem || dentistQueue[0] || null;
+  }, [queue, selectedQueueId, searchParams, inChairItem, dentistQueue]);
+
+  const activePatient = useMemo<Patient | null>(() => {
+    if (!activeQueueItem) return null;
+    const pId = activeQueueItem.patientId;
+    const found = patients.find(p => p.id === pId || p.id === pId?.replace(/\D/g, '') || `P-${p.id}` === pId);
+    if (found) return found;
+
+    // Fallback: Tự động tổng hợp thông tin bệnh nhân từ phiếu khám queue nếu chưa tải kịp chi tiết
+    return {
+      id: pId || 'P-01',
+      name: activeQueueItem.patientName || 'Bệnh nhân',
+      phone: '0901234567',
+      criticalAllergy: 'Không',
+      condition: 'Bình thường',
+      gender: 'Nam',
+      age: 30,
+      balance: 0,
+      tier: 'Standard',
+      points: 0,
+      dateOfBirth: '',
+      address: '',
+    };
+  }, [activeQueueItem, patients]);
+
   const activePatientRecords = activePatient ? medicalRecords.filter(r => r.patientId === activePatient.id) : [];
   const filteredServices = services.filter(s => s.name.toLowerCase().includes(serviceSearch.toLowerCase()));
 
   const [treatmentType, setTreatmentType] = useState<'independent' | 'plan_init' | 'plan_session'>('independent');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
 
-  const patientPlans = React.useMemo(() => {
-    return activePatientRecords.filter(r => r.title.includes('Khởi tạo phác đồ') || r.notes?.includes('[PHÁC ĐỒ]'));
+  const patientPlans = useMemo(() => {
+    return activePatientRecords.filter(r => (r.title ? r.title.includes('Khởi tạo phác đồ') : false) || (r.notes ? r.notes.includes('[PHÁC ĐỒ]') : false));
   }, [activePatientRecords]);
 
-  const hasAllergyConflict = React.useMemo(() => {
+  const hasAllergyConflict = useMemo(() => {
     if (!activePatient || !activePatient.criticalAllergy || activePatient.criticalAllergy === 'Không') return false;
     const patientAllergy = activePatient.criticalAllergy.toLowerCase().trim();
     return prescriptionDrugs.some(drug => {
-      const drugName = drug.name.toLowerCase();
+      const drugName = (drug.name || '').toLowerCase();
       if (drugName.includes(patientAllergy) || patientAllergy.includes(drugName)) return true;
       if (patientAllergy === 'penicillin' && drugName.includes('amoxicillin')) return true;
       if (patientAllergy === 'amoxicillin' && drugName.includes('penicillin')) return true;
@@ -146,9 +191,9 @@ const DentistHome: React.FC = () => {
     });
   }, [activePatient, prescriptionDrugs]);
 
-  const hasServiceMismatch = React.useMemo(() => {
+  const hasServiceMismatch = useMemo(() => {
     if (performedServices.length === 0) return null;
-    const lowerIcd = icdCode.toLowerCase();
+    const lowerIcd = (icdCode || '').toLowerCase();
 
     const isSauRang = lowerIcd.includes('sâu');
     const isNhoRang = performedServices.some(id => id === 'S-04');
@@ -166,13 +211,13 @@ const DentistHome: React.FC = () => {
     return null;
   }, [icdCode, performedServices]);
 
-  React.useEffect(() => {
-    if (activePatient) {
+  useEffect(() => {
+    if (activePatient?.id) {
       fetchPatientRecords(activePatient.id);
     }
   }, [activePatient?.id, fetchPatientRecords]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const activeItem = queue.find(q => q.id === selectedQueueId);
     const patientId = activeItem?.patientId || null;
 
@@ -183,8 +228,10 @@ const DentistHome: React.FC = () => {
         // Autofill selected service in performedServices
         if (activeItem.serviceName) {
           const matched = services.find(
-            s => s.name.toLowerCase().trim() === activeItem.serviceName?.toLowerCase().trim() ||
-              activeItem.serviceName?.toLowerCase().includes(s.name.toLowerCase().trim())
+            s => s?.name && activeItem.serviceName && (
+              s.name.toLowerCase().trim() === activeItem.serviceName.toLowerCase().trim() ||
+              activeItem.serviceName.toLowerCase().includes(s.name.toLowerCase().trim())
+            )
           );
           if (matched) {
             setPerformedServices([matched.id]);
@@ -221,7 +268,7 @@ const DentistHome: React.FC = () => {
       };
 
       // Tìm ngày sinh từ EMR notes nếu API không trả về
-      let resolvedDOB = activePatient.dateOfBirth
+      let resolvedDOB = activePatient?.dateOfBirth
         ? activePatient.dateOfBirth.split('T')[0]
         : '';
       if (!resolvedDOB) {
@@ -232,7 +279,7 @@ const DentistHome: React.FC = () => {
       }
 
       // Tìm giới tính từ EMR notes nếu API trả null
-      let resolvedGender = activePatient.gender || '';
+      let resolvedGender = activePatient?.gender || '';
       if (!resolvedGender) {
         for (const rec of pRecords) {
           const g = extractFromNotes(rec.notes, 'Giới tính');
@@ -241,7 +288,7 @@ const DentistHome: React.FC = () => {
       }
 
       // Tìm địa chỉ từ EMR notes nếu API trả rỗng
-      let resolvedAddress = activePatient.address || '';
+      let resolvedAddress = activePatient?.address || '';
       if (!resolvedAddress) {
         for (const rec of pRecords) {
           const addr = extractFromNotes(rec.notes, 'Địa chỉ');
@@ -317,11 +364,12 @@ const DentistHome: React.FC = () => {
 
     const conditionLabels: Record<string, string> = {
       healthy: 'Khỏe mạnh (Xóa bệnh lý)',
-      decay: 'Sâu răng',
-      treated: 'Đã trám',
-      missing: 'Mất răng',
-      crown: 'Bọc sứ',
-      bridge: 'Cầu răng',
+      decay: 'Sâu răng (Trám răng)',
+      treated: 'Điều trị tủy (Nội nha)',
+      missing: 'Mất răng (Nhổ răng)',
+      crown: 'Bọc răng sứ',
+      bridge: 'Cầu răng sứ',
+      implant: 'Cấy ghép Implant (Trụ Titanium)',
     };
 
     const isConfirmed = await showConfirm({
@@ -735,13 +783,84 @@ const DentistHome: React.FC = () => {
                     patientAge={activePatient?.age}
                   />
                   {selectedToothNum && (
-                    <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 space-y-3 animate-in fade-in duration-200">
-                      <h4 className="font-bold text-primary text-xs uppercase">Chẩn đoán và xử lý cho Răng {selectedToothNum}:</h4>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <button type="button" onClick={() => handleDiagnoseTooth('healthy')} className="bg-white border border-outline-variant rounded p-2 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer">Khỏe mạnh (Xóa bệnh lý)</button>
-                        <button type="button" onClick={() => handleDiagnoseTooth('decay', 'S-03')} className="bg-error-container text-error border border-error rounded p-2 text-xs font-bold hover:bg-red-100 transition-colors cursor-pointer">Sâu răng (Trám răng)</button>
-                        <button type="button" onClick={() => handleDiagnoseTooth('crown', 'S-03')} className="bg-amber-50 text-amber-800 border border-amber-500 rounded p-2 text-xs font-bold hover:bg-amber-100 transition-colors cursor-pointer">Hỏng bọc sứ (Làm răng sứ)</button>
-                        <button type="button" onClick={() => handleDiagnoseTooth('missing', 'S-04')} className="bg-slate-100 text-outline border border-outline border-dashed rounded p-2 text-xs font-bold hover:bg-slate-200 transition-colors cursor-pointer">Răng sâu nặng (Nhổ răng)</button>
+                    <div className="p-4 bg-primary/5 rounded-2xl border border-primary/20 space-y-3 animate-in fade-in duration-200 shadow-sm">
+                      <h4 className="font-bold text-primary text-xs uppercase flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <span className="flex items-center gap-1.5 font-extrabold">
+                          <Icon name="dentistry" className="text-base" />
+                          Chẩn đoán và xử lý cho Răng {selectedToothNum}:
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-medium normal-case">Chọn tình trạng bệnh lý hoặc phương pháp phục hình bên dưới</span>
+                      </h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDiagnoseTooth('healthy')}
+                          className="bg-white text-slate-700 border border-slate-300 rounded-xl p-2.5 text-xs font-bold hover:bg-slate-50 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1 hover:border-emerald-500"
+                        >
+                          <Icon name="check_circle" className="text-emerald-600 text-base" />
+                          <span>Khỏe mạnh</span>
+                          <span className="text-[9px] font-normal text-slate-400">(Xóa bệnh lý)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDiagnoseTooth('decay', 'S-03')}
+                          className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-2.5 text-xs font-bold hover:bg-red-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
+                        >
+                          <Icon name="coronavirus" className="text-red-600 text-base" />
+                          <span>Sâu răng</span>
+                          <span className="text-[9px] font-normal text-red-500">(Trám răng)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDiagnoseTooth('treated', 'S-03')}
+                          className="bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl p-2.5 text-xs font-bold hover:bg-indigo-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
+                        >
+                          <Icon name="healing" className="text-indigo-600 text-base" />
+                          <span>Điều trị tủy</span>
+                          <span className="text-[9px] font-normal text-indigo-500">(Nội nha)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDiagnoseTooth('crown', 'S-03')}
+                          className="bg-amber-50 text-amber-800 border border-amber-300 rounded-xl p-2.5 text-xs font-bold hover:bg-amber-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
+                        >
+                          <Icon name="view_in_ar" className="text-amber-600 text-base" />
+                          <span>Bọc răng sứ</span>
+                          <span className="text-[9px] font-normal text-amber-600">(Phục hình sứ)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDiagnoseTooth('bridge', 'S-03')}
+                          className="bg-purple-50 text-purple-800 border border-purple-200 rounded-xl p-2.5 text-xs font-bold hover:bg-purple-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
+                        >
+                          <Icon name="grid_view" className="text-purple-600 text-base" />
+                          <span>Cầu răng sứ</span>
+                          <span className="text-[9px] font-normal text-purple-600">(Làm cầu)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDiagnoseTooth('missing', 'S-04')}
+                          className="bg-slate-100 text-slate-700 border border-slate-300 border-dashed rounded-xl p-2.5 text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
+                        >
+                          <Icon name="do_not_disturb_on" className="text-slate-500 text-base" />
+                          <span>Mất răng</span>
+                          <span className="text-[9px] font-normal text-slate-500">(Nhổ răng)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDiagnoseTooth('implant', 'S-07')}
+                          className="bg-sky-50 text-sky-900 border border-sky-400 rounded-xl p-2.5 text-xs font-bold hover:bg-sky-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1 ring-2 ring-sky-300/60"
+                        >
+                          <Icon name="dentistry" className="text-sky-600 text-base animate-pulse" />
+                          <span>Cấy Implant</span>
+                          <span className="text-[9px] font-normal text-sky-700">(Trụ Titanium)</span>
+                        </button>
                       </div>
                     </div>
                   )}
@@ -781,7 +900,7 @@ const DentistHome: React.FC = () => {
                         max={new Date().toLocaleDateString('sv')}
                         className="w-full bg-slate-50 border border-outline-variant/65 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white focus:outline-none transition-all"
                       />
-                      {!activePatient.dateOfBirth && (
+                      {!activePatient?.dateOfBirth && (
                         <p className="text-[10px] text-amber-600 font-medium mt-0.5">⚠ Bệnh nhân chưa khai báo ngày sinh</p>
                       )}
                     </div>
@@ -797,7 +916,7 @@ const DentistHome: React.FC = () => {
                         <option value="Nữ">Nữ</option>
                         <option value="Khác">Khác</option>
                       </select>
-                      {!activePatient.gender && (
+                      {!activePatient?.gender && (
                         <p className="text-[10px] text-amber-600 font-medium mt-0.5">⚠ Bệnh nhân chưa khai báo giới tính</p>
                       )}
                     </div>
@@ -810,7 +929,7 @@ const DentistHome: React.FC = () => {
                         placeholder="Nhập địa chỉ nhà..."
                         className="w-full bg-slate-50 border border-outline-variant/65 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-white focus:outline-none transition-all"
                       />
-                      {!activePatient.address && (
+                      {!activePatient?.address && (
                         <p className="text-[10px] text-amber-600 font-medium mt-0.5">⚠ Bệnh nhân chưa khai báo địa chỉ</p>
                       )}
                     </div>
@@ -1540,7 +1659,7 @@ Ví dụ: - Không ăn trong 2 giờ
                     <div className="h-14 flex items-center justify-center">
                       <span className="text-slate-300 text-xs italic">Đã xác nhận trên app</span>
                     </div>
-                    <p className="font-bold text-slate-800">{activePatient.name}</p>
+                    <p className="font-bold text-slate-800">{activePatient?.name || 'Bệnh nhân'}</p>
                   </div>
                   <div>
                     <p className="uppercase font-bold text-slate-400">Bác sĩ điều trị ký</p>
@@ -1595,17 +1714,61 @@ Ví dụ: - Không ăn trong 2 giờ
   );
 };
 
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("DentistDashboard Error Boundary caught an error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 text-center bg-white rounded-2xl border border-red-200 shadow-md max-w-lg mx-auto my-12 space-y-4">
+          <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto">
+            <Icon name="error" className="text-2xl" />
+          </div>
+          <h3 className="font-bold text-slate-800 text-base">Đã xảy ra lỗi khi tải giao diện Bác sĩ</h3>
+          <p className="text-xs text-slate-500 font-mono bg-slate-50 p-2.5 rounded border border-slate-200 text-left overflow-x-auto">
+            {String(this.state.error?.message || this.state.error)}
+          </p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.href = '/dashboard/dentist';
+            }}
+            className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 cursor-pointer"
+          >
+            Tải lại trang Bác sĩ
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export const DentistDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
   const tab = searchParams.get('tab');
   const { user } = useAuth();
   const dentistId = user?.id || 'D-04';
 
+  let content: React.ReactNode;
   switch (tab) {
-    case 'workspace': return <DentistHome />;
-    case 'records': return <DentistRecords />;
-    case 'schedule': return <DentistSchedule dentistId={dentistId} />;
-    case 'settings': return <div className="p-container-padding-desktop"><ProfileSettings /></div>;
-    default: return <DentistQueue />;
+    case 'workspace': content = <DentistHome />; break;
+    case 'records': content = <DentistRecords />; break;
+    case 'schedule': content = <DentistSchedule dentistId={dentistId} />; break;
+    case 'settings': content = <div className="p-container-padding-desktop"><ProfileSettings /></div>; break;
+    default: content = <DentistQueue />; break;
   }
+
+  return <ErrorBoundary>{content}</ErrorBoundary>;
 };

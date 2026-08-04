@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { ConfirmModal, ConfirmType } from '../components/ConfirmModal';
+import { ERROR_CODE_MAP } from '../services/api/apiClient';
 
 interface ConfirmOptions {
   title: string;
@@ -54,6 +55,24 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
     });
   }, []);
+
+  useEffect(() => {
+    const originalAlert = window.alert;
+    window.alert = (msg: any) => {
+      const messageStr = typeof msg === 'object' ? (msg?.message || JSON.stringify(msg)) : String(msg || '');
+      const translatedMsg = ERROR_CODE_MAP[messageStr] || messageStr;
+      const isWarn = /thất bại|lỗi|bị hủy|đã có|quá hạn|không thể|không tìm thấy|xung đột|trùng|PATIENT_/i.test(translatedMsg);
+      showAlert({
+        title: 'Thông báo hệ thống',
+        message: translatedMsg,
+        type: isWarn ? 'warning' : 'info',
+        confirmLabel: 'Đã hiểu',
+      });
+    };
+    return () => {
+      window.alert = originalAlert;
+    };
+  }, [showAlert]);
 
   const showConfirm = useCallback((options: ConfirmOptions) => {
     return new Promise<boolean>((resolve) => {

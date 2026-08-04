@@ -43,6 +43,9 @@ export const ToothSvg: React.FC<ToothSvgProps> = ({
   } else if (condition === 'bridge') {
     fillColor = '#eef2ff';
     strokeColor = '#6366f1';
+  } else if (condition === 'implant') {
+    fillColor = '#e0f2fe';
+    strokeColor = '#0284c7';
   } else if (condition === 'missing') {
     fillColor = '#f8fafc';
     strokeColor = '#cbd5e1';
@@ -136,6 +139,12 @@ export const ToothSvg: React.FC<ToothSvgProps> = ({
         {condition === 'crown' && (
           <path d={isUpper ? "M 12,35 L 20,30 L 28,35 L 26,45 L 14,45 Z" : "M 12,25 L 20,30 L 28,25 L 26,15 L 14,15 Z"} fill="#fcd34d" opacity="0.8" />
         )}
+        {condition === 'implant' && (
+          <g>
+            <path d={isUpper ? "M 16,14 L 24,14 M 16,18 L 24,18 M 17,22 L 23,22" : "M 16,38 L 24,38 M 16,42 L 24,42 M 17,46 L 23,46"} stroke="#0284c7" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="20" cy={isUpper ? "40" : "20"} r="5" fill="#38bdf8" />
+          </g>
+        )}
         {condition === 'missing' && (
           <path d="M 12,15 L 28,45 M 28,15 L 12,45" stroke="#94a3b8" strokeWidth="3" strokeLinecap="round" />
         )}
@@ -165,13 +174,13 @@ export const DentalChart: React.FC<DentalChartProps> = ({
   const upperRight = [18, 17, 16, 15, 14, 13, 12, 11];
   const upperLeft = [21, 22, 23, 24, 25, 26, 27, 28];
   const lowerLeft = [31, 32, 33, 34, 35, 36, 37, 38];
-  const lowerRight = [41, 42, 43, 44, 45, 46, 47, 48];
+  const lowerRight = [48, 47, 46, 45, 44, 43, 42, 41];
 
   // Deciduous tooth quadrants (Răng sữa - FDI notation)
   const childUpperRight = [55, 54, 53, 52, 51];
   const childUpperLeft = [61, 62, 63, 64, 65];
   const childLowerLeft = [71, 72, 73, 74, 75];
-  const childLowerRight = [81, 82, 83, 84, 85];
+  const childLowerRight = [85, 84, 83, 82, 81];
 
   const getToothStatus = (toothNumber: number): ToothState => {
     return teethState.find(t => t.toothNumber === toothNumber) || { toothNumber, condition: 'healthy' };
@@ -192,10 +201,11 @@ export const DentalChart: React.FC<DentalChartProps> = ({
   const CONDITION_TRANSLATIONS: Record<string, string> = {
     healthy: 'Khỏe mạnh',
     decay: 'Sâu răng',
-    treated: 'Đã trám',
+    treated: 'Đã trám / Tủy',
     crown: 'Bọc sứ',
     bridge: 'Cầu răng',
     missing: 'Mất răng',
+    implant: 'Cấy ghép Implant',
   };
 
   const renderTooth = (num: number) => {
@@ -253,10 +263,11 @@ export const DentalChart: React.FC<DentalChartProps> = ({
       <div className="flex flex-wrap gap-4 text-[11px] font-bold mb-6 border-b border-dashed border-outline-variant pb-5 uppercase text-on-surface-variant">
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-white border border-outline-variant"></span> Khỏe</span>
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-error-container border border-error"></span> Sâu răng</span>
-        <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-primary-container border border-primary"></span> Đã trám</span>
+        <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-primary-container border border-primary"></span> Đã trám / Tủy</span>
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-amber-100 border border-amber-500"></span> Bọc sứ</span>
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-indigo-50 border border-indigo-500"></span> Cầu răng</span>
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-surface-variant border border-outline border-dashed flex items-center justify-center text-outline"><Icon name="close" className="text-[14px]" /></span> Mất răng</span>
+        <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-sky-100 border border-sky-600"></span> Implant</span>
       </div>
 
       <div className="space-y-6 select-none overflow-x-auto custom-scrollbar pb-2">

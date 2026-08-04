@@ -112,7 +112,7 @@ export interface Invoice {
 
 export interface ToothState {
   toothNumber: number;
-  condition: 'healthy' | 'decay' | 'missing' | 'crown' | 'bridge' | 'treated';
+  condition: 'healthy' | 'decay' | 'missing' | 'crown' | 'bridge' | 'treated' | 'implant';
   treatment?: string;
 }
 
@@ -155,6 +155,7 @@ export interface ClinicLog {
   module: 'RECEPTION' | 'DENTIST' | 'CASHIER' | 'SYSTEM' | 'AUTH';
   type: 'INFO' | 'SUCCESS' | 'WARN' | 'ERR';
   message: string;
+  createdAt?: string;
 }
 
 export interface DoctorShift {

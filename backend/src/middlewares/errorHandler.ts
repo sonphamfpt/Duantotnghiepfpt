@@ -7,9 +7,18 @@ export class AppError extends Error {
   public readonly errorCode?: string;
 
   constructor(statusCode: number, message: string, errorCode?: string) {
-    super(message);
+    let finalMessage = message;
+    let finalCode = errorCode;
+
+    // Tự động nhận diện nếu người dùng truyền (statusCode, 'CODE_NAME', 'Thông báo tiếng Việt')
+    if (errorCode && !message.includes(' ') && errorCode.includes(' ')) {
+      finalMessage = errorCode;
+      finalCode = message;
+    }
+
+    super(finalMessage);
     this.statusCode = statusCode;
-    this.errorCode = errorCode;
+    this.errorCode = finalCode;
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
