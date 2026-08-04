@@ -359,14 +359,14 @@ const DentistHome: React.FC = () => {
 
   const handleToothClick = (num: number) => { setSelectedToothNum(num); };
 
-  const handleDiagnoseTooth = async (condition: ToothState['condition'], serviceId?: string) => {
+  const handleDiagnoseTooth = async (condition: ToothState['condition']) => {
     if (!selectedToothNum) return;
 
     const conditionLabels: Record<string, string> = {
       healthy: 'Khỏe mạnh (Xóa bệnh lý)',
-      decay: 'Sâu răng (Trám răng)',
-      treated: 'Điều trị tủy (Nội nha)',
-      missing: 'Mất răng (Nhổ răng)',
+      decay: 'Sâu răng',
+      treated: 'Điều trị tủy',
+      missing: 'Mất răng',
       crown: 'Bọc răng sứ',
       bridge: 'Cầu răng sứ',
       implant: 'Cấy ghép Implant (Trụ Titanium)',
@@ -381,20 +381,15 @@ const DentistHome: React.FC = () => {
     });
     if (!isConfirmed) return;
 
-    const service = services.find(s => s.id === serviceId);
     const newToothState: ToothState = {
       toothNumber: selectedToothNum,
       condition,
-      treatment: service ? service.name : undefined
     };
     setActiveTeethState(prev => {
       const filtered = prev.filter(t => t.toothNumber !== selectedToothNum);
       if (condition === 'healthy') return filtered;
       return [...filtered, newToothState];
     });
-    if (serviceId && !performedServices.includes(serviceId)) {
-      setPerformedServices(prev => [...prev, serviceId]);
-    }
 
     await showAlert({
       title: 'Thành công',
@@ -804,7 +799,7 @@ const DentistHome: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => handleDiagnoseTooth('decay', 'S-03')}
+                          onClick={() => handleDiagnoseTooth('decay')}
                           className="bg-red-50 text-red-700 border border-red-200 rounded-xl p-2.5 text-xs font-bold hover:bg-red-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
                         >
                           <Icon name="coronavirus" className="text-red-600 text-base" />
@@ -814,7 +809,7 @@ const DentistHome: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => handleDiagnoseTooth('treated', 'S-03')}
+                          onClick={() => handleDiagnoseTooth('treated')}
                           className="bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl p-2.5 text-xs font-bold hover:bg-indigo-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
                         >
                           <Icon name="healing" className="text-indigo-600 text-base" />
@@ -824,7 +819,7 @@ const DentistHome: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => handleDiagnoseTooth('crown', 'S-03')}
+                          onClick={() => handleDiagnoseTooth('crown')}
                           className="bg-amber-50 text-amber-800 border border-amber-300 rounded-xl p-2.5 text-xs font-bold hover:bg-amber-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
                         >
                           <Icon name="view_in_ar" className="text-amber-600 text-base" />
@@ -834,7 +829,7 @@ const DentistHome: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => handleDiagnoseTooth('bridge', 'S-03')}
+                          onClick={() => handleDiagnoseTooth('bridge')}
                           className="bg-purple-50 text-purple-800 border border-purple-200 rounded-xl p-2.5 text-xs font-bold hover:bg-purple-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
                         >
                           <Icon name="grid_view" className="text-purple-600 text-base" />
@@ -844,7 +839,7 @@ const DentistHome: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => handleDiagnoseTooth('missing', 'S-04')}
+                          onClick={() => handleDiagnoseTooth('missing')}
                           className="bg-slate-100 text-slate-700 border border-slate-300 border-dashed rounded-xl p-2.5 text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1"
                         >
                           <Icon name="do_not_disturb_on" className="text-slate-500 text-base" />
@@ -854,7 +849,7 @@ const DentistHome: React.FC = () => {
 
                         <button
                           type="button"
-                          onClick={() => handleDiagnoseTooth('implant', 'S-07')}
+                          onClick={() => handleDiagnoseTooth('implant')}
                           className="bg-sky-50 text-sky-900 border border-sky-400 rounded-xl p-2.5 text-xs font-bold hover:bg-sky-100 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center text-center gap-1 ring-2 ring-sky-300/60"
                         >
                           <Icon name="dentistry" className="text-sky-600 text-base animate-pulse" />
@@ -1537,11 +1532,27 @@ Ví dụ: - Không ăn trong 2 giờ
                   <p className="text-[10px] font-bold text-primary uppercase border-b border-slate-200 pb-1">Chẩn đoán răng bệnh lý</p>
                   {activeTeethState.length > 0 ? (
                     <div className="flex flex-wrap gap-2 pt-1">
-                      {activeTeethState.map(t => (
-                        <span key={t.toothNumber} className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg font-bold text-slate-700 text-[10px]">
-                          Răng số {t.toothNumber}: {t.treatment || t.condition.toUpperCase()}
-                        </span>
-                      ))}
+                      {activeTeethState.map(t => {
+                        const conditionNames: Record<string, string> = {
+                          healthy: 'Khỏe mạnh',
+                          decay: 'Sâu răng',
+                          treated: 'Điều trị tủy',
+                          missing: 'Mất răng',
+                          crown: 'Bọc răng sứ',
+                          bridge: 'Cầu răng sứ',
+                          implant: 'Cấy ghép Implant',
+                        };
+                        const condName = conditionNames[t.condition] || t.condition;
+                        const hasCustomNote = t.treatment &&
+                          t.treatment !== activeQueueItem?.serviceName &&
+                          !t.treatment.includes('Gói Chăm Sóc') &&
+                          !t.treatment.includes('Răng Nhựa');
+                        return (
+                          <span key={t.toothNumber} className="px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg font-bold text-slate-700 text-[10px]">
+                            Răng số {t.toothNumber}: {condName}{hasCustomNote ? ` (${t.treatment})` : ''}
+                          </span>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-slate-500 italic">Không ghi nhận răng bệnh lý nào.</p>

@@ -780,19 +780,25 @@ export const DentistRecords: React.FC = () => {
 
                       {/* Detailed tooth conditions table */}
                       <div className="mt-3 space-y-1 max-h-[120px] overflow-y-auto custom-scrollbar">
-                        {viewEMRRecord.teethMap.map((t, idx) => (
-                          <div key={idx} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50 border border-slate-100">
-                            <span className="font-bold text-slate-700">Răng số {t.toothNumber}</span>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${CONDITION_LABELS[t.condition]?.color || ''}`}>
-                                {CONDITION_LABELS[t.condition]?.label}
-                              </span>
-                              {t.treatment && (
-                                <span className="text-slate-500 font-medium truncate max-w-[120px]">({t.treatment})</span>
-                              )}
+                        {viewEMRRecord.teethMap.map((t, idx) => {
+                          const showCustomTreatmentNote = t.treatment &&
+                            !t.treatment.includes('Gói Chăm Sóc') &&
+                            !t.treatment.includes('Răng Nhựa') &&
+                            !t.treatment.toLowerCase().includes('mất răng');
+                          return (
+                            <div key={idx} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="font-bold text-slate-700">Răng số {t.toothNumber}</span>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${CONDITION_LABELS[t.condition]?.color || ''}`}>
+                                  {CONDITION_LABELS[t.condition]?.label}
+                                </span>
+                                {showCustomTreatmentNote && (
+                                  <span className="text-slate-500 font-medium truncate max-w-[120px]">({t.treatment})</span>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -901,9 +907,15 @@ export const DentistRecords: React.FC = () => {
                       {viewEMRRecord.teethMap && viewEMRRecord.teethMap.length > 0 && (
                         <div className="pl-3 border-l-2 border-primary/50 text-[11px] text-slate-600 space-y-1">
                           <p className="font-semibold text-slate-700 text-xs">Chi tiết răng điều trị:</p>
-                          {viewEMRRecord.teethMap.map((t, idx) => (
-                            <p key={idx}>• Răng số {t.toothNumber}: {CONDITION_LABELS[t.condition]?.label} {t.treatment ? `— ${t.treatment}` : ''}</p>
-                          ))}
+                          {viewEMRRecord.teethMap.map((t, idx) => {
+                            const showCustomTreatmentNote = t.treatment &&
+                              !t.treatment.includes('Gói Chăm Sóc') &&
+                              !t.treatment.includes('Răng Nhựa') &&
+                              !t.treatment.toLowerCase().includes('mất răng');
+                            return (
+                              <p key={idx}>• Răng số {t.toothNumber}: {CONDITION_LABELS[t.condition]?.label} {showCustomTreatmentNote ? `— ${t.treatment}` : ''}</p>
+                            );
+                          })}
                         </div>
                       )}
                       {viewEMRRecord.notes && (
