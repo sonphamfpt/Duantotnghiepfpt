@@ -7,7 +7,7 @@ export const ReceptionistCancelHistory: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterReason, setFilterReason] = useState<'all' | 'auto' | 'manual'>('all');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
-  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'custom' | 'all'>('today');
+  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | '7days' | '30days' | 'custom' | 'all'>('all');
 
   const todayIso = React.useMemo(() => {
     const now = new Date();
@@ -72,9 +72,10 @@ export const ReceptionistCancelHistory: React.FC = () => {
     return true;
   };
 
-  // Lọc tất cả ca hủy theo mốc thời gian trước
+  // Lọc tất cả ca hủy & lỡ hẹn theo mốc thời gian trước
   const cancelledByDate = (appointments || []).filter(a => {
-    if (!a || a.status !== 'Cancelled') return false;
+    if (!a) return false;
+    if (a.status !== 'Cancelled' && a.status !== 'NoShow') return false;
     const dateObj = parseAppointmentDate(a);
     return isDateInFilter(dateObj, dateFilter);
   });

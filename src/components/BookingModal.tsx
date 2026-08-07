@@ -6,6 +6,7 @@ import { OtpVerificationModal } from './OtpVerificationModal';
 import { AlertModal } from './AlertModal';
 import { appointmentApi, BookingChannel, clinicApi } from '../services/api';
 import { isSameDentistId, getVietnamHour, isSlotInDoctorShifts } from '../utils/shiftUtils';
+import { downloadQrCode } from '../utils/qrDownloader';
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -24,21 +25,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 }) => {
   const { services, dentists, patients, appointments, addLog, refreshAllData, doctorShifts } = useClinic();
   const { role, user } = useAuth();
-  
+
   const [patientName, setPatientName] = useState(defaultPatientName);
   const [patientPhone, setPatientPhone] = useState(defaultPatientPhone);
   const [selectedServiceId, setSelectedServiceId] = useState('');
-  
-  const initialDentistId = dentists.find(d => d.name === defaultDentistName)?.id || '';
+
+  const initialDentistId = dentists.find(d => d.name === defaultDentistName)?.id || 'ANY';
   const [selectedDentistId, setSelectedDentistId] = useState(initialDentistId);
-  
+
   const formatDateInputValue = (value: Date): string => {
     const year = value.getFullYear();
     const month = (value.getMonth() + 1).toString().padStart(2, '0');
     const day = value.getDate().toString().padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
-  
+
   const todayObj = new Date();
   const minDateStr = formatDateInputValue(todayObj);
   const maxDateObj = new Date();
@@ -63,6 +64,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [serviceError, setServiceError] = useState('');
   const [dentistError, setDentistError] = useState('');
   const [timeError, setTimeError] = useState('');
+  const [resolvedDentistId, setResolvedDentistId] = useState<string>('');
 
   const PHONE_VN_REGEX = /^(0[3|5|7|8|9])[0-9]{8}$/;
 
@@ -148,9 +150,63 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return `${hours}:${minutes}`;
   };
 
+  const isSlotAvailableRealtime = (slotIso: string, targetDentistId: string, dateStr: string): boolean => {
+    const slotStart = new Date(slotIso).getTime();
+    if (isNaN(slotStart)) return false;
+
+    const currentService = services.find(s => s.id === selectedServiceId);
+    const selectedServiceDuration = currentService?.durationMin || 30;
+    const slotEnd = slotStart + (selectedServiceDuration + 15) * 60 * 1000;
+
+    const isDoctorOccupied = (docId: string): boolean => {
+      return appointments.some(a => {
+        if (a.status === 'Cancelled') return false;
+        if (a.dentistId && !isSameDentistId(a.dentistId, docId)) return false;
+
+        let apptStart: number | null = null;
+        if (a.time) {
+          if (a.time.includes('@')) {
+            const [dPart, tPart] = a.time.split('@').map(s => s.trim());
+            const dParts = dPart.split('/').map(Number);
+            const tParts = tPart ? tPart.split(':').map(Number) : [0, 0];
+            if (dParts.length === 3) {
+              apptStart = new Date(dParts[2], dParts[1] - 1, dParts[0], tParts[0] || 0, tParts[1] || 0).getTime();
+            }
+          } else {
+            const dObj = new Date(a.time);
+            if (!isNaN(dObj.getTime())) apptStart = dObj.getTime();
+          }
+        }
+
+        if (!apptStart) return false;
+
+        const apptService = services.find(s => s.id === a.serviceId || s.name === a.serviceName);
+        const apptDurationMin = apptService?.durationMin || 30;
+        const apptEnd = apptStart + (apptDurationMin + 15) * 60 * 1000;
+
+        // Kiểm tra chồng lấp khoảng thời gian: [slotStart, slotEnd) với [apptStart, apptEnd)
+        return slotStart < apptEnd && apptStart < slotEnd;
+      });
+    };
+
+    if (targetDentistId && targetDentistId !== 'ANY') {
+      return !isDoctorOccupied(targetDentistId);
+    }
+
+    const activeDentistsOnDate = dentists.filter(d =>
+      doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
+    );
+    const candidateDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
+
+    return candidateDentists.some(d => {
+      const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr);
+      return isSlotInDoctorShifts(slotIso, activeShifts) && !isDoctorOccupied(d.id);
+    });
+  };
+
   useEffect(() => {
     const fetchAvailableSlots = async () => {
-      if (!selectedDentistId || !selectedServiceId || !date) {
+      if (!selectedServiceId || !date) {
         setAvailableSlots([]);
         setTimeSlot('');
         return;
@@ -160,18 +216,54 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setSlotsError('');
 
       try {
-        const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
-        const rawSlots = response.data || [];
+        if (selectedDentistId === 'ANY' || !selectedDentistId) {
+          const activeDentistsOnDate = dentists.filter(d =>
+            doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
+          );
+          const targetDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
 
-        // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế của bác sĩ trong ngày
-        const activeShiftsForDoc = doctorShifts.filter(
-          s => isSameDentistId(s.dentistId, selectedDentistId) && s.date === date
-        );
+          if (targetDentists.length === 0) {
+            setSlotsError('Không có bác sĩ nào có ca trực trong ngày này.');
+            setAvailableSlots([]);
+            setTimeSlot('');
+            return;
+          }
 
-        const slots = rawSlots.filter(slotIso => isSlotInDoctorShifts(slotIso, activeShiftsForDoc));
+          const responses = await Promise.allSettled(
+            targetDentists.map(d => appointmentApi.getAvailableSlots(d.id, date, selectedServiceId))
+          );
 
-        setAvailableSlots(slots);
-        setTimeSlot((prev) => slots.includes(prev) ? prev : '');
+          let combinedSlotsSet = new Set<string>();
+          responses.forEach((res, idx) => {
+            if (res.status === 'fulfilled' && res.value.data) {
+              const docId = targetDentists[idx].id;
+              const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, docId) && s.date === date);
+              const validSlots = res.value.data.filter(slotIso =>
+                isSlotInDoctorShifts(slotIso, activeShifts) && isSlotAvailableRealtime(slotIso, docId, date)
+              );
+              validSlots.forEach(slot => combinedSlotsSet.add(slot));
+            }
+          });
+
+          const combinedSlots = Array.from(combinedSlotsSet).sort();
+          setAvailableSlots(combinedSlots);
+          setTimeSlot((prev) => combinedSlots.includes(prev) ? prev : '');
+        } else {
+          const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
+          const rawSlots = response.data || [];
+
+          // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế và lịch bận của bác sĩ
+          const activeShiftsForDoc = doctorShifts.filter(
+            s => isSameDentistId(s.dentistId, selectedDentistId) && s.date === date
+          );
+
+          const slots = rawSlots.filter(slotIso =>
+            isSlotInDoctorShifts(slotIso, activeShiftsForDoc) && isSlotAvailableRealtime(slotIso, selectedDentistId, date)
+          );
+
+          setAvailableSlots(slots);
+          setTimeSlot((prev) => slots.includes(prev) ? prev : '');
+        }
       } catch (err: any) {
         console.error('Lỗi khi tải khung giờ trống:', err);
         setSlotsError(err.message || 'Không thể tải danh sách giờ trống.');
@@ -186,9 +278,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     fetchSlotsRef.current = () => void fetchAvailableSlots();
 
     void fetchAvailableSlots();
-  }, [date, selectedDentistId, selectedServiceId]);
-
-  // REMOVED: polling interval 60s dư thừa (ClinicContext đã poll 30s rồi)
+  }, [date, selectedDentistId, selectedServiceId, appointments, slotRefreshTick]);
 
   if (!isOpen) return null;
 
@@ -199,7 +289,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const checkRateLimit = (phone: string): boolean => {
     const activeAppts = appointments.filter(
       a => a.patientPhone === phone.trim() &&
-      a.status !== 'Completed' && a.status !== 'Cancelled'
+        a.status !== 'Completed' && a.status !== 'Cancelled'
     );
     if (activeAppts.length >= 3) {
       showAlert(
@@ -216,9 +306,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const checkDuplicate = (phone: string, dateStr: string, time: string): boolean => {
     const timeStr = `${formatLocalDateStr(dateStr)} @ ${time}`;
     const duplicate = appointments.find(
-      a => a.patientPhone === phone.trim() && 
-      a.time === timeStr &&
-      a.status !== 'Cancelled'
+      a => a.patientPhone === phone.trim() &&
+        a.time === timeStr &&
+        a.status !== 'Cancelled'
     );
     if (duplicate) {
       showAlert(
@@ -231,6 +321,31 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return true;
   };
 
+  const resolveEffectiveDentistId = (targetDentistId: string, timeIso: string, dateStr: string): string => {
+    if (targetDentistId && targetDentistId !== 'ANY') return targetDentistId;
+
+    const activeDentistsOnDate = dentists.filter(d =>
+      doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
+    );
+    const candidateDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
+
+    const availableCandidates: string[] = [];
+    for (const d of candidateDentists) {
+      const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr);
+      if (isSlotInDoctorShifts(timeIso, activeShifts) && isSlotAvailableRealtime(timeIso, d.id, dateStr)) {
+        availableCandidates.push(d.id);
+      }
+    }
+
+    if (availableCandidates.length > 0) {
+      const randomIndex = Math.floor(Math.random() * availableCandidates.length);
+      return availableCandidates[randomIndex];
+    }
+
+    const freeDentist = candidateDentists.find(d => isSlotAvailableRealtime(timeIso, d.id, dateStr));
+    return freeDentist?.id || candidateDentists[0]?.id || 'D-01';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAntiSpamError('');
@@ -238,7 +353,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     const nErr = validateName(patientName);
     const pErr = validatePhone(patientPhone);
     const sErr = !selectedServiceId ? 'Vui lòng chọn dịch vụ điều trị.' : '';
-    const dErr = !selectedDentistId ? 'Vui lòng chọn bác sĩ thăm khám.' : '';
+    const dErr = ''; // Bác sĩ luôn hợp lệ (mặc định: Phòng khám tự phân công)
     const tErr = !timeSlot ? 'Vui lòng chọn khung giờ hẹn khám.' : '';
 
     setNameError(nErr);
@@ -265,8 +380,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (!checkDuplicate(patientPhone, date, timeSlot)) return;
 
     setSubmitting(true);
+    const effectiveDentistId = resolveEffectiveDentistId(selectedDentistId, timeSlot, date);
+    setResolvedDentistId(effectiveDentistId);
+
     try {
-      const latestSlots = await appointmentApi.ensureSlotAvailable(selectedDentistId, date, selectedServiceId, timeSlot);
+      const latestSlots = await appointmentApi.ensureSlotAvailable(effectiveDentistId, date, selectedServiceId, timeSlot);
       setAvailableSlots(latestSlots);
       setTimeSlot((prev) => latestSlots.includes(prev) ? prev : '');
     } catch (err: any) {
@@ -279,7 +397,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
     if (isStaffBooking) {
       // Lễ tân/quản lý: tạo ngay, không cần OTP
-      await createAppointment();
+      await createAppointment(effectiveDentistId);
     } else {
       // Bệnh nhân: cần OTP
       setSubmitting(false);
@@ -287,10 +405,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
   };
 
-  const createAppointment = async (otpToken?: string) => {
+  const createAppointment = async (targetDentistId?: string, otpToken?: string) => {
     const service = services.find(s => s.id === selectedServiceId);
-    const dentist = dentists.find(d => d.id === selectedDentistId);
-    if (!service || !dentist) return;
+    if (!service) return;
+
+    const effectiveDentistId = targetDentistId || resolvedDentistId || resolveEffectiveDentistId(selectedDentistId, timeSlot, date);
+    const dentist = dentists.find(d => d.id === effectiveDentistId) || dentists[0];
+    if (!dentist) return;
 
     setSubmitting(true);
     setAntiSpamError('');
@@ -308,15 +429,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       });
 
       const bookedApp = response.data;
+      const isRandomAllocated = selectedDentistId === 'ANY';
 
       const localApp = {
         id: `A-${bookedApp.appointmentId}`,
-        patientId: existingPatient ? existingPatient.id : `P-${bookedApp.patientId || ''}`,
-        patientName: existingPatient ? existingPatient.name : patientName,
-        patientPhone: existingPatient ? existingPatient.phone : patientPhone,
+        patientId: existingPatient?.id || `P-${bookedApp.patientId || ''}`,
+        patientName: existingPatient?.name || patientName,
+        patientPhone: existingPatient?.phone || patientPhone,
         serviceName: service.name,
         dentistId: dentist.id,
-        dentistName: dentist.name,
+        dentistName: `${dentist.name}${isRandomAllocated ? ' (Phân công tự động)' : ''}`,
         time: `${formatLocalDateStr(date)} @ ${timeSlot ? formatSlotToTimeString(timeSlot) : ''}`,
         status: 'Confirmed' as const,
       };
@@ -334,8 +456,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       refreshAllData();     // Chạy nền — không await để không block UI
     } catch (err: any) {
       console.error('Lỗi khi tạo lịch hẹn:', err);
-      const errMsg = err.message || 'Không thể tạo lịch hẹn. Vui lòng thử lại.';
-      showAlert('Đặt lịch thất bại', errMsg, 'error');
+      const errMsg = err.message || 'Khung giờ này vừa mới có người đặt. Vui lòng chọn lại giờ khám khác.';
+      setAntiSpamError(errMsg);
+      setTimeSlot('');
+      setSlotRefreshTick((prev) => prev + 1);
+      fetchSlotsRef.current?.();
     } finally {
       setSubmitting(false);
     }
@@ -343,7 +468,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleOtpVerified = (otpToken: string) => {
     setShowOtpModal(false);
-    void createAppointment(otpToken);
+    void createAppointment(resolvedDentistId, otpToken);
   };
 
   // Helper lấy giờ chuẩn Việt Nam (UTC+7) từ ISO string
@@ -392,7 +517,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             <p className="text-emerald-700 font-bold text-sm">
               Mã lịch hẹn của bạn là: {createdAppointment.id}
             </p>
-            
+
             <div className="bg-surface-container-low border border-outline-variant p-5 text-left space-y-2.5 max-w-md w-full text-xs rounded-xl">
               <div className="flex justify-between border-b border-dashed border-outline-variant pb-2">
                 <span className="text-on-surface-variant font-medium">Bệnh nhân:</span>
@@ -422,6 +547,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <div className="bg-white p-2 rounded-lg shadow-sm w-fit mx-auto border border-outline-variant">
                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${createdAppointment.id}`} alt="QR Code" className="w-28 h-28" />
               </div>
+
+              <button
+                type="button"
+                onClick={() => downloadQrCode(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${createdAppointment.id}`, createdAppointment.id)}
+                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-on-primary font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 cursor-pointer hover:opacity-95"
+              >
+                <Icon name="download" className="text-base" />
+                Lưu mã QR về máy
+              </button>
+
               <p className="text-[10px] text-on-surface-variant mt-2 font-medium">Đưa mã QR này cho lễ tân khi đến phòng khám</p>
             </div>
 
@@ -452,7 +587,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6 bg-white">
-            
+
             {/* Header section inside form */}
             <div className="pb-3 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -479,9 +614,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   onChange={(e) => { setPatientName(e.target.value); setNameError(''); }}
                   onBlur={(e) => setNameError(validateName(e.target.value))}
                   placeholder="Ví dụ: Nguyễn Văn A"
-                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${
-                    nameError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
-                  }`}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${nameError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                    }`}
                 />
                 {nameError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{nameError}</p>}
               </div>
@@ -531,9 +665,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   }}
                   placeholder="Ví dụ: 0912345678"
                   maxLength={11}
-                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${
-                    phoneError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
-                  }`}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all ${phoneError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                    }`}
                 />
                 {phoneError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{phoneError}</p>}
                 {existingPatient && !phoneError && (
@@ -554,9 +687,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   required
                   value={selectedServiceId}
                   onChange={(e) => { setSelectedServiceId(e.target.value); setServiceError(''); setAntiSpamError(''); }}
-                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer ${
-                    serviceError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
-                  }`}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer ${serviceError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                    }`}
                 >
                   <option value="">-- Chọn dịch vụ điều trị --</option>
                   {services.filter(s => s.isActive).map(s => (
@@ -576,21 +708,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   required
                   value={selectedDentistId}
                   onChange={(e) => { setSelectedDentistId(e.target.value); setDentistError(''); setAntiSpamError(''); }}
-                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer ${
-                    dentistError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
-                  }`}
+                  className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer ${dentistError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                    }`}
                 >
-                  <option value="">
-                    {(() => {
-                      const activeDentists = dentists.filter(d => 
-                        doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
-                      );
-                      return activeDentists.length === 0 
-                        ? "-- Không có bác sĩ trực ngày này --" 
-                        : "-- Chọn bác sĩ phụ trách --";
-                    })()}
-                  </option>
-                  {dentists.filter(d => 
+                  <option value="ANY">Phòng khám tự phân công</option>
+                  {dentists.filter(d =>
                     doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
                   ).map(d => (
                     <option key={d.id} value={d.id}>
@@ -624,9 +746,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   Khung giờ hẹn * {selectedService && <span className="normal-case text-[#005eb8] font-semibold">({selectedService.durationMin} phút khám + 15p chuẩn bị/ca)</span>}
                 </label>
 
-                {!selectedDentistId || !selectedServiceId ? (
+                {!selectedServiceId ? (
                   <div className="w-full bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-500 italic">
-                    Vui lòng chọn dịch vụ và bác sĩ để xem giờ trống
+                    Vui lòng chọn dịch vụ điều trị để xem giờ trống
                   </div>
                 ) : loadingSlots ? (
                   <div className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-primary font-bold flex items-center gap-2">
@@ -643,9 +765,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       required
                       value={timeSlot}
                       onChange={(e) => { setTimeSlot(e.target.value); setTimeError(''); setAntiSpamError(''); }}
-                      className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm font-bold text-[#005eb8] outline-none transition-all cursor-pointer ${
-                        timeError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
-                      }`}
+                      className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm font-bold text-[#005eb8] outline-none transition-all cursor-pointer ${timeError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
+                        }`}
                     >
                       <option value="">-- Chọn khung giờ trống --</option>
                       {availableSlots.map(slotIso => (
@@ -661,12 +782,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </div>
 
             {/* Time Slot Picker grouped by Morning / Afternoon / Evening */}
-            {selectedDentistId && selectedServiceId && availableSlots.length > 0 && !loadingSlots && (
+            {selectedServiceId && availableSlots.length > 0 && !loadingSlots && (
               <div className="space-y-3 pt-2">
                 {(() => {
                   const currentDentist = dentists.find(d => isSameDentistId(d.id, selectedDentistId));
                   const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, selectedDentistId) && s.date === date);
-                  const shiftDesc = activeShifts.map(s => 
+                  const shiftDesc = activeShifts.map(s =>
                     s.shiftType === 'Morning' ? '☀️ Ca Sáng (08:00 – 14:00)' : s.shiftType === 'Afternoon' ? '🌙 Ca Chiều (14:00 – 20:00)' : '📅 Cả Ngày (08:00 – 20:00)'
                   ).join(' & ');
 
@@ -713,11 +834,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                               key={slot}
                               type="button"
                               onClick={() => { setTimeSlot(slot); setTimeError(''); setAntiSpamError(''); }}
-                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                isSelected
-                                  ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
-                                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
-                              }`}
+                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${isSelected
+                                ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                                }`}
                             >
                               {isSelected && <Icon name="check" className="text-[13px]" />}
                               {formatSlotToTimeString(slot)}
@@ -747,11 +867,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                               key={slot}
                               type="button"
                               onClick={() => { setTimeSlot(slot); setTimeError(''); setAntiSpamError(''); }}
-                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                isSelected
-                                  ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
-                                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
-                              }`}
+                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${isSelected
+                                ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                                }`}
                             >
                               {isSelected && <Icon name="check" className="text-[13px]" />}
                               {formatSlotToTimeString(slot)}
@@ -781,11 +900,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                               key={slot}
                               type="button"
                               onClick={() => { setTimeSlot(slot); setTimeError(''); setAntiSpamError(''); }}
-                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                isSelected
-                                  ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
-                                  : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
-                              }`}
+                              className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${isSelected
+                                ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
+                                }`}
                             >
                               {isSelected && <Icon name="check" className="text-[13px]" />}
                               {formatSlotToTimeString(slot)}

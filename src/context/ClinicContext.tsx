@@ -107,7 +107,9 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (resPat.status === 'fulfilled' && resPat.value.data) setPatients(resPat.value.data);
     else if (resPat.status === 'rejected') console.warn('[refreshAllData] getPatients failed:', resPat.reason);
 
-    if (resApp.status === 'fulfilled' && resApp.value.data) setAppointments(resApp.value.data);
+    if (resApp.status === 'fulfilled' && resApp.value.data) {
+      setAppointments(resApp.value.data);
+    }
     else if (resApp.status === 'rejected') console.warn('[refreshAllData] getAppointments failed:', resApp.reason);
 
     if (resQue.status === 'fulfilled' && resQue.value.data) setQueue(resQue.value.data);
@@ -304,13 +306,13 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const diffMs = now.getTime() - apptDateObj.getTime();
         const diffMins = Math.floor(diffMs / 60000);
 
-        // Nếu trễ >= 15 phút chưa check-in -> Tự động hủy
+        // Nếu trễ >= 15 phút chưa check-in -> Đổi trạng thái sang NoShow (Chờ lễ tân/CSKH liên hệ xử lý)
         if (diffMins >= 15) {
           setAppointments((prev) =>
-            prev.map((item) => (item.id === a.id ? { ...item, status: 'Cancelled' as const } : item))
+            prev.map((item) => (item.id === a.id ? { ...item, status: 'NoShow' as const } : item))
           );
-          addLog('SYSTEM', 'WARN', `Lịch hẹn ${a.id} của ${a.patientName} bị tự động hủy do trễ 15 phút chưa check-in.`);
-          appointmentApi.cancel(a.id, 'Tự động hủy do trễ quá 15 phút chưa check-in').catch(() => { });
+          addLog('SYSTEM', 'WARN', `Lịch hẹn ${a.id} của ${a.patientName} chuyển sang Quá hạn / Chờ CSKH do trễ 15 phút chưa check-in.`);
+          appointmentApi.updateStatus(a.id, 'NoShow', 'Trễ quá 15 phút chưa check-in - Chờ CSKH liên hệ').catch(() => { });
         }
       });
     };
@@ -632,11 +634,12 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // ── Resolve conflict: Bệnh nhân từ chối → hủy appointment ──
   const resolveShiftConflict_Cancel = async (notifId: string, appointmentId: string) => {
     try {
+      await cancelAppointment(appointmentId, 'Hủy do Bác sĩ đổi ca / trực thay - Bệnh nhân từ chối');
       const response = await shiftApi.resolveConflict(notifId, appointmentId, 'reject');
       if (response.success) {
         addLog('RECEPTION', 'WARN', `Lễ tân hủy lịch hẹn ${appointmentId}: Bệnh nhân từ chối đổi bác sĩ.`);
-        await refreshAllData();
       }
+      await refreshAllData();
     } catch (err) {
       console.error(err);
     }

@@ -4,6 +4,7 @@ import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
 import { useAuth } from '../../../context/AuthContext';
 import { ReviewModal } from '../../../components/ReviewModal';
+import { downloadQrCode } from '../../../utils/qrDownloader';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   Pending: { label: 'Chờ xác nhận', color: 'bg-amber-100 text-amber-800 border-amber-200', icon: 'schedule' },
@@ -661,12 +662,23 @@ export const PatientAppointments: React.FC = () => {
             </div>
             <p className="text-xs font-bold text-primary tracking-widest mt-2">{qrCodeApptId}</p>
 
-            <button
-              onClick={() => setQrCodeApptId(null)}
-              className="w-full mt-4 py-3 bg-surface-container text-on-surface rounded-xl font-bold hover:bg-surface-container-high transition-all cursor-pointer border border-outline-variant"
-            >
-              Đóng
-            </button>
+            <div className="flex gap-3 w-full mt-4">
+              <button
+                type="button"
+                onClick={() => downloadQrCode(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${qrCodeApptId}`, qrCodeApptId)}
+                className="flex-1 py-3 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5 text-xs"
+              >
+                <Icon name="download" className="text-base" />
+                Lưu mã QR
+              </button>
+              <button
+                type="button"
+                onClick={() => setQrCodeApptId(null)}
+                className="flex-1 py-3 bg-surface-container text-on-surface rounded-xl font-bold hover:bg-surface-container-high transition-all cursor-pointer border border-outline-variant text-xs"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

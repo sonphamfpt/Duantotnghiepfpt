@@ -8,6 +8,7 @@ import { AlertModal } from '../../components/AlertModal';
 import { appointmentApi, request, clinicApi } from '../../services/api';
 import { isSameDentistId, getVietnamHour, isSlotInDoctorShifts } from '../../utils/shiftUtils';
 import { socket } from '../../services/socketClient';
+import { downloadQrCode } from '../../utils/qrDownloader';
 
 export const BookingPage: React.FC = () => {
   const { services, dentists, appointments, addLog, patients, refreshAllData, doctorShifts } = useClinic();
@@ -28,7 +29,7 @@ export const BookingPage: React.FC = () => {
   }, [role, user, patients]);
 
   const [selectedServiceId, setSelectedServiceId] = useState('');
-  const [selectedDentistId, setSelectedDentistId] = useState('');
+  const [selectedDentistId, setSelectedDentistId] = useState('ANY');
 
   // Tự động chọn dịch vụ hoặc bác sĩ từ URL query params (?serviceId=... hoặc ?dentistId=...)
   useEffect(() => {
@@ -129,7 +130,7 @@ export const BookingPage: React.FC = () => {
   const checkRateLimit = (phone: string): boolean => {
     const activeAppts = appointments.filter(
       a => a.patientPhone === phone.trim() &&
-      a.status !== 'Completed' && a.status !== 'Cancelled'
+        a.status !== 'Completed' && a.status !== 'Cancelled'
     );
     if (activeAppts.length >= 3) {
       showAlert(
@@ -146,8 +147,8 @@ export const BookingPage: React.FC = () => {
     const timeStr = `${formatLocalDateStr(dateStr)} @ ${time}`;
     const duplicate = appointments.find(
       a => a.patientPhone === phone.trim() &&
-      a.time === timeStr &&
-      a.status !== 'Cancelled'
+        a.time === timeStr &&
+        a.status !== 'Cancelled'
     );
     if (duplicate) {
       showAlert(
@@ -160,9 +161,63 @@ export const BookingPage: React.FC = () => {
     return true;
   };
 
+  const isSlotAvailableRealtime = (slotIso: string, targetDentistId: string, dateStr: string): boolean => {
+    const slotStart = new Date(slotIso).getTime();
+    if (isNaN(slotStart)) return false;
+
+    const currentService = services.find(s => s.id === selectedServiceId);
+    const selectedServiceDuration = currentService?.durationMin || 30;
+    const slotEnd = slotStart + (selectedServiceDuration + 15) * 60 * 1000;
+
+    const isDoctorOccupied = (docId: string): boolean => {
+      return appointments.some(a => {
+        if (a.status === 'Cancelled') return false;
+        if (a.dentistId && !isSameDentistId(a.dentistId, docId)) return false;
+
+        let apptStart: number | null = null;
+        if (a.time) {
+          if (a.time.includes('@')) {
+            const [dPart, tPart] = a.time.split('@').map(s => s.trim());
+            const dParts = dPart.split('/').map(Number);
+            const tParts = tPart ? tPart.split(':').map(Number) : [0, 0];
+            if (dParts.length === 3) {
+              apptStart = new Date(dParts[2], dParts[1] - 1, dParts[0], tParts[0] || 0, tParts[1] || 0).getTime();
+            }
+          } else {
+            const dObj = new Date(a.time);
+            if (!isNaN(dObj.getTime())) apptStart = dObj.getTime();
+          }
+        }
+
+        if (!apptStart) return false;
+
+        const apptService = services.find(s => s.id === a.serviceId || s.name === a.serviceName);
+        const apptDurationMin = apptService?.durationMin || 30;
+        const apptEnd = apptStart + (apptDurationMin + 15) * 60 * 1000;
+
+        // Kiểm tra chồng lấp khoảng thời gian: [slotStart, slotEnd) với [apptStart, apptEnd)
+        return slotStart < apptEnd && apptStart < slotEnd;
+      });
+    };
+
+    if (targetDentistId && targetDentistId !== 'ANY') {
+      return !isDoctorOccupied(targetDentistId);
+    }
+
+    const activeDentistsOnDate = dentists.filter(d =>
+      doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
+    );
+    const candidateDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
+
+    return candidateDentists.some(d => {
+      const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr);
+      return isSlotInDoctorShifts(slotIso, activeShifts) && !isDoctorOccupied(d.id);
+    });
+  };
+
   // Hàm fetch slot — dùng trực tiếp, không qua useCallback để tránh vòng lặp re-render
   const fetchAvailableSlots = async (dentistId: string, serviceId: string, dateStr: string) => {
-    if (!dentistId || !serviceId || !dateStr) {
+    if (!serviceId || !dateStr) {
       setAvailableSlots([]);
       setSelectedTimeIso('');
       return;
@@ -172,20 +227,63 @@ export const BookingPage: React.FC = () => {
     setSlotsError('');
 
     try {
-      const response = await appointmentApi.getAvailableSlots(dentistId, dateStr, serviceId);
-      const rawSlots = response.data || [];
+      if (dentistId === 'ANY' || !dentistId) {
+        // Lấy tất cả bác sĩ có ca trực thực tế trong ngày
+        const activeDentistsOnDate = dentists.filter(d =>
+          doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
+        );
+        const targetDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
 
-      // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế của bác sĩ trong ngày (chuẩn hóa ID D-01 = D-1)
-      const activeShiftsForDoc = doctorShifts.filter(s => isSameDentistId(s.dentistId, dentistId) && s.date === dateStr);
-      const slots = rawSlots.filter(slotIso => isSlotInDoctorShifts(slotIso, activeShiftsForDoc));
+        if (targetDentists.length === 0) {
+          setSlotsError('Không có bác sĩ nào có ca trực trong ngày này. Vui lòng chọn ngày khác.');
+          setAvailableSlots([]);
+          setSelectedTimeIso('');
+          return;
+        }
 
-      if (slots.length > 0) {
-        setAvailableSlots(slots);
-        setSelectedTimeIso((prev) => slots.includes(prev) ? prev : (slots[0] || ''));
+        const responses = await Promise.allSettled(
+          targetDentists.map(d => appointmentApi.getAvailableSlots(d.id, dateStr, serviceId))
+        );
+
+        let combinedSlotsSet = new Set<string>();
+        responses.forEach((res, idx) => {
+          if (res.status === 'fulfilled' && res.value.data) {
+            const docId = targetDentists[idx].id;
+            const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, docId) && s.date === dateStr);
+            const validSlots = res.value.data.filter(slotIso =>
+              isSlotInDoctorShifts(slotIso, activeShifts) && isSlotAvailableRealtime(slotIso, docId, dateStr)
+            );
+            validSlots.forEach(slot => combinedSlotsSet.add(slot));
+          }
+        });
+
+        const combinedSlots = Array.from(combinedSlotsSet).sort();
+        if (combinedSlots.length > 0) {
+          setAvailableSlots(combinedSlots);
+          setSelectedTimeIso((prev) => combinedSlots.includes(prev) ? prev : (combinedSlots[0] || ''));
+        } else {
+          setSlotsError('Không có khung giờ trống trong ca trực của các bác sĩ. Vui lòng chọn ngày khác.');
+          setAvailableSlots([]);
+          setSelectedTimeIso('');
+        }
       } else {
-        setSlotsError('Không có khung giờ trống trong ca trực của bác sĩ. Vui lòng chọn ngày khác.');
-        setAvailableSlots([]);
-        setSelectedTimeIso('');
+        const response = await appointmentApi.getAvailableSlots(dentistId, dateStr, serviceId);
+        const rawSlots = response.data || [];
+
+        // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế và lịch bận của bác sĩ trong ngày
+        const activeShiftsForDoc = doctorShifts.filter(s => isSameDentistId(s.dentistId, dentistId) && s.date === dateStr);
+        const slots = rawSlots.filter(slotIso =>
+          isSlotInDoctorShifts(slotIso, activeShiftsForDoc) && isSlotAvailableRealtime(slotIso, dentistId, dateStr)
+        );
+
+        if (slots.length > 0) {
+          setAvailableSlots(slots);
+          setSelectedTimeIso((prev) => slots.includes(prev) ? prev : (slots[0] || ''));
+        } else {
+          setSlotsError('Không có khung giờ trống trong ca trực của bác sĩ. Vui lòng chọn ngày khác.');
+          setAvailableSlots([]);
+          setSelectedTimeIso('');
+        }
       }
     } catch (err: any) {
       console.error('Lỗi khi lấy slot khám:', err);
@@ -200,11 +298,11 @@ export const BookingPage: React.FC = () => {
   // Cập nhật ref mỗi khi dependencies thay đổi (không gây re-render)
   fetchSlotsRef.current = () => fetchAvailableSlots(selectedDentistId, selectedServiceId, date);
 
-  // Fetch slot khi bác sĩ / dịch vụ / ngày thay đổi
+  // Fetch slot khi bác sĩ / dịch vụ / ngày / danh sách lịch hẹn thay đổi
   useEffect(() => {
     fetchAvailableSlots(selectedDentistId, selectedServiceId, date);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDentistId, selectedServiceId, date]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDentistId, selectedServiceId, date, appointments]);
 
   // Lắng nghe real-time socket — KHÔNG dùng state tick để tránh re-render chain
   useEffect(() => {
@@ -222,7 +320,7 @@ export const BookingPage: React.FC = () => {
       socket.off('appointment:created', handleAppointmentChange);
       socket.off('appointment:cancelled', handleAppointmentChange);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDentistId, selectedServiceId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -235,7 +333,7 @@ export const BookingPage: React.FC = () => {
     const nErr = isGuest ? validateName(patientName) : '';
     const pErr = isGuest ? validatePhone(patientPhone) : '';
     const sErr = !selectedServiceId ? 'Vui lòng chọn dịch vụ điều trị.' : '';
-    const dErr = !selectedDentistId ? 'Vui lòng chọn bác sĩ thăm khám.' : '';
+    const dErr = ''; // Bác sĩ luôn hợp lệ (mặc định: Phòng khám tự phân công)
     const tErr = !selectedTimeIso ? 'Vui lòng chọn khung giờ hẹn khám.' : '';
 
     setNameError(nErr);
@@ -272,7 +370,8 @@ export const BookingPage: React.FC = () => {
     // Gọi API gửi OTP thực tế cho tất cả đặt lịch trực tuyến
     setSendingOtp(true);
     try {
-      const latestSlots = await appointmentApi.ensureSlotAvailable(selectedDentistId, date, selectedServiceId, selectedTimeIso);
+      const effectiveDentistId = resolveEffectiveDentistId(selectedDentistId, selectedTimeIso, date);
+      const latestSlots = await appointmentApi.ensureSlotAvailable(effectiveDentistId, date, selectedServiceId, selectedTimeIso);
       setAvailableSlots(latestSlots);
       setSelectedTimeIso((prev) => latestSlots.includes(prev) ? prev : '');
 
@@ -281,7 +380,7 @@ export const BookingPage: React.FC = () => {
         body: JSON.stringify({
           phone: checkPhone.trim(),
           purpose: 'booking',
-          dentistId: selectedDentistId,
+          dentistId: effectiveDentistId,
           startTime: selectedTimeIso,
           serviceId: selectedServiceId,
         }),
@@ -312,13 +411,13 @@ export const BookingPage: React.FC = () => {
     let [hours, minutes] = time.split(':').map(Number);
     if (ampm === 'PM' && hours < 12) hours += 12;
     if (ampm === 'AM' && hours === 12) hours = 0;
-    
+
     // Construct Date object in local timezone
     const dateObj = new Date(`${dateStr}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`);
     return dateObj.toISOString();
   };
 
-const formatLocalDateStr = (dateStr: string): string => {
+  const formatLocalDateStr = (dateStr: string): string => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
     return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
@@ -326,21 +425,47 @@ const formatLocalDateStr = (dateStr: string): string => {
 
   const normalizePhone = (phone: string): string => phone.trim().replace(/\s|-/g, '');
 
+  const resolveEffectiveDentistId = (targetDentistId: string, timeIso: string, dateStr: string): string => {
+    if (targetDentistId && targetDentistId !== 'ANY') return targetDentistId;
+
+    const activeDentistsOnDate = dentists.filter(d =>
+      doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
+    );
+    const candidateDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
+
+    const availableCandidates: string[] = [];
+    for (const d of candidateDentists) {
+      const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr);
+      if (isSlotInDoctorShifts(timeIso, activeShifts) && isSlotAvailableRealtime(timeIso, d.id, dateStr)) {
+        availableCandidates.push(d.id);
+      }
+    }
+
+    if (availableCandidates.length > 0) {
+      const randomIndex = Math.floor(Math.random() * availableCandidates.length);
+      return availableCandidates[randomIndex];
+    }
+
+    const freeDentist = candidateDentists.find(d => isSlotAvailableRealtime(timeIso, d.id, dateStr));
+    return freeDentist?.id || candidateDentists[0]?.id || 'D-01';
+  };
+
   const createAppointment = async (otpToken?: string) => {
     const service = services.find(s => s.id === selectedServiceId);
-    const dentist = dentists.find(d => d.id === selectedDentistId);
-    if (!service || !dentist) return;
+    if (!service) return;
+
+    const effectiveDentistId = resolveEffectiveDentistId(selectedDentistId, selectedTimeIso, date);
+    const dentist = dentists.find(d => d.id === effectiveDentistId) || dentists[0];
+    if (!dentist) return;
 
     setSubmitting(true);
     setApiError('');
 
-    const dentistDbId = mapFrontendToBackendId(selectedDentistId);
-    const serviceDbId = mapFrontendToBackendId(selectedServiceId);
     const startTimeIso = selectedTimeIso;
 
     try {
       const response = await appointmentApi.createAppointment({
-        dentistId: selectedDentistId,
+        dentistId: effectiveDentistId,
         serviceId: selectedServiceId,
         startTime: startTimeIso,
         bookingChannel: 'Online',
@@ -353,6 +478,7 @@ const formatLocalDateStr = (dateStr: string): string => {
       });
 
       const bookedApp = response.data;
+      const isRandomAllocated = selectedDentistId === 'ANY';
 
       const localApp = {
         id: `A-${bookedApp.appointmentId}`,
@@ -361,7 +487,7 @@ const formatLocalDateStr = (dateStr: string): string => {
         patientPhone: role === 'patient' && user?.id ? (user.phone || '') : patientPhone,
         serviceName: service.name,
         dentistId: dentist.id,
-        dentistName: dentist.name,
+        dentistName: `${dentist.name}${isRandomAllocated ? ' (Phân công tự động)' : ''}`,
         time: `${formatLocalDateStr(date)} @ ${selectedTimeIso ? formatSlotToTimeString(selectedTimeIso) : ''}`,
         status: 'Confirmed' as const,
       };
@@ -468,6 +594,16 @@ const formatLocalDateStr = (dateStr: string): string => {
               <div className="bg-white p-2 rounded-lg shadow-sm w-fit mx-auto border border-slate-200">
                 <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${createdAppointment.id}`} alt="QR Code" className="w-32 h-32" />
               </div>
+
+              <button
+                type="button"
+                onClick={() => downloadQrCode(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${createdAppointment.id}`, createdAppointment.id)}
+                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-[#005eb8] hover:bg-[#00478d] text-white font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+              >
+                <Icon name="download" className="text-base" />
+                Lưu mã QR về máy
+              </button>
+
               <p className="text-[10px] text-slate-500 mt-2 font-medium">Lưu lại mã QR này hoặc chụp màn hình đưa cho lễ tân khi đến khám</p>
             </div>
 
@@ -580,9 +716,8 @@ const formatLocalDateStr = (dateStr: string): string => {
                         onChange={(e) => { setPatientName(e.target.value); setNameError(''); }}
                         onBlur={(e) => setNameError(validateName(e.target.value))}
                         placeholder="Ví dụ: Nguyễn Văn A"
-                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
-                          nameError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
-                        }`}
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${nameError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                          }`}
                       />
                       {nameError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{nameError}</p>}
                     </div>
@@ -633,9 +768,8 @@ const formatLocalDateStr = (dateStr: string): string => {
                         }}
                         placeholder="Ví dụ: 0912345678"
                         maxLength={11}
-                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
-                          phoneError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
-                        }`}
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${phoneError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                          }`}
                       />
                       {phoneError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{phoneError}</p>}
                     </div>
@@ -651,9 +785,8 @@ const formatLocalDateStr = (dateStr: string): string => {
                         required
                         value={selectedServiceId}
                         onChange={(e) => { setSelectedServiceId(e.target.value); setServiceError(''); }}
-                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
-                          serviceError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
-                        }`}
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${serviceError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                          }`}
                       >
                         <option value="">-- Chọn dịch vụ --</option>
                         {services.filter(s => s.isActive).map(s => (
@@ -674,21 +807,11 @@ const formatLocalDateStr = (dateStr: string): string => {
                         required
                         value={selectedDentistId}
                         onChange={(e) => { setSelectedDentistId(e.target.value); setDentistError(''); }}
-                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
-                          dentistError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
-                        }`}
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${dentistError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                          }`}
                       >
-                        <option value="">
-                          {(() => {
-                            const activeDentists = dentists.filter(d => 
-                              doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
-                            );
-                            return activeDentists.length === 0 
-                              ? "-- Không có bác sĩ trực ngày này --" 
-                              : "-- Chọn bác sĩ phụ trách --";
-                          })()}
-                        </option>
-                        {dentists.filter(d => 
+                        <option value="ANY">Phòng khám tự phân công</option>
+                        {dentists.filter(d =>
                           doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
                         ).map(d => (
                           <option key={d.id} value={d.id}>
@@ -726,9 +849,8 @@ const formatLocalDateStr = (dateStr: string): string => {
                         required
                         value={selectedTimeIso}
                         onChange={(e) => { setSelectedTimeIso(e.target.value); setAntiSpamError(''); setTimeError(''); }}
-                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${
-                          timeError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
-                        }`}
+                        className={`w-full bg-slate-50 border focus:bg-white rounded px-4 py-2.5 text-sm outline-none transition-all ${timeError ? 'border-red-400 focus:border-red-500' : 'border-slate-300 focus:border-[#005eb8]'
+                          }`}
                         disabled={loadingSlots || availableSlots.length === 0}
                       >
                         {loadingSlots ? (
@@ -781,11 +903,10 @@ const formatLocalDateStr = (dateStr: string): string => {
                                     key={slot}
                                     type="button"
                                     onClick={() => { setSelectedTimeIso(slot); setTimeError(''); setAntiSpamError(''); }}
-                                    className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                      isSelected
+                                    className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${isSelected
                                         ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
                                         : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
-                                    }`}
+                                      }`}
                                   >
                                     {isSelected && <Icon name="check" className="text-[13px]" />}
                                     {formatSlotToTimeString(slot)}
@@ -815,11 +936,10 @@ const formatLocalDateStr = (dateStr: string): string => {
                                     key={slot}
                                     type="button"
                                     onClick={() => { setSelectedTimeIso(slot); setTimeError(''); setAntiSpamError(''); }}
-                                    className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                      isSelected
+                                    className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${isSelected
                                         ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
                                         : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
-                                    }`}
+                                      }`}
                                   >
                                     {isSelected && <Icon name="check" className="text-[13px]" />}
                                     {formatSlotToTimeString(slot)}
@@ -849,11 +969,10 @@ const formatLocalDateStr = (dateStr: string): string => {
                                     key={slot}
                                     type="button"
                                     onClick={() => { setSelectedTimeIso(slot); setTimeError(''); setAntiSpamError(''); }}
-                                    className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                      isSelected
+                                    className={`py-2 px-2 text-xs font-extrabold rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1 ${isSelected
                                         ? 'bg-[#005eb8] text-white border-[#005eb8] shadow-md scale-[1.04] ring-2 ring-[#005eb8]/30'
                                         : 'bg-white text-slate-700 border-slate-200 hover:border-[#005eb8] hover:bg-blue-50/70'
-                                    }`}
+                                      }`}
                                   >
                                     {isSelected && <Icon name="check" className="text-[13px]" />}
                                     {formatSlotToTimeString(slot)}

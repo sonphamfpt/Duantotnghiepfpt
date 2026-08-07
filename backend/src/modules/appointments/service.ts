@@ -542,9 +542,8 @@ export class AppointmentsService {
           await prisma.appointment.update({
             where: { appointmentId: appt.appointmentId },
             data: {
-              status: 'Cancelled',
-              cancelledAt: new Date(),
-              cancelReason: 'Tự động hủy do trễ quá 15 phút chưa check-in',
+              status: 'NoShow',
+              cancelReason: 'Quá hạn 15 phút chưa check-in - Chờ CSKH liên hệ',
             },
           });
 

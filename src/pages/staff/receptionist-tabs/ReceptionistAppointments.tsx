@@ -87,6 +87,7 @@ export const ReceptionistAppointments: React.FC = () => {
   const [showOnlyLate, setShowOnlyLate] = useState(false);
 
   const [rescheduleApptId, setRescheduleApptId] = useState<string | null>(null);
+  const [rebookPatient, setRebookPatient] = useState<{ name: string; phone: string } | null>(null);
 
   const isApptInSelectedDay = (timeStr: string): boolean => {
     const apptDate = parseDateFromTime(timeStr);
@@ -523,6 +524,21 @@ export const ReceptionistAppointments: React.FC = () => {
                                   <Icon name="cancel" className="text-[13px]" />
                                 </button>
                               )}
+
+                              {/* Nút Đặt lại lịch cho lịch đã hủy / quá hạn */}
+                              {(appt.status === 'Cancelled' || appt.status === 'NoShow') && (
+                                <button
+                                  onClick={() => {
+                                    setRebookPatient({ name: appt.patientName, phone: appt.patientPhone });
+                                    setIsBookingOpen(true);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-[#005eb8] text-white rounded-lg text-xs font-bold hover:bg-[#00478d] cursor-pointer transition-all flex items-center gap-1 shadow-sm"
+                                  title="Đặt lại lịch khám mới cho bệnh nhân"
+                                >
+                                  <Icon name="edit_calendar" className="text-[13px]" />
+                                  Đặt lại lịch
+                                </button>
+                              )}
                             </>
                           );
                         })()}
@@ -541,7 +557,7 @@ export const ReceptionistAppointments: React.FC = () => {
               {(filterDentist !== 'all' || filterStatus !== 'all' || searchQuery) && (
                 <button
                   onClick={() => { setFilterDentist('all'); setFilterStatus('all'); setSearchQuery(''); }}
-                  className="mt-2 text-primary text-sm font-bold hover:underline cursor-pointer"
+                  className="mt-2 text-[#005eb8] text-sm font-bold hover:underline cursor-pointer"
                 >
                   Xóa bộ lọc
                 </button>
@@ -594,7 +610,12 @@ export const ReceptionistAppointments: React.FC = () => {
         </div>
       </div>
 
-      <BookingModal isOpen={isBookingOpen} onClose={() => setIsBookingOpen(false)} />
+      <BookingModal
+        isOpen={isBookingOpen}
+        onClose={() => { setIsBookingOpen(false); setRebookPatient(null); }}
+        defaultPatientName={rebookPatient?.name}
+        defaultPatientPhone={rebookPatient?.phone}
+      />
       <RescheduleModal isOpen={!!rescheduleApptId} onClose={() => setRescheduleApptId(null)} appointmentId={rescheduleApptId} />
     </div>
   );

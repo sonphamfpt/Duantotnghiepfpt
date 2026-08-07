@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Icon } from '../../../components/Icon';
 import { useClinic } from '../../../context/ClinicContext';
+import { useConfirm } from '../../../context/ConfirmContext';
+import { BookingModal } from '../../../components/BookingModal';
 
 // ─── TASK INTERFACES ───────────────────────────────────────────────
 interface LatePatientTask {
@@ -31,7 +33,10 @@ export const ReceptionistReminders: React.FC = () => {
     shiftChangeNotifications,
     resolveShiftConflict_Update,
     resolveShiftConflict_Cancel,
+    cancelAppointment,
   } = useClinic();
+
+  const { showConfirm, showAlert } = useConfirm();
 
   const [hideDoneNotifs, setHideDoneNotifs] = useState(false);
   const [changingDoctorTaskId, setChangingDoctorTaskId] = useState<string | null>(null);
@@ -57,6 +62,67 @@ export const ReceptionistReminders: React.FC = () => {
       return [];
     }
   });
+
+  const [rebookModal, setRebookModal] = useState<{
+    isOpen: boolean;
+    patientName?: string;
+    patientPhone?: string;
+    taskId?: string;
+    taskType?: 'late' | 'noshow';
+  }>({ isOpen: false });
+
+  const handleOpenRebook = (patientName: string, patientPhone: string, taskId?: string, taskType?: 'late' | 'noshow') => {
+    setRebookModal({
+      isOpen: true,
+      patientName,
+      patientPhone,
+      taskId,
+      taskType,
+    });
+  };
+
+  const handleCloseRebook = () => {
+    if (rebookModal.taskId) {
+      if (rebookModal.taskType === 'late') {
+        handleResolveLate(rebookModal.taskId);
+      } else if (rebookModal.taskType === 'noshow') {
+        handleResolveNoShow(rebookModal.taskId);
+      }
+    }
+    setRebookModal({ isOpen: false });
+  };
+
+  const handleResolveLate = (id: string) => {
+    handleResolve(id);
+  };
+
+  const handleResolveNoShow = (id: string) => {
+    handleResolve(id);
+  };
+
+  const handleCancelByStaff = async (id: string, patientName: string, taskType: 'late' | 'noshow') => {
+    const isConfirmed = await showConfirm({
+      title: 'Xác nhận hủy lịch hẹn',
+      message: `Bạn có chắc chắn muốn hủy lịch hẹn của bệnh nhân ${patientName}? Lịch hẹn sẽ được cập nhật sang trạng thái ĐÃ HỦY và lưu vết lịch sử.`,
+      type: 'error',
+      confirmLabel: 'Xác nhận hủy lịch',
+      cancelLabel: 'Bỏ qua',
+    });
+
+    if (isConfirmed) {
+      await cancelAppointment(id, 'Hủy bởi lễ tân CSKH sau khi liên hệ');
+      if (taskType === 'late') {
+        handleResolveLate(id);
+      } else {
+        handleResolveNoShow(id);
+      }
+      await showAlert({
+        title: 'Đã hủy lịch hẹn',
+        message: `Lịch hẹn của bệnh nhân ${patientName} đã được chuyển sang trạng thái Đã hủy thành công.`,
+        type: 'success',
+      });
+    }
+  };
 
   const todayIso = useMemo(() => {
     const now = new Date();
@@ -85,13 +151,13 @@ export const ReceptionistReminders: React.FC = () => {
   const latePatientsList = useMemo(() => {
     const list: LatePatientTask[] = [];
     const now = new Date();
-    
+
     for (const a of appointments) {
-      if (a.status !== 'Confirmed') continue;
-      
+      if (a.status !== 'Confirmed' && a.status !== 'NoShow') continue;
+
       // Check if resolved
       if (resolvedIds.includes(a.id)) continue;
-      
+
       // Determine date
       let apptDateStr = todayStr;
       let timeStr = a.time;
@@ -99,12 +165,12 @@ export const ReceptionistReminders: React.FC = () => {
         apptDateStr = a.time.split('@')[0].trim();
         timeStr = a.time.split('@')[1].trim();
       }
-      
+
       if (apptDateStr !== filterDateFormatted) continue;
-      
+
       const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
       if (!match) continue;
-      
+
       let hours = parseInt(match[1]);
       const mins = parseInt(match[2]);
       const ampm = match[3];
@@ -112,21 +178,21 @@ export const ReceptionistReminders: React.FC = () => {
         if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
         if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
       }
-      
+
       const apptTime = new Date();
       apptTime.setHours(hours, mins, 0, 0);
-      
-      const diffMins = Math.floor((now.getTime() - apptTime.getTime()) / 60000);
-      
+
+      const diffMins = Math.max(0, Math.floor((now.getTime() - apptTime.getTime()) / 60000));
+
       // Check if not checked in
       const checkedIn = queue.some(q => q.patientId === a.patientId && q.status !== 'Completed');
-      
-      if (diffMins >= 15 && !checkedIn) {
+
+      if ((diffMins >= 15 || a.status === 'NoShow') && !checkedIn) {
         list.push({
           id: a.id,
           patientName: a.patientName,
           time: timeStr,
-          minsLate: diffMins,
+          minsLate: diffMins || 15,
           phone: a.patientPhone,
           resolved: false,
         });
@@ -138,10 +204,10 @@ export const ReceptionistReminders: React.FC = () => {
   // 2. Cancelled or missed appointments for selected date (default TODAY)
   const noShowsList = useMemo(() => {
     const list: NoShowTask[] = [];
-    
+
     for (const a of appointments) {
       if (resolvedIds.includes(a.id)) continue;
-      
+
       let apptDateStr = todayStr;
       let timeStr = a.time;
       if (a.time.includes('@')) {
@@ -154,18 +220,18 @@ export const ReceptionistReminders: React.FC = () => {
 
       const isCancelled = a.status === 'Cancelled';
       let isMissedPast = false;
-      
+
       if (a.status === 'Confirmed' && a.time.includes('@')) {
         const parts = apptDateStr.split('/');
         if (parts.length === 3) {
           const [d, m, y] = parts.map(Number);
           const apptDate = new Date(y, m - 1, d);
-          if (apptDate.getTime() <= todayMidnight.getTime()) {
+          if (apptDate.getTime() < todayMidnight.getTime()) {
             isMissedPast = true;
           }
         }
       }
-      
+
       if (isCancelled || isMissedPast) {
         const displayDate = apptDateStr === todayStr ? 'Hôm nay' : apptDateStr;
 
@@ -224,9 +290,6 @@ export const ReceptionistReminders: React.FC = () => {
     return noShowsList.filter(p => p.patientName.toLowerCase().includes(query) || p.phone.includes(query));
   }, [noShowsList, taskFilter, query]);
 
-  const handleResolveLate = (id: string) => handleResolve(id);
-  const handleResolveNoShow = (id: string) => handleResolve(id);
-
   return (
     <div className="p-stack-lg animate-in fade-in duration-200">
 
@@ -242,15 +305,14 @@ export const ReceptionistReminders: React.FC = () => {
             <button
               key={f.id}
               onClick={() => setTaskFilter(f.id as any)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                taskFilter === f.id ? 'bg-primary text-white shadow-md' : 'bg-surface-container hover:bg-slate-200 text-on-surface-variant'
-              }`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${taskFilter === f.id ? 'bg-primary text-white shadow-md' : 'bg-surface-container hover:bg-slate-200 text-on-surface-variant'
+                }`}
             >
               {f.label}
             </button>
           ))}
         </div>
-        
+
         <div className="flex flex-wrap items-center gap-3">
           {/* Bộ lọc Ngày (Mặc định Hôm nay) */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-outline-variant/60 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs">
@@ -313,12 +375,12 @@ export const ReceptionistReminders: React.FC = () => {
               const shiftTypeInfo = notif.shiftType === 'Morning'
                 ? { label: 'Ca Sáng (08:00 - 14:00)', bg: 'bg-sky-50 text-sky-700 border-sky-200', icon: 'wb_sunny' }
                 : notif.shiftType === 'Afternoon'
-                ? { label: 'Ca Chiều (14:00 - 20:00)', bg: 'bg-teal-50 text-teal-700 border-teal-200', icon: 'wb_twilight' }
-                : { label: 'Cả Ngày (08:00 - 20:00)', bg: 'bg-amber-50 text-amber-800 border-amber-200', icon: 'schedule' };
+                  ? { label: 'Ca Chiều (14:00 - 20:00)', bg: 'bg-teal-50 text-teal-700 border-teal-200', icon: 'wb_twilight' }
+                  : { label: 'Cả Ngày (08:00 - 20:00)', bg: 'bg-amber-50 text-amber-800 border-amber-200', icon: 'schedule' };
 
               return (
                 <div key={notif.id} className="p-4 sm:p-5 rounded-2xl border border-purple-200/90 bg-gradient-to-br from-white via-purple-50/20 to-purple-50/40 shadow-sm hover:shadow-md transition-all space-y-4">
-                  
+
                   {/* Top Header Bar */}
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-purple-100/80 pb-3">
                     <div className="flex items-center gap-2">
@@ -448,7 +510,7 @@ export const ReceptionistReminders: React.FC = () => {
         <div className="space-y-3">
           <h3 className="font-bold text-sm text-on-surface flex items-center gap-2">
             <Icon name="alarm_off" className="text-error" />
-            Khách trễ hẹn (Quá 15 phút)
+            Khách trễ hẹn
           </h3>
           <div className="flex flex-col gap-3">
             {filteredLate.map(task => (
@@ -464,12 +526,27 @@ export const ReceptionistReminders: React.FC = () => {
                 </div>
                 {!task.resolved && (
                   <div className="flex items-center gap-2 shrink-0">
-                    <a href={`tel:${task.phone.replace(/\s/g, '')}`} className="px-4 py-2 bg-primary/10 text-primary rounded-xl text-xs font-bold hover:bg-primary/20 transition-colors flex items-center gap-1.5">
+                    <a href={`tel:${task.phone.replace(/\s/g, '')}`} className="px-3 py-2 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold hover:bg-amber-100 transition-colors flex items-center gap-1">
                       <Icon name="call" className="text-[14px]" />
                       Gọi
                     </a>
-                    <button onClick={() => handleResolveLate(task.id)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors text-slate-700">
-                      Xong
+                    <button
+                      onClick={() => handleOpenRebook(task.patientName, task.phone, task.id, 'late')}
+                      className="px-3 py-2 bg-[#005eb8] text-white rounded-xl text-xs font-bold hover:bg-[#00478d] transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                    >
+                      <Icon name="edit_calendar" className="text-[14px]" />
+                      Đặt lại lịch
+                    </button>
+                    <button
+                      onClick={() => handleCancelByStaff(task.id, task.patientName, 'late')}
+                      className="px-3 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all flex items-center gap-1 cursor-pointer"
+                      title="Xác nhận bệnh nhân muốn hủy lịch hẹn này"
+                    >
+                      <Icon name="cancel" className="text-[14px]" />
+                      Hủy lịch
+                    </button>
+                    <button onClick={() => handleResolveLate(task.id)} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors text-slate-700 cursor-pointer" title="Đã xong">
+                      <Icon name="check" className="text-[14px]" />
                     </button>
                   </div>
                 )}
@@ -505,13 +582,28 @@ export const ReceptionistReminders: React.FC = () => {
                   </div>
                 )}
                 {!task.resolved && (
-                  <div className="mt-3 flex gap-2">
-                    <a href={`tel:${task.phone.replace(/\s/g, '')}`} className="flex-1 py-2 bg-amber-50 text-amber-700 rounded-xl text-xs font-bold text-center hover:bg-amber-100 transition-colors flex items-center justify-center gap-1.5">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <a href={`tel:${task.phone.replace(/\s/g, '')}`} className="py-2 px-3 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold hover:bg-amber-100 transition-colors flex items-center justify-center gap-1">
                       <Icon name="call" className="text-[14px]" />
                       Gọi {task.phone}
                     </a>
-                    <button onClick={() => handleResolveNoShow(task.id)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors text-slate-700">
-                      Xong
+                    <button
+                      onClick={() => handleOpenRebook(task.patientName, task.phone, task.id, 'noshow')}
+                      className="flex-1 py-2 px-3 bg-[#005eb8] text-white rounded-xl text-xs font-bold hover:bg-[#00478d] transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                    >
+                      <Icon name="edit_calendar" className="text-[14px]" />
+                      Đặt lại lịch
+                    </button>
+                    <button
+                      onClick={() => handleCancelByStaff(task.id, task.patientName, 'noshow')}
+                      className="py-2 px-3 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                      title="Xác nhận khách muốn hủy lịch hẹn này"
+                    >
+                      <Icon name="cancel" className="text-[14px]" />
+                      Hủy lịch
+                    </button>
+                    <button onClick={() => handleResolveNoShow(task.id)} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors text-slate-700 cursor-pointer" title="Đã xong">
+                      <Icon name="check" className="text-[14px]" />
                     </button>
                   </div>
                 )}
@@ -529,6 +621,14 @@ export const ReceptionistReminders: React.FC = () => {
           <p className="text-sm mt-1">Không có công việc nào cần xử lý lúc này.</p>
         </div>
       )}
+
+      {/* Modal đặt lại lịch hẹn cho bệnh nhân lỡ hẹn/trễ hẹn */}
+      <BookingModal
+        isOpen={rebookModal.isOpen}
+        onClose={handleCloseRebook}
+        defaultPatientName={rebookModal.patientName}
+        defaultPatientPhone={rebookModal.patientPhone}
+      />
     </div>
   );
 };

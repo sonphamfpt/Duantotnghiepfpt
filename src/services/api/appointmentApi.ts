@@ -16,8 +16,10 @@ export interface CreateAppointmentPayload {
 }
 
 const stripDisplayId = (id: string): string => {
+  if (!id || id === 'ANY') return '1';
   const rawId = id.split('-')[1] || id;
-  return parseInt(rawId, 10).toString();
+  const num = parseInt(rawId, 10);
+  return isNaN(num) ? '1' : num.toString();
 };
 
 const normalizePhone = (phone?: string): string | undefined => {
@@ -109,6 +111,17 @@ export const appointmentApi = {
         newTime,
         newDentistId: rawDentistId,
       }),
+    });
+  },
+
+  /**
+   * Cập nhật trạng thái lịch hẹn
+   */
+  updateStatus: (appointmentId: string, status: string, notes?: string) => {
+    const dbId = appointmentId.split('-')[1] || appointmentId;
+    return request<any>(`/appointments/${dbId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, notes }),
     });
   },
 
