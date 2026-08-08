@@ -63,17 +63,39 @@ export function formatMedicalRecord(rec: any): FormattedMedicalRecord {
     : undefined;
 
   let prescription: any = undefined;
-  if (rec.prescription) {
-    prescription = {
-      id: `RX-${rec.recordId}`,
-      instructions: rec.prescription.instructions || undefined,
-      medicines: rec.prescription.items.map((item: any) => ({
-        name: item.medicineName,
-        dose: item.dose || 'Theo chỉ dẫn',
-        duration: item.duration || '1 ngày',
-        note: item.note || '',
-      })),
-    };
+  if (rec.notes && rec.notes.includes('| Đơn thuốc:')) {
+    const rxIndex = rec.notes.indexOf('| Đơn thuốc:');
+    const rxPart = rec.notes.substring(rxIndex + 12).trim();
+    if (rxPart) {
+      const drugs = rxPart.split(';');
+      const medicines = drugs.map((drug: string) => {
+        const trimmedDrug = drug.trim();
+        if (!trimmedDrug) return null;
+        const match = trimmedDrug.match(/(.*?)\s*\(\s*(\d+)\s*([^)]*)\)\s*-\s*(.*)/);
+        if (match) {
+          return {
+            name: match[1].trim(),
+            dose: match[4].trim(),
+            duration: `${match[2]} ${match[3].trim()}`,
+            note: '',
+          };
+        }
+        return {
+          name: trimmedDrug,
+          dose: 'Theo chỉ dẫn của bác sĩ',
+          duration: '1 ngày',
+          note: '',
+        };
+      }).filter(Boolean);
+
+      if (medicines.length > 0) {
+        prescription = {
+          id: `RX-${rec.recordId}`,
+          instructions: 'Uống thuốc đúng giờ và theo chỉ dẫn của bác sĩ.',
+          medicines,
+        };
+      }
+    }
   }
 
   const files = rec.files && rec.files.length > 0
@@ -109,7 +131,6 @@ export async function getPatientRecords(patientId: bigint): Promise<FormattedMed
       room: true,
       teeth: true,
       services: { include: { service: true } },
-      prescription: { include: { items: true } },
       files: true,
     },
     orderBy: {
@@ -127,7 +148,6 @@ export async function getAllRecords(): Promise<FormattedMedicalRecord[]> {
       room: true,
       teeth: true,
       services: { include: { service: true } },
-      prescription: { include: { items: true } },
       files: true,
     },
     orderBy: {
@@ -137,6 +157,7 @@ export async function getAllRecords(): Promise<FormattedMedicalRecord[]> {
 
   return records.map(formatMedicalRecord);
 }
+
 
 
 export async function createRecord(data: {
@@ -239,6 +260,10 @@ export async function createRecord(data: {
       });
     }
 
+
+
+
+
     // 2.4 Cập nhật trạng thái QueueTicket & Appointment liên quan sang Completed
     let targetTicketId = data.queueTicketId;
     if (!targetTicketId) {
@@ -308,6 +333,9 @@ export async function createRecord(data: {
         roomId: dentist.defaultRoomId,
         serviceIds: data.performedServices,
       });
+      // Phát sự kiện WebSocket để quầy Thu ngân (Cashier) nhận được hóa đơn ngay lập tức
+      // (không cần đợi polling 30 giây)
+      socketManager.emit('invoice:created', { patientId: data.patientId.toString() });
     } catch (invoiceErr) {
       console.error('Lỗi khi tự động khởi tạo hóa đơn:', invoiceErr);
     }
@@ -324,8 +352,8 @@ export async function createRecord(data: {
       room: true,
       teeth: true,
       services: { include: { service: true } },
-      prescription: { include: { items: true } },
       files: true,
+
     },
   });
 

@@ -7,6 +7,7 @@ import { useConfirm } from '../../context/ConfirmContext';
 import { DentalChart } from '../../components/DentalChart';
 import DrugAutocomplete from '../../components/DrugAutocomplete';
 import { ToothState, Patient } from '../../types/clinic';
+import { useDentistFormDraft } from '../../utils/useDentistFormDraft';
 
 // Tab imports
 import { DentistQueue } from './dentist-tabs/DentistQueue';
@@ -63,21 +64,30 @@ const DentistHome: React.FC = () => {
   const [formDOB, setFormDOB] = useState<string>('');
   const [formGender, setFormGender] = useState<string>('');
   const [formAddress, setFormAddress] = useState<string>('');
-  const [chiefComplaint, setChiefComplaint] = useState('');
-  const [icdCode, setIcdCode] = useState('');
   const [rxTemplate, setRxTemplate] = useState('');
-  const [postTreatmentNotes, setPostTreatmentNotes] = useState('');
-
-  const [activeTeethState, setActiveTeethState] = useState<ToothState[]>([]);
-  const [performedServices, setPerformedServices] = useState<string[]>([]);
-  const [serviceSearch, setServiceSearch] = useState('');
-  const [prescriptionDrugs, setPrescriptionDrugs] = useState<Array<{ name: string; quantity: number; unit: string; instruction: string }>>([]);
-  const [selectedAddDrugId, setSelectedAddDrugId] = useState('');
   const [showSignModal, setShowSignModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; type: 'pdf' | 'image' | 'prescription'; title: string; size: string; url?: string }>>([]);
-  // ─── Danh mục thuốc từ DB ─────────────────────────────────────────────────────
+
+  // ── Danh mục thuốc từ DB ─────────────────────────────────────────────────────
   const [dbMedicines, setDbMedicines] = useState<MedicineType[]>([]);
+
+  // ── Form state được persist vào sessionStorage theo queueId ──────────────────
+  // Khi bác sĩ chuyển sang tab Quản lý thuốc rồi quay lại, dữ liệu vẫn còn
+  const {
+    activeTeethState, setActiveTeethState,
+    performedServices, setPerformedServices,
+    chiefComplaint, setChiefComplaint,
+    icdCode, setIcdCode,
+    postTreatmentNotes, setPostTreatmentNotes,
+    prescriptionDrugs, setPrescriptionDrugs,
+    treatmentType, setTreatmentType,
+    selectedPlanId, setSelectedPlanId,
+    uploadedFiles, setUploadedFiles,
+    clearCurrentDraft,
+  } = useDentistFormDraft(selectedQueueId, []);
+
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [selectedAddDrugId, setSelectedAddDrugId] = useState('');
 
   useEffect(() => {
     fetchActiveMedicines().then(setDbMedicines).catch(() => {/* Fallback sang AVAILABLE_DRUGS nếu lỗi */});
@@ -182,8 +192,6 @@ const DentistHome: React.FC = () => {
   const activePatientRecords = activePatient ? medicalRecords.filter(r => r.patientId === activePatient.id) : [];
   const filteredServices = services.filter(s => s.name.toLowerCase().includes(serviceSearch.toLowerCase()));
 
-  const [treatmentType, setTreatmentType] = useState<'independent' | 'plan_init' | 'plan_session'>('independent');
-  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
 
   const patientPlans = useMemo(() => {
     return activePatientRecords.filter(r => (r.title ? r.title.includes('Khởi tạo phác đồ') : false) || (r.notes ? r.notes.includes('[PHÁC ĐỒ]') : false));
@@ -234,30 +242,37 @@ const DentistHome: React.FC = () => {
     if (patientId !== lastSelectedPatientId.current) {
       lastSelectedPatientId.current = patientId;
 
-      if (activeItem) {
-        // Autofill selected service in performedServices
-        if (activeItem.serviceName) {
-          const matched = services.find(
-            s => s?.name && activeItem.serviceName && (
-              s.name.toLowerCase().trim() === activeItem.serviceName.toLowerCase().trim() ||
-              activeItem.serviceName.toLowerCase().includes(s.name.toLowerCase().trim())
-            )
-          );
-          if (matched) {
-            setPerformedServices([matched.id]);
+      // Nếu đã có draft cho queue này (bác sĩ đang giữa phiên khám) → không reset
+      const hasDraft = selectedQueueId
+        ? !!sessionStorage.getItem(`dentist_draft_${selectedQueueId}`)
+        : false;
+
+      if (!hasDraft) {
+        if (activeItem) {
+          // Autofill selected service in performedServices
+          if (activeItem.serviceName) {
+            const matched = services.find(
+              s => s?.name && activeItem.serviceName && (
+                s.name.toLowerCase().trim() === activeItem.serviceName.toLowerCase().trim() ||
+                activeItem.serviceName.toLowerCase().includes(s.name.toLowerCase().trim())
+              )
+            );
+            if (matched) {
+              setPerformedServices([matched.id]);
+            } else {
+              setPerformedServices([]);
+            }
           } else {
             setPerformedServices([]);
           }
         } else {
           setPerformedServices([]);
         }
-      } else {
-        setPerformedServices([]);
+        setChiefComplaint('');
+        setIcdCode('');
+        setPrescriptionDrugs([]);
+        setRxTemplate('');
       }
-      setChiefComplaint('');
-      setIcdCode('');
-      setPrescriptionDrugs([]);
-      setRxTemplate('');
     }
   }, [selectedQueueId, queue, services]);
 
@@ -312,20 +327,29 @@ const DentistHome: React.FC = () => {
       setFormGender(resolvedGender);
       setFormAddress(resolvedAddress);
 
-      // Sync active teeth state from EMR
-      const consolidated: Record<number, ToothState> = {};
-      // Overwrite from medical records (oldest to newest)
-      [...pRecords].reverse().forEach(r => {
-        r.teethMap?.forEach(t => {
-          consolidated[t.toothNumber] = {
-            toothNumber: t.toothNumber,
-            condition: t.condition,
-            treatment: t.treatment
-          };
-        });
-      });
+      // ── Sync trạng thái răng từ EMR — chỉ khi KHÔNG có draft phiên khám hiện tại ──
+      // Nếu đã có draft (bác sĩ đã chọn răng trong phiên này) → giữ nguyên draft
+      // Sau khi kí bệnh án: clearCurrentDraft() xóa draft, EMR được lưu lại vào DB,
+      // lần sau mở bệnh nhân sẽ load từ lịch sử EMR
+      const hasDraftForCurrentQueue = selectedQueueId
+        ? !!sessionStorage.getItem(`dentist_draft_${selectedQueueId}`)
+        : false;
 
-      setActiveTeethState(Object.values(consolidated));
+      if (!hasDraftForCurrentQueue) {
+        // Không có draft → load trạng thái răng từ lịch sử EMR
+        const consolidated: Record<number, ToothState> = {};
+        [...pRecords].reverse().forEach(r => {
+          r.teethMap?.forEach(t => {
+            consolidated[t.toothNumber] = {
+              toothNumber: t.toothNumber,
+              condition: t.condition,
+              treatment: t.treatment
+            };
+          });
+        });
+        setActiveTeethState(Object.values(consolidated));
+      }
+      // Nếu có draft → hook useDentistFormDraft đã restore activeTeethState rồi, không ghi đè
     } else {
       setActiveTeethState([]);
       setFormAllergy('Không');
@@ -334,36 +358,41 @@ const DentistHome: React.FC = () => {
       setFormGender('');
       setFormAddress('');
     }
-  }, [activePatient?.id, medicalRecords]);
+  }, [activePatient?.id, medicalRecords, selectedQueueId]);
 
   const handleSelectQueueItem = (id: string) => {
     setSelectedQueueId(id);
     const item = queue.find(q => q.id === id);
 
-    // Autofill selected service
-    let initialServices: string[] = [];
-    if (item && item.serviceName) {
-      const matched = services.find(
-        s => s.name.toLowerCase().trim() === item.serviceName?.toLowerCase().trim() ||
-          item.serviceName?.toLowerCase().includes(s.name.toLowerCase().trim())
-      );
-      if (matched) {
-        initialServices = [matched.id];
+    // Nếu không có draft của bệnh nhân này → autofill service từ phiếu hàng chờ
+    // (hook useDentistFormDraft sẽ tự restore draft nếu đã có)
+    const draftKey = `dentist_draft_${id}`;
+    const hasDraft = !!sessionStorage.getItem(draftKey);
+
+    if (!hasDraft) {
+      // Autofill selected service khi chưa có draft
+      let initialServices: string[] = [];
+      if (item && item.serviceName) {
+        const matched = services.find(
+          s => s.name.toLowerCase().trim() === item.serviceName?.toLowerCase().trim() ||
+            item.serviceName?.toLowerCase().includes(s.name.toLowerCase().trim())
+        );
+        if (matched) {
+          initialServices = [matched.id];
+        }
       }
+      setPerformedServices(initialServices);
+      setServiceSearch('');
+      setPrescriptionDrugs([]);
+      setRxTemplate('');
+      setChiefComplaint('');
+      setIcdCode('');
+      setTreatmentType('independent');
+      setSelectedPlanId('');
+      setUploadedFiles([]);
+      setPostTreatmentNotes('');
     }
 
-    setPerformedServices(initialServices);
-    setServiceSearch('');
-    setPrescriptionDrugs([]);
-    setRxTemplate('');
-    setChiefComplaint('');
-    setIcdCode('');
-    // formDOB, formGender, formAddress: Không reset ở đây —
-    // useEffect [activePatient?.id] sẽ tự autofill từ DB khi activePatient thay đổi
-    setTreatmentType('independent');
-    setSelectedPlanId('');
-    setUploadedFiles([]);
-    setPostTreatmentNotes('');
     setActiveTab('teeth');
   };
 
@@ -556,6 +585,8 @@ const DentistHome: React.FC = () => {
 
       setShowSignModal(false);
       setSelectedQueueId(null);
+      // Xóa draft sau khi ký thành công
+      clearCurrentDraft();
       setPerformedServices([]);
       setServiceSearch('');
       setPrescriptionDrugs([]);
@@ -1191,7 +1222,9 @@ const DentistHome: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1">Kê thêm thuốc mới</label>
+                      <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1">
+                        Chọn thuốc từ danh mục mẫu *
+                      </label>
                       <div className="relative">
                         <DrugAutocomplete
                           availableDrugs={[
@@ -1203,14 +1236,11 @@ const DentistHome: React.FC = () => {
                           onAddDrug={async (id: string) => {
                             await handleAddDrug(id);
                           }}
-                          onAddCustomDrug={async (name: string) => {
-                            await handleAddCustomDrug(name);
-                          }}
-                          placeholder="-- Tìm hoặc nhập tên thuốc --"
+                          placeholder="-- Tìm & chọn thuốc trong danh mục --"
                         />
-
                       </div>
                     </div>
+
                   </div>
 
                   {/* Prescription drugs list builder */}

@@ -22,10 +22,10 @@ function calcAge(dateOfBirth: Date): number {
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const list = await prisma.patient.findMany({
+      take: 300, // Giới hạn 300 bệnh nhân — tránh load toàn bộ bảng
       include: { tier: true, user: true },
+      orderBy: { user: { fullName: 'asc' } }, // Sort ở DB thay vì JS (nhanh hơn)
     });
-    // Sort theo tên User
-    list.sort((a, b) => (a.user?.fullName || '').localeCompare(b.user?.fullName || ''));
 
     const formatted = list.map(p => ({
       id: `P-${p.patientId}`,

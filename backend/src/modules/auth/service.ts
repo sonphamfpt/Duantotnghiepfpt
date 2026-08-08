@@ -225,18 +225,50 @@ export class AuthService {
     // 3. Tìm các ID liên kết DentistId hoặc PatientId nếu có
     let dentistId: string | undefined;
     let patientId: string | undefined;
+    let patientProfile: any = null;
+    let dentistProfile: any = null;
 
     if (user.role.code === RoleCode.dentist) {
       const dentist = await prisma.dentist.findUnique({
         where: { userId: user.userId },
       });
-      if (dentist) dentistId = dentist.dentistId.toString();
+      if (dentist) {
+        dentistId = dentist.dentistId.toString();
+        dentistProfile = {
+          specialty: dentist.specialty,
+          degree: dentist.degree,
+          experienceYears: dentist.experienceYears,
+          bio: dentist.bio,
+          motto: dentist.motto,
+        };
+      }
     } else if (user.role.code === RoleCode.patient) {
       const patient = await prisma.patient.findUnique({
         where: { userId: user.userId },
       });
-      if (patient) patientId = patient.patientId.toString();
+      if (patient) {
+        patientId = patient.patientId.toString();
+        patientProfile = {
+          dateOfBirth: patient.dateOfBirth ? patient.dateOfBirth.toISOString().split('T')[0] : null,
+          gender: patient.gender,
+          address: patient.address,
+          criticalAllergy: patient.criticalAllergy,
+          medicalCondition: patient.medicalCondition,
+        };
+      }
     }
+
+    // Xây dựng permissions (giống getMe)
+    const permissions = user.role.code === RoleCode.manager
+      ? { admission: true, clinical: true, checkout: true, settings: true }
+      : user.staffPermission
+        ? {
+            admission: user.staffPermission.admission,
+            clinical: user.staffPermission.clinical,
+            checkout: user.staffPermission.checkout,
+            settings: user.staffPermission.settings,
+          }
+        : null;
 
     // 4. Ký Token JWT
     const token = jwt.sign(
@@ -262,6 +294,9 @@ export class AuthService {
         avatarUrl: user.avatarUrl,
         dentistId,
         patientId,
+        permissions,
+        patientProfile,
+        dentistProfile,
       },
     };
   }

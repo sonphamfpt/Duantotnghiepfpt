@@ -34,8 +34,8 @@ export async function getTreatmentPlanById(planId: bigint) {
           room: true,
           teeth: true,
           services: { include: { service: true } },
-          prescription: { include: { items: true } },
           files: true,
+
         },
         orderBy: {
           visitDate: 'desc',

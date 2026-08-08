@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Icon } from './Icon';
 
 export type Drug = {
   id: string;
@@ -10,7 +9,7 @@ export type Drug = {
 type Props = {
   availableDrugs: Drug[];
   onAddDrug: (id: string) => void;
-  onAddCustomDrug: (name: string) => void;
+  onAddCustomDrug?: (name: string) => void;
   placeholder?: string;
   maxResults?: number;
 };
@@ -19,7 +18,7 @@ export default function DrugAutocomplete({
   availableDrugs,
   onAddDrug,
   onAddCustomDrug,
-  placeholder = "-- Chọn thuốc trong danh mục --",
+  placeholder = "-- Chọn thuốc từ danh mục --",
   maxResults = 20,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -63,7 +62,7 @@ export default function DrugAutocomplete({
 
   function handleAddNew() {
     const name = query.trim();
-    if (name === "") return;
+    if (name === "" || !onAddCustomDrug) return;
     onAddCustomDrug(name);
     setQuery("");
     setOpen(false);
@@ -97,7 +96,7 @@ export default function DrugAutocomplete({
                   onClick={() => handleSelectDrug(d)}
                   className="cursor-pointer px-3 py-2 hover:bg-gray-100 flex justify-between items-center text-xs"
                 >
-                  <div className="text-sm text-gray-800">
+                  <div className="text-sm text-gray-800 font-medium">
                     {d.name}
                     {d.type ? (
                       <span className="text-xs text-gray-500 ml-2">({d.type})</span>
@@ -107,14 +106,20 @@ export default function DrugAutocomplete({
               ))}
             </ul>
           ) : (
-            <div className="px-3 py-2">
-              <button
-                onClick={handleAddNew}
-                className="w-full text-left text-sm text-blue-600 hover:text-blue-700 flex items-center gap-2"
-              >
-                <Icon name="add" className="text-[18px]" />
-                <span>Thêm thuốc mới: <span className="font-medium">{query}</span></span>
-              </button>
+            <div className="px-3.5 py-3 text-xs text-slate-500 bg-slate-50 border-t">
+              {onAddCustomDrug && query.trim() ? (
+                <button
+                  type="button"
+                  onClick={handleAddNew}
+                  className="w-full text-left text-xs text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>➕ Thêm thuốc mới: <strong className="underline">{query}</strong></span>
+                </button>
+              ) : (
+                <span className="text-slate-600">
+                  ⚠ Không tìm thấy thuốc trong danh mục. Vui lòng chọn thuốc có sẵn hoặc thêm thuốc mới ở mục <strong>Quản lý danh mục thuốc</strong>.
+                </span>
+              )}
             </div>
           )}
         </div>

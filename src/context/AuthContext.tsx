@@ -254,47 +254,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       localStorage.setItem('goodsmile_token', newToken);
       setToken(newToken);
-
-      // Gọi getMe ngay lập tức để lấy avatar thực tế trong DB và thông tin chi tiết
-      const meRes = await authApi.getMe();
-      if (meRes.success && meRes.data) {
-        const meUser = meRes.data;
-        const roleCode = (typeof meUser.role === 'object' ? meUser.role.code : meUser.role) as UserRole;
-        const defaultProfile = ROLE_PROFILES[roleCode];
-        let profileId = meUser.userId;
-
-        if (roleCode === 'dentist' && meUser.dentistId) {
-          profileId = `D-${meUser.dentistId.toString().padStart(2, '0')}`;
-        } else if (roleCode === 'patient' && meUser.patientId) {
-          profileId = `P-${meUser.patientId.toString()}`;
-        }
-
-        const BACKEND_BASE = 'http://localhost:5000';
-        const resolveAvatar = (url?: string) => {
-          if (!url) return defaultProfile?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80';
-          if (url.startsWith('http')) return url;
-          return `${BACKEND_BASE}${url}`;
-        };
-
-        setRole(roleCode);
-        setUser({
-          id: profileId,
-          rawUserId: meUser.userId.toString(),
-          name: meUser.fullName,
-          roleName: defaultProfile?.roleName || roleCode,
-          avatar: resolveAvatar(meUser.avatarUrl),
-          details: defaultProfile?.details,
-          phone: meUser.phone || undefined,
-          email: meUser.email || undefined,
-          permissions: (meUser as any).permissions || undefined,
-          patientProfile: (meUser as any).patientProfile || undefined,
-          dentistProfile: (meUser as any).dentistProfile || undefined,
-        });
-        setIsAuthenticated(true);
-        return { success: true, role: roleCode };
-      }
-
       setRole(roleCode);
+      setUser({
+        id: profileId,
+        rawUserId: userRes.userId.toString(),
+        name: userRes.fullName,
+        roleName: defaultProfile?.roleName || roleCode,
+        avatar: resolveAvatar(userRes.avatarUrl),
+        details: defaultProfile?.details,
+        phone: userRes.phone || undefined,
+        email: userRes.email || undefined,
+        permissions: (userRes as any).permissions || undefined,
+        patientProfile: (userRes as any).patientProfile || undefined,
+        dentistProfile: (userRes as any).dentistProfile || undefined,
+      });
       setIsAuthenticated(true);
       return { success: true, role: roleCode };
 

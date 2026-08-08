@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Icon } from '../../../components/Icon';
-import { clinicApi } from '../../../services/api';
+import { useClinic } from '../../../context/ClinicContext';
 import { exportToExcel } from '../../../utils/exportToExcel';
 
 interface SystemLog {
@@ -36,9 +36,9 @@ const getModuleMeta = (module: string) => {
 };
 
 export const ManagerLogs: React.FC = () => {
-  const [logs, setLogs] = useState<SystemLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Dùng logs đã load sẵn trong ClinicContext — không cần gọi API riêng
+  const { logs: contextLogs, refreshAllData } = useClinic();
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [moduleFilter, setModuleFilter] = useState<string>('TẤT CẢ');
   const [typeFilter, setTypeFilter] = useState<string>('TẤT CẢ');
@@ -47,24 +47,24 @@ export const ManagerLogs: React.FC = () => {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 15;
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await clinicApi.getLogs();
-      if (res.data) {
-        setLogs(res.data);
-      }
-    } catch (err: any) {
-      setError('Không thể tải nhật ký. Vui lòng kiểm tra kết nối server.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Map logs từ ClinicContext sang interface SystemLog
+  const logs = useMemo(() => {
+    return contextLogs.map((l: any) => ({
+      logId: l.id || l.logId || '',
+      module: l.module || 'SYSTEM',
+      logType: l.type || l.logType || 'INFO',
+      message: l.message || '',
+      actorUserId: l.actorUserId || null,
+      actorName: l.actorName || l.actor || '',
+      createdAt: l.createdAt || new Date().toISOString(),
+    })) as SystemLog[];
+  }, [contextLogs]);
 
-  useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshAllData();
+    setIsRefreshing(false);
+  };
 
   // Tính thống kê
   const totalLogs = logs.length;
@@ -183,11 +183,11 @@ export const ManagerLogs: React.FC = () => {
             Xuất File Excel
           </button>
           <button
-            onClick={fetchLogs}
-            disabled={loading}
+            onClick={handleRefresh}
+            disabled={isRefreshing}
             className="px-4 py-2 rounded-lg bg-primary text-white font-label-md flex items-center gap-2 hover:opacity-90 transition-opacity cursor-pointer text-xs font-bold disabled:opacity-50"
           >
-            <Icon name={loading ? 'progress_activity' : 'refresh'} className={`text-[18px] ${loading ? 'animate-spin' : ''}`} />
+            <Icon name={isRefreshing ? 'progress_activity' : 'refresh'} className={`text-[18px] ${isRefreshing ? 'animate-spin' : ''}`} />
             Làm mới
           </button>
         </div>
@@ -283,19 +283,7 @@ export const ManagerLogs: React.FC = () => {
 
       {/* ── Log Table ── */}
       <div className="bg-white rounded-xl border border-outline-variant shadow-sm overflow-hidden">
-        {error && (
-          <div className="flex items-center gap-3 p-4 bg-red-50 border-b border-red-200 text-red-700">
-            <Icon name="error" className="text-[20px]" />
-            <span className="text-xs font-semibold">{error}</span>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-outline">
-            <Icon name="progress_activity" className="text-[36px] text-primary animate-spin" />
-            <p className="text-xs font-semibold">Đang tải nhật ký hệ thống...</p>
-          </div>
-        ) : paginated.length === 0 ? (
+        {paginated.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-outline">
             <Icon name="search_off" className="text-[40px]" />
             <p className="text-sm font-semibold">Không tìm thấy bản ghi nào phù hợp.</p>
@@ -356,7 +344,7 @@ export const ManagerLogs: React.FC = () => {
         )}
 
         {/* ── Pagination ── */}
-        {!loading && filtered.length > PAGE_SIZE && (
+        {filtered.length > PAGE_SIZE && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-outline-variant/50 bg-slate-50/50">
             <span className="text-xs text-outline font-semibold">
               Trang {page} / {totalPages} &nbsp;·&nbsp; {filtered.length} bản ghi

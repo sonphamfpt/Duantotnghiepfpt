@@ -18,6 +18,7 @@ export async function getInvoices() {
     orderBy: {
       createdAt: 'desc',
     },
+    take: 200, // Giới hạn 200 hóa đơn gần nhất để tránh tải không giới hạn
   });
 }
 

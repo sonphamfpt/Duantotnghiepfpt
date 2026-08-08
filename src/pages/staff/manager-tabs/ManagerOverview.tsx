@@ -17,11 +17,15 @@ export const ManagerOverview: React.FC = () => {
     weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric'
   });
 
-  // Lọc log của ngày hôm nay — dùng createdAt ISO từ backend hoặc time
+  // Tính todayStart/End một lần (chỉ thay đổi khi qua ngày mới)
+  // Không đưa `now` vào dep của todayLogs để tránh re-filter mỗi giây
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lọc log của ngày hôm nay — chỉ re-run khi logs thay đổi
   const todayLogs = useMemo(() => {
-    const todayStart = new Date(
-      now.getFullYear(), now.getMonth(), now.getDate()
-    ).getTime();
     const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
 
     return logs.filter(log => {
@@ -35,7 +39,7 @@ export const ManagerOverview: React.FC = () => {
       // Fallback: nếu log có time (HH:MM:SS) thì giữ nguyên để hiển thị
       return !!log.time;
     });
-  }, [logs, now]);
+  }, [logs, todayStart]);
   // ───────────────────────────────────────────────────────────────────────
 
   const handleExportExcel = () => {

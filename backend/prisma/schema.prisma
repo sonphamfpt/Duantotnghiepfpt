@@ -301,10 +301,10 @@ model MedicalRecord {
   queueTicket     QueueTicket?           @relation(fields: [queueTicketId], references: [ticketId])
   room            Room?                  @relation(fields: [roomId], references: [roomId])
   treatmentPlan   TreatmentPlan?         @relation(fields: [treatmentPlanId], references: [planId])
-  prescription    Prescription?
 
   @@map("medical_records")
 }
+
 
 model MedicalRecordTooth {
   id            BigInt         @id @default(autoincrement())
@@ -339,27 +339,8 @@ model MedicalRecordService {
   @@map("medical_record_services")
 }
 
-model Prescription {
-  prescriptionId BigInt             @id @default(autoincrement()) @map("prescription_id")
-  recordId       BigInt             @unique @map("record_id")
-  instructions   String?
-  items          PrescriptionItem[]
-  record         MedicalRecord      @relation(fields: [recordId], references: [recordId], onDelete: Cascade)
 
-  @@map("prescriptions")
-}
 
-model PrescriptionItem {
-  itemId         BigInt       @id @default(autoincrement()) @map("item_id")
-  prescriptionId BigInt       @map("prescription_id")
-  medicineName   String       @map("medicine_name") @db.VarChar(150)
-  dose           String?      @db.VarChar(100)
-  duration       String?      @db.VarChar(100)
-  note           String?
-  prescription   Prescription @relation(fields: [prescriptionId], references: [prescriptionId], onDelete: Cascade)
-
-  @@map("prescription_items")
-}
 
 model Invoice {
   invoiceId          BigInt              @id @default(autoincrement()) @map("invoice_id")

@@ -13,21 +13,23 @@ const router = Router();
 // ─── GET /api/staff ────────────────────────────────────────────────────────────
 router.get('/', authGuard, requireRole('manager'), async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Gộp dentist lookup vào 1 query duy nhất — tránh 2 round-trips DB tuần tự
     const list = await prisma.user.findMany({
       where: {
         isDeleted: false,
         role: { code: { in: ['dentist', 'receptionist', 'cashier', 'manager'] } },
       },
-      include: { role: true, staffPermission: true },
+      include: {
+        role: true,
+        staffPermission: true,
+        dentist: { select: { dentistId: true } },
+      },
       orderBy: { userId: 'asc' },
     });
 
-    const dentists = await prisma.dentist.findMany({ select: { dentistId: true, userId: true } });
-    const dentistMap = new Map(dentists.map(d => [d.userId.toString(), d.dentistId.toString()]));
-
     const formatted = list.map(u => ({
       id: `STF-${u.userId.toString().padStart(3, '0')}`,
-      dentistId: dentistMap.get(u.userId.toString()) ? `D-${dentistMap.get(u.userId.toString())!.padStart(2, '0')}` : undefined,
+      dentistId: u.dentist ? `D-${u.dentist.dentistId.toString().padStart(2, '0')}` : undefined,
       name: u.fullName,
       role: u.role.code,
       roleName: u.role.name,
