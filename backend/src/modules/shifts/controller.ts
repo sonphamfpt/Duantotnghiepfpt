@@ -127,8 +127,8 @@ export async function getShiftNotificationsHandler(req: Request, res: Response, 
     const formatted = notifications.map((notif) => {
       const affected = notif.affectedItems.map((item) => ({
         appointmentId: item.appointmentId.toString(),
-        patientName: item.appointment.patient.user?.fullName || item.appointment.patient.fullName,
-        patientPhone: item.appointment.patient.phone,
+        patientName: item.appointment.patient.user?.fullName || 'Bệnh nhân',
+        patientPhone: item.appointment.patient.user?.phone || '',
         time: item.appointment.startTime.toISOString(),
         serviceName: item.appointment.service.name,
         resolved: item.resolved,

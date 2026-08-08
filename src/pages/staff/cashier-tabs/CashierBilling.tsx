@@ -168,7 +168,9 @@ export const CashierBilling: React.FC = () => {
   // Tự động phát hiện khi hóa đơn được thanh toán thành công qua Webhook / WebSocket
   useEffect(() => {
     if (activeInvoice && activeInvoice.status === 'Paid') {
-      setToastMessage(`🎉 Hóa đơn I-${activeInvoice.id} (${activeInvoice.patientName || 'Khách hàng'}) đã được thanh toán thành công!`);
+      const formatId = activeInvoice.id.startsWith('I-') ? activeInvoice.id : `I-${activeInvoice.id}`;
+      setToastMessage(`🎉 Hóa đơn ${formatId} (${activeInvoice.patientName || 'Khách hàng'}) đã được thanh toán thành công!`);
+
       setShowToast(true);
       const timer = setTimeout(() => {
         setShowToast(false);
@@ -648,7 +650,9 @@ export const CashierBilling: React.FC = () => {
                   <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 text-xs space-y-1.5 text-emerald-50 border border-white/15 text-left">
                     <div className="flex justify-between items-center">
                       <span>Mã hóa đơn:</span>
-                      <strong className="font-mono text-white bg-white/20 px-1.5 py-0.5 rounded">I-{activeInvoice.id}</strong>
+                      <strong className="font-mono text-white bg-white/20 px-1.5 py-0.5 rounded">
+                        {activeInvoice.id.startsWith('I-') ? activeInvoice.id : `I-${activeInvoice.id}`}
+                      </strong>
                     </div>
                     <div className="flex justify-between items-center">
                       <span>Bệnh nhân:</span>
@@ -656,9 +660,12 @@ export const CashierBilling: React.FC = () => {
                     </div>
                     <div className="flex justify-between items-center border-t border-white/10 pt-1.5">
                       <span>Tổng tiền đã thu:</span>
-                      <strong className="text-amber-300 font-extrabold text-sm">₫{activeInvoice.totalPrice.toLocaleString()}</strong>
+                      <strong className="text-amber-300 font-extrabold text-sm">
+                        ₫{(activeInvoice.paidAmount ?? activeInvoice.netPrice ?? (activeInvoice.totalPrice - (activeInvoice.memberDiscount || 0))).toLocaleString()}
+                      </strong>
                     </div>
                   </div>
+
                 </div>
 
                 <div className="space-y-3 pt-2">

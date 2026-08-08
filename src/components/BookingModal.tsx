@@ -30,8 +30,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [patientPhone, setPatientPhone] = useState(defaultPatientPhone);
   const [selectedServiceId, setSelectedServiceId] = useState('');
 
-  const initialDentistId = dentists.find(d => d.name === defaultDentistName)?.id || 'ANY';
+  const initialDentistId = dentists.find(d => d.name === defaultDentistName)?.id || '';
   const [selectedDentistId, setSelectedDentistId] = useState(initialDentistId);
+
 
   const formatDateInputValue = (value: Date): string => {
     const year = value.getFullYear();
@@ -64,7 +65,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [serviceError, setServiceError] = useState('');
   const [dentistError, setDentistError] = useState('');
   const [timeError, setTimeError] = useState('');
-  const [resolvedDentistId, setResolvedDentistId] = useState<string>('');
+
 
   const PHONE_VN_REGEX = /^(0[3|5|7|8|9])[0-9]{8}$/;
 
@@ -142,6 +143,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [date, doctorShifts, selectedDentistId]);
 
+
+
   const formatSlotToTimeString = (isoString: string): string => {
     if (!isoString) return '';
     const dateObj = new Date(isoString);
@@ -150,7 +153,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return `${hours}:${minutes}`;
   };
 
-  const isSlotAvailableRealtime = (slotIso: string, targetDentistId: string, dateStr: string): boolean => {
+  const isSlotAvailableRealtime = (slotIso: string, targetDentistId: string, _dateStr?: string): boolean => {
+
     const slotStart = new Date(slotIso).getTime();
     if (isNaN(slotStart)) return false;
 
@@ -189,24 +193,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       });
     };
 
-    if (targetDentistId && targetDentistId !== 'ANY') {
-      return !isDoctorOccupied(targetDentistId);
-    }
-
-    const activeDentistsOnDate = dentists.filter(d =>
-      doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
-    );
-    const candidateDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
-
-    return candidateDentists.some(d => {
-      const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr);
-      return isSlotInDoctorShifts(slotIso, activeShifts) && !isDoctorOccupied(d.id);
-    });
+    return !isDoctorOccupied(targetDentistId);
   };
 
   useEffect(() => {
     const fetchAvailableSlots = async () => {
-      if (!selectedServiceId || !date) {
+      if (!selectedServiceId || !date || !selectedDentistId) {
         setAvailableSlots([]);
         setTimeSlot('');
         return;
@@ -216,54 +208,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       setSlotsError('');
 
       try {
-        if (selectedDentistId === 'ANY' || !selectedDentistId) {
-          const activeDentistsOnDate = dentists.filter(d =>
-            doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
-          );
-          const targetDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
+        const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
+        const rawSlots = response.data || [];
 
-          if (targetDentists.length === 0) {
-            setSlotsError('Không có bác sĩ nào có ca trực trong ngày này.');
-            setAvailableSlots([]);
-            setTimeSlot('');
-            return;
-          }
+        const activeShiftsForDoc = doctorShifts.filter(
+          s => isSameDentistId(s.dentistId, selectedDentistId) && s.date === date
+        );
+        const slots = rawSlots.filter(slotIso =>
+          isSlotInDoctorShifts(slotIso, activeShiftsForDoc) && isSlotAvailableRealtime(slotIso, selectedDentistId, date)
+        );
 
-          const responses = await Promise.allSettled(
-            targetDentists.map(d => appointmentApi.getAvailableSlots(d.id, date, selectedServiceId))
-          );
-
-          let combinedSlotsSet = new Set<string>();
-          responses.forEach((res, idx) => {
-            if (res.status === 'fulfilled' && res.value.data) {
-              const docId = targetDentists[idx].id;
-              const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, docId) && s.date === date);
-              const validSlots = res.value.data.filter(slotIso =>
-                isSlotInDoctorShifts(slotIso, activeShifts) && isSlotAvailableRealtime(slotIso, docId, date)
-              );
-              validSlots.forEach(slot => combinedSlotsSet.add(slot));
-            }
-          });
-
-          const combinedSlots = Array.from(combinedSlotsSet).sort();
-          setAvailableSlots(combinedSlots);
-          setTimeSlot((prev) => combinedSlots.includes(prev) ? prev : '');
-        } else {
-          const response = await appointmentApi.getAvailableSlots(selectedDentistId, date, selectedServiceId);
-          const rawSlots = response.data || [];
-
-          // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế và lịch bận của bác sĩ
-          const activeShiftsForDoc = doctorShifts.filter(
-            s => isSameDentistId(s.dentistId, selectedDentistId) && s.date === date
-          );
-
-          const slots = rawSlots.filter(slotIso =>
-            isSlotInDoctorShifts(slotIso, activeShiftsForDoc) && isSlotAvailableRealtime(slotIso, selectedDentistId, date)
-          );
-
-          setAvailableSlots(slots);
-          setTimeSlot((prev) => slots.includes(prev) ? prev : '');
-        }
+        setAvailableSlots(slots);
+        setTimeSlot((prev) => slots.includes(prev) ? prev : '');
       } catch (err: any) {
         console.error('Lỗi khi tải khung giờ trống:', err);
         setSlotsError(err.message || 'Không thể tải danh sách giờ trống.');
@@ -279,6 +235,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
     void fetchAvailableSlots();
   }, [date, selectedDentistId, selectedServiceId, appointments, slotRefreshTick]);
+
 
   if (!isOpen) return null;
 
@@ -321,31 +278,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return true;
   };
 
-  const resolveEffectiveDentistId = (targetDentistId: string, timeIso: string, dateStr: string): string => {
-    if (targetDentistId && targetDentistId !== 'ANY') return targetDentistId;
-
-    const activeDentistsOnDate = dentists.filter(d =>
-      doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
-    );
-    const candidateDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
-
-    const availableCandidates: string[] = [];
-    for (const d of candidateDentists) {
-      const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr);
-      if (isSlotInDoctorShifts(timeIso, activeShifts) && isSlotAvailableRealtime(timeIso, d.id, dateStr)) {
-        availableCandidates.push(d.id);
-      }
-    }
-
-    if (availableCandidates.length > 0) {
-      const randomIndex = Math.floor(Math.random() * availableCandidates.length);
-      return availableCandidates[randomIndex];
-    }
-
-    const freeDentist = candidateDentists.find(d => isSlotAvailableRealtime(timeIso, d.id, dateStr));
-    return freeDentist?.id || candidateDentists[0]?.id || 'D-01';
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAntiSpamError('');
@@ -353,8 +285,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     const nErr = validateName(patientName);
     const pErr = validatePhone(patientPhone);
     const sErr = !selectedServiceId ? 'Vui lòng chọn dịch vụ điều trị.' : '';
-    const dErr = ''; // Bác sĩ luôn hợp lệ (mặc định: Phòng khám tự phân công)
+    const dErr = !selectedDentistId ? 'Vui lòng chọn bác sĩ.' : '';
     const tErr = !timeSlot ? 'Vui lòng chọn khung giờ hẹn khám.' : '';
+
 
     setNameError(nErr);
     setPhoneError(pErr);
@@ -380,11 +313,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (!checkDuplicate(patientPhone, date, timeSlot)) return;
 
     setSubmitting(true);
-    const effectiveDentistId = resolveEffectiveDentistId(selectedDentistId, timeSlot, date);
-    setResolvedDentistId(effectiveDentistId);
 
     try {
-      const latestSlots = await appointmentApi.ensureSlotAvailable(effectiveDentistId, date, selectedServiceId, timeSlot);
+      const latestSlots = await appointmentApi.ensureSlotAvailable(selectedDentistId, date, selectedServiceId, timeSlot);
       setAvailableSlots(latestSlots);
       setTimeSlot((prev) => latestSlots.includes(prev) ? prev : '');
     } catch (err: any) {
@@ -396,22 +327,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
 
     if (isStaffBooking) {
-      // Lễ tân/quản lý: tạo ngay, không cần OTP
-      await createAppointment(effectiveDentistId);
+      await createAppointment(selectedDentistId);
     } else {
-      // Bệnh nhân: cần OTP
       setSubmitting(false);
       setShowOtpModal(true);
     }
+
   };
 
   const createAppointment = async (targetDentistId?: string, otpToken?: string) => {
     const service = services.find(s => s.id === selectedServiceId);
     if (!service) return;
 
-    const effectiveDentistId = targetDentistId || resolvedDentistId || resolveEffectiveDentistId(selectedDentistId, timeSlot, date);
+    const effectiveDentistId = targetDentistId || selectedDentistId;
     const dentist = dentists.find(d => d.id === effectiveDentistId) || dentists[0];
     if (!dentist) return;
+
 
     setSubmitting(true);
     setAntiSpamError('');
@@ -429,7 +360,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       });
 
       const bookedApp = response.data;
-      const isRandomAllocated = selectedDentistId === 'ANY';
 
       const localApp = {
         id: `A-${bookedApp.appointmentId}`,
@@ -438,10 +368,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         patientPhone: existingPatient?.phone || patientPhone,
         serviceName: service.name,
         dentistId: dentist.id,
-        dentistName: `${dentist.name}${isRandomAllocated ? ' (Phân công tự động)' : ''}`,
+        dentistName: dentist.name,
         time: `${formatLocalDateStr(date)} @ ${timeSlot ? formatSlotToTimeString(timeSlot) : ''}`,
         status: 'Confirmed' as const,
       };
+
 
       addLog(
         isStaffBooking ? 'RECEPTION' : 'SYSTEM',
@@ -468,8 +399,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleOtpVerified = (otpToken: string) => {
     setShowOtpModal(false);
-    void createAppointment(resolvedDentistId, otpToken);
+    void createAppointment(selectedDentistId, otpToken);
   };
+
 
   // Helper lấy giờ chuẩn Việt Nam (UTC+7) từ ISO string
   const getVietnamHour = (isoStr: string): number => {
@@ -711,7 +643,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm outline-none transition-all cursor-pointer ${dentistError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
                     }`}
                 >
-                  <option value="ANY">Phòng khám tự phân công</option>
+                  <option value="">-- Chọn bác sĩ phụ trách --</option>
                   {dentists.filter(d =>
                     doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
                   ).map(d => (
@@ -719,7 +651,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       {d.name.replace(/^bác sĩ\s+/i, 'BS. ')}
                     </option>
                   ))}
+
                 </select>
+
                 {dentistError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{dentistError}</p>}
               </div>
             </div>

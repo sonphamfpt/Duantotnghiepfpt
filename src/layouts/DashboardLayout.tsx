@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useClinic } from '../context/ClinicContext';
 import { BrandLogo } from '../components/BrandLogo';
 import { Icon } from '../components/Icon';
 
@@ -9,15 +10,37 @@ interface NavItem {
   label: string;
   icon: string;
   path: string;
+  badge?: number; // Badge count (hấy khi 0 hoặc undefined)
 }
 
 export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { role, user, logout } = useAuth();
+  const { appointments, shiftChangeNotifications } = useClinic();
   const navigate = useNavigate();
   const location = useLocation();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Đếm số lượng công việc chưa xử lý cho badge nav
+  const noShowCount = role === 'receptionist'
+    ? appointments.filter(a => {
+        if (a.status !== 'NoShow') return false;
+        try {
+          const resolved = JSON.parse(localStorage.getItem('goodsmile_cskh_resolved') || '[]');
+          return !resolved.includes(a.id);
+        } catch {
+          return true;
+        }
+      }).length
+    : 0;
+
+  const pendingShiftCount = role === 'receptionist'
+    ? (shiftChangeNotifications || []).reduce((sum, n) => {
+        if (!n.affectedItems) return sum;
+        return sum + n.affectedItems.filter(item => !item.resolved).length;
+      }, 0)
+    : 0;
 
   // Đóng menu khi click ra ngoài
   useEffect(() => {
@@ -74,7 +97,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Bàn tiếp nhận', icon: 'folder_shared', path: '/dashboard/receptionist' },
           { label: 'Hàng chờ trực tiếp', icon: 'pending_actions', path: '/dashboard/receptionist?tab=queue' },
           { label: 'Lịch hẹn phòng khám', icon: 'receipt_long', path: '/dashboard/receptionist?tab=appointments' },
-          { label: 'Trung tâm công việc', icon: 'assignment_turned_in', path: '/dashboard/receptionist?tab=reminders' },
+          { label: 'Trung tâm làm việc', icon: 'assignment_turned_in', path: '/dashboard/receptionist?tab=work-center', badge: (pendingShiftCount + noShowCount) || undefined },
           { label: 'Lịch sử hủy lịch hẹn', icon: 'history', path: '/dashboard/receptionist?tab=history' },
           { label: 'Cài đặt tài khoản', icon: 'manage_accounts', path: '/dashboard/receptionist?tab=settings' },
         ];
@@ -84,8 +107,10 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           { label: 'Bàn khám lâm sàng', icon: 'dashboard', path: '/dashboard/dentist?tab=workspace' },
           { label: 'Hồ sơ bệnh án EMR', icon: 'folder_shared', path: '/dashboard/dentist?tab=records' },
           { label: 'Lịch làm việc', icon: 'calendar_month', path: '/dashboard/dentist?tab=schedule' },
+          { label: 'Danh mục thuốc', icon: 'medication', path: '/dashboard/dentist?tab=medicines' },
           { label: 'Cài đặt tài khoản', icon: 'manage_accounts', path: '/dashboard/dentist?tab=settings' },
         ];
+
       case 'cashier':
         return [
           { label: 'Thu phí hóa đơn', icon: 'payments', path: '/dashboard/cashier' },
@@ -158,8 +183,16 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
                     : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
                   }`}
               >
-                <Icon name={item.icon} className="text-[20px]" />
-                <span className="text-xs font-semibold truncate">{item.label}</span>
+                {/* Icon with badge */}
+                <div className="relative shrink-0">
+                  <Icon name={item.icon} className="text-[20px]" />
+                  {item.badge && item.badge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 bg-error text-white rounded-full flex items-center justify-center text-[9px] font-black px-0.5 leading-none">
+                      {item.badge > 9 ? '9+' : item.badge}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs font-semibold truncate flex-1">{item.label}</span>
               </button>
             );
           })}

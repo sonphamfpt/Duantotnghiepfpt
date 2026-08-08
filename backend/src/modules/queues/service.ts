@@ -188,7 +188,7 @@ export async function checkInPatient(data: {
       data: {
         module: 'RECEPTION',
         logType: 'SUCCESS',
-        message: `Bệnh nhân ${ticket.patient.fullName} check-in vào hàng chờ bác sĩ ${ticket.dentist.user.fullName}.`,
+        message: `Bệnh nhân ${ticket.patient.user.fullName} check-in vào hàng chờ bác sĩ ${ticket.dentist.user.fullName}.`,
       },
     });
   } catch (logErr) {
@@ -242,11 +242,11 @@ export async function updateTicketStatus(
   try {
     let msg = '';
     if (newStatus === 'InChair') {
-      msg = `Bác sĩ ${updated.dentist.user.fullName} bắt đầu khám cho bệnh nhân ${updated.patient.fullName}.`;
+      msg = `Bác sĩ ${updated.dentist.user.fullName} bắt đầu khám cho bệnh nhân ${updated.patient.user.fullName}.`;
     } else if (newStatus === 'Completed') {
-      msg = `Hoàn tất ca khám cho bệnh nhân ${updated.patient.fullName} tại ${updated.room?.name || 'phòng khám'}.`;
+      msg = `Hoàn tất ca khám cho bệnh nhân ${updated.patient.user.fullName} tại ${updated.room?.name || 'phòng khám'}.`;
     } else {
-      msg = `Hàng chờ của bệnh nhân ${updated.patient.fullName} được chuyển về trạng thái chờ khám.`;
+      msg = `Hàng chờ của bệnh nhân ${updated.patient.user.fullName} được chuyển về trạng thái chờ khám.`;
     }
     await prisma.systemLog.create({
       data: {

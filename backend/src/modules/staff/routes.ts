@@ -66,9 +66,12 @@ router.post('/', authGuard, requireRole('manager'), async (req: Request, res: Re
     }
 
     // 2. Kiểm tra trùng SĐT trong bảng Patient (Tài khoản bệnh nhân)
-    const dupPatientPhone = await prisma.patient.findFirst({ where: { phone: cleanPhone } });
+    const dupPatientPhone = await prisma.patient.findFirst({
+      where: { user: { phone: cleanPhone } },
+      include: { user: true },
+    });
     if (dupPatientPhone) {
-      throw new AppError(400, `Số điện thoại này đã trùng với Bệnh nhân "${dupPatientPhone.fullName}" trong CSDL. Vui lòng sử dụng số khác.`, 'PHONE_EXISTS_PATIENT');
+      throw new AppError(400, `Số điện thoại này đã trùng với Bệnh nhân "${dupPatientPhone.user.fullName}" trong CSDL. Vui lòng sử dụng số khác.`, 'PHONE_EXISTS_PATIENT');
     }
 
     // 3. Kiểm tra trùng Email nếu có nhập
@@ -257,10 +260,11 @@ router.put('/:id', authGuard, requireRole('manager'), async (req: Request, res: 
           throw new AppError(400, 'Số điện thoại này đã trùng với một tài khoản nhân viên khác.', 'PHONE_EXISTS');
         }
         const dupPatient = await prisma.patient.findFirst({
-          where: { phone: cleanPhone }
+          where: { user: { phone: cleanPhone } },
+          include: { user: true },
         });
         if (dupPatient) {
-          throw new AppError(400, `Số điện thoại này đã trùng với Bệnh nhân "${dupPatient.fullName}" trong CSDL. Vui lòng chọn số khác.`, 'PHONE_EXISTS_PATIENT');
+          throw new AppError(400, `Số điện thoại này đã trùng với Bệnh nhân "${dupPatient.user.fullName}" trong CSDL. Vui lòng chọn số khác.`, 'PHONE_EXISTS_PATIENT');
         }
         updateData.phone = cleanPhone;
       }

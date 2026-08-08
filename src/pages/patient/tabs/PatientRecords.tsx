@@ -122,6 +122,13 @@ function parseEMRNotes(notes: string | undefined, recordId: string): ParsedNotes
   return result;
 }
 
+const isSamePatientId = (id1?: string | null, id2?: string | null): boolean => {
+  if (!id1 || !id2) return false;
+  const s1 = String(id1).trim().replace(/^P-?/i, '');
+  const s2 = String(id2).trim().replace(/^P-?/i, '');
+  return s1 === s2;
+};
+
 export const PatientRecords: React.FC = () => {
   const { patients = [], medicalRecords = [], fetchPatientRecords } = useClinic();
   const { user } = useAuth();
@@ -137,7 +144,7 @@ export const PatientRecords: React.FC = () => {
     }
   }, [patientId, fetchPatientRecords]);
 
-  const currentPatient = patients.find(p => p.id === patientId) || {
+  const currentPatient = patients.find(p => isSamePatientId(p.id, patientId)) || {
     id: patientId,
     name: user?.name || 'Bệnh nhân',
     phone: user?.phone || '',
@@ -149,7 +156,8 @@ export const PatientRecords: React.FC = () => {
     dateOfBirth: undefined,
   };
 
-  const patientRecords = medicalRecords.filter(r => r.patientId === patientId);
+  const patientRecords = medicalRecords.filter(r => isSamePatientId(r.patientId, patientId));
+
 
   const toothMap: Record<number, string> = {};
   patientRecords.forEach(r => {

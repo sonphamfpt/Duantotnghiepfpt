@@ -28,6 +28,23 @@ export async function getPatientRecordsHandler(
   }
 }
 
+export async function getAllRecordsHandler(
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const data = await medicalRecordsService.getAllRecords();
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+
 export async function createRecordHandler(
   req: Request,
   res: Response,

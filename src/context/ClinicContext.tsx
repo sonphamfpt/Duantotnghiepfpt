@@ -84,7 +84,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Đồng bộ hóa toàn bộ dữ liệu từ backend
   const refreshAllData = async () => {
     // Dùng Promise.allSettled để từng API fail độc lập, không block dữ liệu khác
-    const [resSvc, resDen, resPat, resApp, resQue, resInv, resShf, resNot, resLog, resRev] =
+    const [resSvc, resDen, resPat, resApp, resQue, resInv, resShf, resNot, resLog, resRev, resMed] =
       await Promise.allSettled([
         clinicApi.getServices(),
         clinicApi.getDentists(),
@@ -96,7 +96,13 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         shiftApi.getNotifications(),
         clinicApi.getLogs(),
         reviewApi.getPublicReviews(),
+        medicalRecordApi.getAll(),
       ]);
+
+    if (resMed && resMed.status === 'fulfilled' && resMed.value.data) {
+      setMedicalRecords(resMed.value.data);
+    }
+
 
     if (resSvc.status === 'fulfilled' && resSvc.value.data) setServices(resSvc.value.data);
     else if (resSvc.status === 'rejected') console.warn('[refreshAllData] getServices failed:', resSvc.reason);
@@ -119,8 +125,8 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const mappedInvoices = resInv.value.data.map((backendInv: any) => ({
         id: `I-${backendInv.invoiceId}`,
         patientId: `P-${backendInv.patientId}`,
-        patientName: backendInv.patient?.fullName || 'Khách hàng',
-        patientPhone: backendInv.patient?.phone || '',
+        patientName: backendInv.patient?.user?.fullName || backendInv.patient?.fullName || 'Khách hàng',
+        patientPhone: backendInv.patient?.user?.phone || backendInv.patient?.phone || '',
         services: (backendInv.items || []).map((item: any) => ({
           serviceId: `S-${item.serviceId}`,
           serviceName: item.service?.name || 'Dịch vụ',
@@ -513,6 +519,13 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       });
       if (response.success) {
         addLog('DENTIST', 'SUCCESS', `Hoàn tất phiên điều trị.`);
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === queueId || q.patientId === queueItem.patientId
+              ? { ...q, status: 'Completed' }
+              : q
+          )
+        );
         setAppointments((prev) =>
           prev.map((a) =>
             a.patientId === queueItem.patientId && (a.status === 'Confirmed' || a.status === 'In-Progress')

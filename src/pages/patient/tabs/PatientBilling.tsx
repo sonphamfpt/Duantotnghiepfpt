@@ -33,10 +33,9 @@ export const PatientBilling: React.FC = () => {
     const isIdMatch = Boolean(targetPatientId && iCleanPatientId && iCleanPatientId === targetPatientId) || Boolean(patientId && i.patientId === patientId);
 
     const isPhoneMatch = Boolean(
-      (targetPhone && i.patientPhone && i.patientPhone.includes(targetPhone)) ||
-      (i.patientPhone && targetPhone && targetPhone.includes(i.patientPhone)) ||
-      (i.patientPhone && (i.patientPhone === '0901234567' || i.patientPhone.includes('0901234567')))
+      (targetPhone && i.patientPhone && (i.patientPhone.includes(targetPhone) || targetPhone.includes(i.patientPhone)))
     );
+
 
     const userNameNorm = normalizeStr(user?.name || patientName);
     const iNameNorm = normalizeStr(i.patientName);
@@ -57,7 +56,8 @@ export const PatientBilling: React.FC = () => {
     // Tự động lấy tất cả các ca khám Đã hoàn thành thực tế của bệnh nhân
     const completedAppts = appointments.filter(a => {
       const aPhone = a.patientPhone || '';
-      const isPhone = Boolean(targetPhone && aPhone && (aPhone.includes(targetPhone) || targetPhone.includes(aPhone))) || aPhone.includes('0901234567');
+      const isPhone = Boolean(targetPhone && aPhone && (aPhone.includes(targetPhone) || targetPhone.includes(aPhone)));
+
       const aNameNorm = normalizeStr(a.patientName);
       const uNameNorm = normalizeStr(user?.name || patientName);
       const isName = Boolean(uNameNorm && aNameNorm && (uNameNorm === aNameNorm || uNameNorm.includes(aNameNorm) || aNameNorm.includes(uNameNorm)));

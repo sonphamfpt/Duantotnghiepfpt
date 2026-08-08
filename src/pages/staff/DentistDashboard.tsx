@@ -13,6 +13,9 @@ import { DentistQueue } from './dentist-tabs/DentistQueue';
 import { DentistRecords } from './dentist-tabs/DentistRecords';
 import { DentistSchedule } from './dentist-tabs/DentistSchedule';
 import { ProfileSettings } from '../shared/ProfileSettings';
+import MedicineManagement from './dentist-tabs/MedicineManagement';
+import { fetchActiveMedicines, Medicine as MedicineType } from '../../services/api/medicineApi';
+
 
 const AVAILABLE_DRUGS = [
   { id: 'D-01', name: 'Paracetamol 500mg', type: 'Viên', defaultInstruction: 'Uống 1 viên mỗi 6 giờ khi đau, sau ăn.' },
@@ -73,6 +76,13 @@ const DentistHome: React.FC = () => {
   const [showSignModal, setShowSignModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: string; type: 'pdf' | 'image' | 'prescription'; title: string; size: string; url?: string }>>([]);
+  // ─── Danh mục thuốc từ DB ─────────────────────────────────────────────────────
+  const [dbMedicines, setDbMedicines] = useState<MedicineType[]>([]);
+
+  useEffect(() => {
+    fetchActiveMedicines().then(setDbMedicines).catch(() => {/* Fallback sang AVAILABLE_DRUGS nếu lỗi */});
+  }, []);
+
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -404,9 +414,33 @@ const DentistHome: React.FC = () => {
   };
 
   const handleAddDrug = async (drugId: string) => {
-    const drug = AVAILABLE_DRUGS.find(d => d.id === drugId);
-    if (!drug) return;
-    if (prescriptionDrugs.some(d => d.name === drug.name)) {
+    // Ưu tiên dùng thuốc từ DB, fallback sang AVAILABLE_DRUGS cứng
+    const dbDrug = dbMedicines.find(d => d.id === drugId);
+    const staticDrug = AVAILABLE_DRUGS.find(d => d.id === drugId);
+
+    let name: string;
+    let unit = 'Viên';
+    let instruction = '';
+
+    if (dbDrug) {
+      name = dbDrug.name;
+      // Tự điền liều dùng gợi ý từ DB
+      const parts: string[] = [];
+      if (dbDrug.defaultDose) parts.push(dbDrug.defaultDose);
+      if (dbDrug.defaultDuration) parts.push(`trong ${dbDrug.defaultDuration}`);
+      if (dbDrug.defaultNote) parts.push(dbDrug.defaultNote);
+      instruction = parts.join('. ');
+      // Phát hiện dạng thuốc (chai/viên) dựa vào tên
+      if (name.toLowerCase().includes('chai') || name.toLowerCase().includes('ml')) unit = 'Chai';
+    } else if (staticDrug) {
+      name = staticDrug.name;
+      unit = staticDrug.type;
+      instruction = staticDrug.defaultInstruction;
+    } else {
+      return;
+    }
+
+    if (prescriptionDrugs.some(d => d.name === name)) {
       await showAlert({
         title: 'Cảnh báo',
         message: 'Thuốc này đã có trong đơn thuốc!',
@@ -416,10 +450,11 @@ const DentistHome: React.FC = () => {
     }
     setPrescriptionDrugs(prev => [
       ...prev,
-      { name: drug.name, quantity: 10, unit: drug.type, instruction: drug.defaultInstruction }
+      { name, quantity: 10, unit, instruction }
     ]);
     setSelectedAddDrugId('');
   };
+
 
   const handleAddCustomDrug = async (drugName: string) => {
     const name = drugName.trim();
@@ -1159,15 +1194,21 @@ const DentistHome: React.FC = () => {
                       <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1">Kê thêm thuốc mới</label>
                       <div className="relative">
                         <DrugAutocomplete
-                          availableDrugs={AVAILABLE_DRUGS}
+                          availableDrugs={[
+                            // Thuốc từ DB (ưu tiên)
+                            ...dbMedicines.map(m => ({ id: m.id, name: m.name, type: m.defaultDose || undefined })),
+                            // Fallback: thuốc cứng nếu DB chưa load
+                            ...AVAILABLE_DRUGS.filter(sd => !dbMedicines.some(db => db.name === sd.name)),
+                          ]}
                           onAddDrug={async (id: string) => {
                             await handleAddDrug(id);
                           }}
                           onAddCustomDrug={async (name: string) => {
                             await handleAddCustomDrug(name);
                           }}
-                          placeholder="-- Chọn thuốc trong danh mục --"
+                          placeholder="-- Tìm hoặc nhập tên thuốc --"
                         />
+
                       </div>
                     </div>
                   </div>
@@ -1777,8 +1818,10 @@ export const DentistDashboard: React.FC = () => {
     case 'workspace': content = <DentistHome />; break;
     case 'records': content = <DentistRecords />; break;
     case 'schedule': content = <DentistSchedule dentistId={dentistId} />; break;
+    case 'medicines': content = <MedicineManagement />; break;
     case 'settings': content = <div className="p-container-padding-desktop"><ProfileSettings /></div>; break;
     default: content = <DentistQueue />; break;
+
   }
 
   return <ErrorBoundary>{content}</ErrorBoundary>;

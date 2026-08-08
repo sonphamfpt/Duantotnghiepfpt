@@ -8,6 +8,9 @@ import { CheckInModal } from '../../components/CheckInModal';
 import { ReceptionistQueue } from './receptionist-tabs/ReceptionistQueue';
 import { ReceptionistAppointments } from './receptionist-tabs/ReceptionistAppointments';
 import { ReceptionistReminders } from './receptionist-tabs/ReceptionistReminders';
+import { ReceptionistShiftAlerts } from './receptionist-tabs/ReceptionistShiftAlerts';
+import { ReceptionistCSKH } from './receptionist-tabs/ReceptionistCSKH';
+import { ReceptionistWorkCenter } from './receptionist-tabs/ReceptionistWorkCenter';
 import { ReceptionistCancelHistory } from './receptionist-tabs/ReceptionistCancelHistory';
 import { ProfileSettings } from '../shared/ProfileSettings';
 
@@ -95,10 +98,47 @@ const ReceptionistHome: React.FC = () => {
               </p>
             </div>
             <button
-              onClick={() => navigate('?tab=reminders')}
+              onClick={() => navigate('?tab=work-center&subTab=shift')}
               className="shrink-0 flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl font-bold text-xs cursor-pointer transition-all active:scale-95"
             >
               Xem &amp; Xử lý
+              <Icon name="chevron_right" className="text-[16px]" />
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* ── No-Show Alert Banner ── */}
+      {(() => {
+        const resolvedCSKHIds = (() => {
+          try { return JSON.parse(localStorage.getItem('goodsmile_cskh_resolved') || '[]'); }
+          catch { return []; }
+        })();
+        const noShowCount = appointments.filter(a => a.status === 'NoShow' && !resolvedCSKHIds.includes(a.id)).length;
+        if (noShowCount === 0) return null;
+        return (
+          <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-4 text-white flex items-center gap-4 shadow-lg shadow-amber-200/50">
+            <div className="relative shrink-0">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                <Icon name="person_off" className="text-[22px]" />
+              </div>
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-black animate-bounce">
+                {noShowCount}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm">
+                Có {noShowCount} bệnh nhân lỡ hẹn chưa được CSKH liên hệ
+              </p>
+              <p className="text-xs opacity-80 mt-0.5">
+                Cần gọi xác nhận: đặt lại hoặc hủy hẳn lịch hẹn
+              </p>
+            </div>
+            <button
+              onClick={() => navigate('?tab=work-center&subTab=cskh')}
+              className="shrink-0 flex items-center gap-1.5 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl font-bold text-xs cursor-pointer transition-all active:scale-95"
+            >
+              Xử lý ngay
               <Icon name="chevron_right" className="text-[16px]" />
             </button>
           </div>
@@ -302,17 +342,22 @@ const ReceptionistHome: React.FC = () => {
   );
 };
 
-// ─── Main ReceptionistDashboard (Tab Router) ────────────────────────────────────
+// ─── Main ReceptionistDashboard (Tab Router) ───────────────────────────────────────────────────
 export const ReceptionistDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
   const tab = searchParams.get('tab');
 
   switch (tab) {
-    case 'queue': return <ReceptionistQueue />;
-    case 'appointments': return <ReceptionistAppointments />;
-    case 'reminders': return <ReceptionistReminders />;
-    case 'history': return <ReceptionistCancelHistory />;
-    case 'settings': return <div className="p-container-padding-desktop"><ProfileSettings /></div>;
-    default: return <ReceptionistHome />;
+    case 'queue':         return <ReceptionistQueue />;
+    case 'appointments':  return <ReceptionistAppointments />;
+    // Tab trung tâm làm việc mới (chứa 2 subtab bên trong)
+    case 'work-center':   return <ReceptionistWorkCenter />;
+    // Backward compat — giữ các route cũ
+    case 'shift-alerts':  return <ReceptionistShiftAlerts />;
+    case 'cskh':          return <ReceptionistCSKH />;
+    case 'reminders':     return <ReceptionistReminders />;
+    case 'history':       return <ReceptionistCancelHistory />;
+    case 'settings':      return <div className="p-container-padding-desktop"><ProfileSettings /></div>;
+    default:              return <ReceptionistHome />;
   }
 };

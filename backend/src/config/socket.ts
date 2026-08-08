@@ -30,7 +30,7 @@ class SocketManager {
   init(httpServer: HttpServer): void {
     this.io = new Server(httpServer, {
       cors: {
-        origin: ['http://localhost:5173', 'http://localhost:3000'],
+        origin: true,
         methods: ['GET', 'POST'],
       },
       // Cho phép polling fallback nếu WebSocket không được hỗ trợ

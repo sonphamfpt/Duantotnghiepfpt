@@ -50,10 +50,11 @@ export class AppointmentsController {
         let phoneToCheck = patientPhone;
         if (patientId) {
           const patient = await prisma.patient.findUnique({
-            where: { patientId: parseId(patientId) }
+            where: { patientId: parseId(patientId) },
+            include: { user: true },
           });
           if (patient) {
-            phoneToCheck = patient.phone;
+            phoneToCheck = patient.user.phone || patientPhone;
           }
         }
 

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
+import { RoleCode } from '@prisma/client';
 import { AppError } from '../../middlewares/errorHandler';
 import { authGuard } from '../../middlewares/authGuard';
 import { requireRole } from '../../middlewares/roleGuard';
@@ -21,13 +22,15 @@ function calcAge(dateOfBirth: Date): number {
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const list = await prisma.patient.findMany({
-      include: { tier: true },
-      orderBy: { fullName: 'asc' },
+      include: { tier: true, user: true },
     });
+    // Sort theo tên User
+    list.sort((a, b) => (a.user?.fullName || '').localeCompare(b.user?.fullName || ''));
+
     const formatted = list.map(p => ({
       id: `P-${p.patientId}`,
-      name: p.fullName,
-      phone: p.phone,
+      name: p.user.fullName,
+      phone: p.user.phone || '',
       age: p.dateOfBirth ? calcAge(p.dateOfBirth) : null,
       dateOfBirth: p.dateOfBirth ? p.dateOfBirth.toISOString().split('T')[0] : null,
       gender: p.gender || null,
@@ -53,18 +56,9 @@ router.get('/lookup', async (req: Request, res: Response, next: NextFunction) =>
       return res.status(200).json({ success: true, data: { found: false } });
     }
 
-    const patient = await prisma.patient.findUnique({
-      where: { phone },
-      select: {
-        patientId: true,
-        fullName: true,
-        phone: true,
-        gender: true,
-        dateOfBirth: true,
-        address: true,
-        isLocked: true,
-        userId: true,
-      },
+    const patient = await prisma.patient.findFirst({
+      where: { user: { phone } },
+      include: { user: true },
     });
 
     if (!patient) {
@@ -76,13 +70,14 @@ router.get('/lookup', async (req: Request, res: Response, next: NextFunction) =>
       data: {
         found: true,
         patientId: `P-${patient.patientId}`,
-        fullName: patient.fullName,
-        phone: patient.phone,
+        name: patient.user.fullName,
+        fullName: patient.user.fullName,
+        phone: patient.user.phone || '',
         gender: patient.gender || null,
         dateOfBirth: patient.dateOfBirth ? patient.dateOfBirth.toISOString().split('T')[0] : '',
         address: patient.address || '',
         isLocked: patient.isLocked,
-        hasAccount: patient.userId !== null,
+        hasAccount: patient.user.passwordHash !== null,
       },
     });
   } catch (err) {
@@ -103,9 +98,13 @@ router.post('/', authGuard, requireRole('receptionist', 'manager'), async (req: 
       throw new AppError(400, 'Số điện thoại không hợp lệ.', 'VALIDATION_ERROR');
     }
 
-    const existing = await prisma.patient.findUnique({ where: { phone: normalizedPhone } });
-    if (existing) {
-      throw new AppError(409, 'Số điện thoại này đã có hồ sơ bệnh nhân.', 'PATIENT_ALREADY_EXISTS');
+    // Kiểm tra xem đã có User với SĐT này chưa
+    const existingUser = await prisma.user.findFirst({ where: { phone: normalizedPhone } });
+    if (existingUser) {
+      const existingPatient = await prisma.patient.findUnique({ where: { userId: existingUser.userId } });
+      if (existingPatient) {
+        throw new AppError(409, 'Số điện thoại này đã có hồ sơ bệnh nhân.', 'PATIENT_ALREADY_EXISTS');
+      }
     }
 
     const tier = await prisma.membershipTier.findUnique({ where: { code: 'STANDARD' } });
@@ -113,12 +112,36 @@ router.post('/', authGuard, requireRole('receptionist', 'manager'), async (req: 
       throw new AppError(500, 'Không tìm thấy phân hạng thành viên Standard.', 'TIER_NOT_FOUND');
     }
 
+    const patientRole = await prisma.role.findUnique({ where: { code: RoleCode.patient } });
+    if (!patientRole) {
+      throw new AppError(500, 'Không tìm thấy vai trò Bệnh nhân trong hệ thống.', 'ROLE_NOT_FOUND');
+    }
+
     const parsedDateOfBirth = dateOfBirth ? new Date(`${dateOfBirth}T00:00:00.000Z`) : null;
 
+    // 1. Tạo hoặc dùng User có sẵn
+    let targetUserId: bigint;
+    if (existingUser) {
+      targetUserId = existingUser.userId;
+      await prisma.user.update({
+        where: { userId: targetUserId },
+        data: { fullName: String(name).trim() },
+      });
+    } else {
+      const newUser = await prisma.user.create({
+        data: {
+          fullName: String(name).trim(),
+          phone: normalizedPhone,
+          roleId: patientRole.roleId,
+        },
+      });
+      targetUserId = newUser.userId;
+    }
+
+    // 2. Tạo bản ghi Patient
     const patient = await prisma.patient.create({
       data: {
-        fullName: String(name).trim(),
-        phone: normalizedPhone,
+        userId: targetUserId,
         dateOfBirth: parsedDateOfBirth,
         gender: gender || null,
         criticalAllergy: criticalAllergy || 'Không',
@@ -126,7 +149,7 @@ router.post('/', authGuard, requireRole('receptionist', 'manager'), async (req: 
         address: address ? String(address).trim() : null,
         tierId: tier.tierId,
       },
-      include: { tier: true },
+      include: { tier: true, user: true },
     });
 
     return res.status(201).json({
@@ -134,8 +157,8 @@ router.post('/', authGuard, requireRole('receptionist', 'manager'), async (req: 
       message: 'Tạo hồ sơ bệnh nhân thành công.',
       data: {
         id: `P-${patient.patientId}`,
-        name: patient.fullName,
-        phone: patient.phone,
+        name: patient.user.fullName,
+        phone: patient.user.phone || '',
         age: patient.dateOfBirth ? calcAge(patient.dateOfBirth) : null,
         gender: patient.gender || null,
         criticalAllergy: patient.criticalAllergy || 'Không',
@@ -158,14 +181,24 @@ router.patch('/:id', authGuard, requireRole('receptionist', 'manager', 'dentist'
     const patientId = BigInt(req.params.id.replace('P-', ''));
     const { name, phone, criticalAllergy, condition, gender, dateOfBirth, address } = req.body;
 
-    const existing = await prisma.patient.findUnique({ where: { patientId } });
+    const existing = await prisma.patient.findUnique({ where: { patientId }, include: { user: true } });
     if (!existing) {
       throw new AppError(404, 'Không tìm thấy hồ sơ bệnh nhân.', 'PATIENT_NOT_FOUND');
     }
 
+    // Cập nhật User (name, phone)
+    if (name !== undefined || phone !== undefined) {
+      const userUpdate: Record<string, unknown> = {};
+      if (name !== undefined) userUpdate.fullName = String(name).trim();
+      if (phone !== undefined) userUpdate.phone = String(phone).trim().replace(/[\s-]/g, '');
+
+      await prisma.user.update({
+        where: { userId: existing.userId },
+        data: userUpdate,
+      });
+    }
+
     const updateData: Record<string, unknown> = {};
-    if (name !== undefined) updateData.fullName = String(name).trim();
-    if (phone !== undefined) updateData.phone = String(phone).trim().replace(/[\s-]/g, '');
     if (criticalAllergy !== undefined) updateData.criticalAllergy = criticalAllergy;
     if (condition !== undefined) updateData.medicalCondition = condition;
     if (gender !== undefined) updateData.gender = gender;
@@ -181,7 +214,7 @@ router.patch('/:id', authGuard, requireRole('receptionist', 'manager', 'dentist'
     const updated = await prisma.patient.update({
       where: { patientId },
       data: updateData,
-      include: { tier: true },
+      include: { tier: true, user: true },
     });
 
     return res.status(200).json({
@@ -189,8 +222,8 @@ router.patch('/:id', authGuard, requireRole('receptionist', 'manager', 'dentist'
       message: 'Cập nhật thông tin bệnh nhân thành công.',
       data: {
         id: `P-${updated.patientId}`,
-        name: updated.fullName,
-        phone: updated.phone,
+        name: updated.user.fullName,
+        phone: updated.user.phone || '',
         criticalAllergy: updated.criticalAllergy || 'Không',
         condition: updated.medicalCondition || 'Bình thường',
         gender: updated.gender || null,

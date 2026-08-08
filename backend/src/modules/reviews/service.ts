@@ -62,7 +62,7 @@ export async function createReview(params: CreateReviewParams) {
     : ReviewStatus.Hidden;    // Nội dung bất lịch sự / spam → ẩn, chờ manager
 
   // 5. AI Phân tích cảm xúc & tạo phản hồi tự động
-  const patientName = patient.user?.fullName || patient.fullName;
+  const patientName = patient.user?.fullName || 'Bệnh nhân';
   const { sentiment, aiReply } = generateAIReply({
     patientName,
     serviceName,
@@ -179,7 +179,7 @@ export async function reGenerateAIReply(reviewId: bigint) {
     throw new AppError(404, 'Không tìm thấy bài đánh giá.', 'NOT_FOUND');
   }
 
-  const patientName = existing.patient.user?.fullName || existing.patient.fullName;
+  const patientName = existing.patient.user?.fullName || 'Bệnh nhân';
   const serviceName = existing.service?.name;
 
   const { sentiment, aiReply } = generateAIReply({

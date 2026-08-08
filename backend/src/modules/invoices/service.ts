@@ -9,7 +9,7 @@ import { socketManager } from '../../config/socket';
 export async function getInvoices() {
   return await prisma.invoice.findMany({
     include: {
-      patient: { include: { tier: true } },
+      patient: { include: { tier: true, user: true } },
       dentist: { include: { user: true } },
       room: true,
       items: { include: { service: true } },
@@ -28,7 +28,7 @@ export async function getInvoiceById(invoiceId: bigint) {
   const invoice = await prisma.invoice.findUnique({
     where: { invoiceId },
     include: {
-      patient: { include: { tier: true } },
+      patient: { include: { tier: true, user: true } },
       dentist: { include: { user: true } },
       room: true,
       items: { include: { service: true } },
@@ -56,7 +56,7 @@ export async function createInvoice(data: {
   // 1. Lấy thông tin bệnh nhân và hạng thành viên
   const patient = await prisma.patient.findUnique({
     where: { patientId: data.patientId },
-    include: { tier: true },
+    include: { tier: true, user: true },
   });
 
   if (!patient) {
@@ -215,7 +215,7 @@ export async function processPayment(
         status: newStatus,
       },
       include: {
-        patient: { include: { tier: true } },
+        patient: { include: { tier: true, user: true } },
         items: { include: { service: true } },
         payments: true,
       },
@@ -260,6 +260,7 @@ export async function rechargeWallet(patientId: bigint, amount: number, actorUse
       },
       include: {
         tier: true,
+        user: true,
       },
     });
 
@@ -277,7 +278,7 @@ export async function rechargeWallet(patientId: bigint, amount: number, actorUse
       data: {
         module: LogModule.SYSTEM,
         logType: LogType.SUCCESS,
-        message: `Nạp ₫${amount.toLocaleString()} thành công vào ví của bệnh nhân ${patient.fullName}.`,
+        message: `Nạp ₫${amount.toLocaleString()} thành công vào ví của bệnh nhân ${updatedPatient.user.fullName}.`,
         actorUserId: actorUserId || null,
       },
     });

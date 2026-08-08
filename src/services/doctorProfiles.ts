@@ -1,7 +1,8 @@
 /**
  * NOTE: Dữ liệu bác sĩ (học vấn, bằng cấp, châm ngôn, lịch sử công tác, thế mạnh điều trị...)
- * hiện đã được chuyển sang lưu trữ 100% trong CSDL PostgreSQL (bảng dentists, dentist_education,
- * dentist_certifications, dentist_clinical_strengths, dentist_work_history).
+ * hiện đã được chuyển sang lưu trữ 100% trong CSDL PostgreSQL.
+ * Tất cả thông tin phụ (education, certification, clinical_strength, work_history)
+ * được lưu trong bảng hợp nhất `dentist_profile_items` phân biệt qua cột `section`.
  * 
  * Frontend lấy dữ liệu động qua API GET /api/dentists và ClinicContext.
  */

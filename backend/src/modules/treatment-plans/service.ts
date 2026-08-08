@@ -9,7 +9,7 @@ export async function getTreatmentPlans(patientId?: bigint) {
   return await prisma.treatmentPlan.findMany({
     where: patientId ? { patientId } : undefined,
     include: {
-      patient: { include: { tier: true } },
+      patient: { include: { tier: true, user: true } },
       dentist: { include: { user: true } },
       medicalRecords: true,
     },
@@ -26,7 +26,7 @@ export async function getTreatmentPlanById(planId: bigint) {
   const plan = await prisma.treatmentPlan.findUnique({
     where: { planId },
     include: {
-      patient: { include: { tier: true } },
+      patient: { include: { tier: true, user: true } },
       dentist: { include: { user: true } },
       medicalRecords: {
         include: {

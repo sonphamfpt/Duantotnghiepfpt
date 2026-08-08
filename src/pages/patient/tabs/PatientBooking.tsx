@@ -42,7 +42,8 @@ export const PatientBooking: React.FC = () => {
   const [patientName, setPatientName] = useState(user?.name || '');
   const [patientPhone, setPatientPhone] = useState(user?.phone || '');
   const [selectedServiceId, setSelectedServiceId] = useState('');
-  const [selectedDentistId, setSelectedDentistId] = useState('ANY');
+  const [selectedDentistId, setSelectedDentistId] = useState('');
+
   const [date, setDate] = useState(minDateStr);
   const [selectedTimeIso, setSelectedTimeIso] = useState('');
   const [notes, setNotes] = useState('');
@@ -124,7 +125,7 @@ export const PatientBooking: React.FC = () => {
 
   // Fetch slots — không dùng useCallback để tránh vòng lặp re-render
   const fetchAvailableSlots = async (dentistId: string, serviceId: string, dateStr: string) => {
-    if (!serviceId || !dateStr) {
+    if (!serviceId || !dateStr || !dentistId) {
       setAvailableSlots([]);
       setSelectedTimeIso('');
       return;
@@ -134,58 +135,19 @@ export const PatientBooking: React.FC = () => {
     setSlotsError('');
 
     try {
-      if (dentistId === 'ANY' || !dentistId) {
-        const activeDentistsOnDate = dentists.filter(d =>
-          doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
-        );
-        const targetDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
+      const response = await appointmentApi.getAvailableSlots(dentistId, dateStr, serviceId);
+      const rawSlots = response.data || [];
 
-        if (targetDentists.length === 0) {
-          setSlotsError('Không có bác sĩ nào có ca trực trong ngày này.');
-          setAvailableSlots([]);
-          setSelectedTimeIso('');
-          return;
-        }
+      const activeShiftsForDoc = doctorShifts.filter(s => isSameDentistId(s.dentistId, dentistId) && s.date === dateStr);
+      const slots = rawSlots.filter(slotIso => isSlotInDoctorShifts(slotIso, activeShiftsForDoc));
 
-        const responses = await Promise.allSettled(
-          targetDentists.map(d => appointmentApi.getAvailableSlots(d.id, dateStr, serviceId))
-        );
-
-        let combinedSlotsSet = new Set<string>();
-        responses.forEach((res, idx) => {
-          if (res.status === 'fulfilled' && res.value.data) {
-            const docId = targetDentists[idx].id;
-            const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, docId) && s.date === dateStr);
-            const validSlots = res.value.data.filter(slotIso => isSlotInDoctorShifts(slotIso, activeShifts));
-            validSlots.forEach(slot => combinedSlotsSet.add(slot));
-          }
-        });
-
-        const combinedSlots = Array.from(combinedSlotsSet).sort();
-        if (combinedSlots.length > 0) {
-          setAvailableSlots(combinedSlots);
-          setSelectedTimeIso((prev) => combinedSlots.includes(prev) ? prev : (combinedSlots[0] || ''));
-        } else {
-          setSlotsError('Không có khung giờ trống trong ca trực của các bác sĩ. Vui lòng chọn ngày khác.');
-          setAvailableSlots([]);
-          setSelectedTimeIso('');
-        }
+      if (slots.length > 0) {
+        setAvailableSlots(slots);
+        setSelectedTimeIso((prev) => slots.includes(prev) ? prev : (slots[0] || ''));
       } else {
-        const response = await appointmentApi.getAvailableSlots(dentistId, dateStr, serviceId);
-        const rawSlots = response.data || [];
-
-        // Lọc ngặt nghèo khung giờ trống theo đúng ca trực thực tế của bác sĩ trong ngày (chuẩn hóa ID D-01 = D-1)
-        const activeShiftsForDoc = doctorShifts.filter(s => isSameDentistId(s.dentistId, dentistId) && s.date === dateStr);
-        const slots = rawSlots.filter(slotIso => isSlotInDoctorShifts(slotIso, activeShiftsForDoc));
-
-        if (slots.length > 0) {
-          setAvailableSlots(slots);
-          setSelectedTimeIso((prev) => slots.includes(prev) ? prev : (slots[0] || ''));
-        } else {
-          setSlotsError('Không có khung giờ trống trong ca trực của bác sĩ. Vui lòng chọn ngày khác.');
-          setAvailableSlots([]);
-          setSelectedTimeIso('');
-        }
+        setSlotsError('Không có khung giờ trống trong ca trực của bác sĩ. Vui lòng chọn ngày hoặc bác sĩ khác.');
+        setAvailableSlots([]);
+        setSelectedTimeIso('');
       }
     } catch (err: any) {
       console.error('Lỗi khi lấy slot khám:', err);
@@ -196,6 +158,7 @@ export const PatientBooking: React.FC = () => {
       setLoadingSlots(false);
     }
   };
+
 
   // Cập nhật ref mỗi khi dependencies thay đổi (không gây re-render)
   fetchSlotsRef.current = () => fetchAvailableSlots(selectedDentistId, selectedServiceId, date);
@@ -224,7 +187,8 @@ export const PatientBooking: React.FC = () => {
     return true;
   };
 
-  const isSlotAvailableRealtime = (slotIso: string, targetDentistId: string, dateStr: string): boolean => {
+  const isSlotAvailableRealtime = (slotIso: string, targetDentistId: string, _dateStr?: string): boolean => {
+
     const slotStart = new Date(slotIso).getTime();
     if (isNaN(slotStart)) return false;
 
@@ -263,45 +227,11 @@ export const PatientBooking: React.FC = () => {
       });
     };
 
-    if (targetDentistId && targetDentistId !== 'ANY') {
-      return !isDoctorOccupied(targetDentistId);
-    }
-
-    const activeDentistsOnDate = dentists.filter(d =>
-      doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
-    );
-    const candidateDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
-
-    return candidateDentists.some(d => {
-      const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr);
-      return isSlotInDoctorShifts(slotIso, activeShifts) && !isDoctorOccupied(d.id);
-    });
+    return !isDoctorOccupied(targetDentistId);
   };
 
-  const resolveEffectiveDentistId = (targetDentistId: string, timeIso: string, dateStr: string): string => {
-    if (targetDentistId && targetDentistId !== 'ANY') return targetDentistId;
 
-    const activeDentistsOnDate = dentists.filter(d =>
-      doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr)
-    );
-    const candidateDentists = activeDentistsOnDate.length > 0 ? activeDentistsOnDate : dentists;
 
-    const availableCandidates: string[] = [];
-    for (const d of candidateDentists) {
-      const activeShifts = doctorShifts.filter(s => isSameDentistId(s.dentistId, d.id) && s.date === dateStr);
-      if (isSlotInDoctorShifts(timeIso, activeShifts) && isSlotAvailableRealtime(timeIso, d.id, dateStr)) {
-        availableCandidates.push(d.id);
-      }
-    }
-
-    if (availableCandidates.length > 0) {
-      const randomIndex = Math.floor(Math.random() * availableCandidates.length);
-      return availableCandidates[randomIndex];
-    }
-
-    const freeDentist = candidateDentists.find(d => isSlotAvailableRealtime(timeIso, d.id, dateStr));
-    return freeDentist?.id || candidateDentists[0]?.id || 'D-01';
-  };
 
   const checkDuplicate = (phone: string, dateStr: string, timeIso: string): boolean => {
     const formattedDate = formatLocalDateStr(dateStr);
@@ -327,8 +257,9 @@ export const PatientBooking: React.FC = () => {
     const nErr = validateName(patientName);
     const pErr = validatePhone(patientPhone);
     const sErr = !selectedServiceId ? 'Vui lòng chọn dịch vụ điều trị.' : '';
-    const dErr = ''; // Bác sĩ luôn hợp lệ (mặc định: Phòng khám tự phân công)
+    const dErr = !selectedDentistId ? 'Vui lòng chọn bác sĩ thăm khám.' : '';
     const tErr = !selectedTimeIso ? 'Vui lòng chọn khung giờ hẹn khám.' : '';
+
 
     setNameError(nErr);
     setPhoneError(pErr);
@@ -348,12 +279,12 @@ export const PatientBooking: React.FC = () => {
 
     setSubmitting(true);
     try {
-      const effectiveDentistId = resolveEffectiveDentistId(selectedDentistId, selectedTimeIso, date);
-      const latestSlots = await appointmentApi.ensureSlotAvailable(effectiveDentistId, date, selectedServiceId, selectedTimeIso);
+      const latestSlots = await appointmentApi.ensureSlotAvailable(selectedDentistId, date, selectedServiceId, selectedTimeIso);
       setAvailableSlots(latestSlots);
       setSelectedTimeIso((prev) => latestSlots.includes(prev) ? prev : '');
       setShowOtpModal(true);
     } catch (err: any) {
+
       setAntiSpamError(err.message || 'Khung giờ đã chọn không còn khả dụng. Vui lòng chọn lại.');
       fetchSlotsRef.current?.();
     } finally {
@@ -365,9 +296,9 @@ export const PatientBooking: React.FC = () => {
     const service = services.find(s => s.id === selectedServiceId);
     if (!service) return;
 
-    const effectiveDentistId = resolveEffectiveDentistId(selectedDentistId, selectedTimeIso, date);
-    const dentist = dentists.find(d => d.id === effectiveDentistId) || dentists[0];
+    const dentist = dentists.find(d => d.id === selectedDentistId) || dentists[0];
     if (!dentist) return;
+
 
     setSubmitting(true);
     setAntiSpamError('');
@@ -384,7 +315,6 @@ export const PatientBooking: React.FC = () => {
       });
 
       const bookedApp = response.data;
-      const isRandomAllocated = selectedDentistId === 'ANY';
 
       const localApp = {
         id: `A-${bookedApp.appointmentId}`,
@@ -393,10 +323,11 @@ export const PatientBooking: React.FC = () => {
         patientPhone: patientPhone,
         serviceName: service.name,
         dentistId: dentist.id,
-        dentistName: `${dentist.name}${isRandomAllocated ? ' (Phân công tự động)' : ''}`,
+        dentistName: dentist.name,
         time: `${formatLocalDateStr(date)} @ ${selectedTimeIso ? formatSlotToTimeString(selectedTimeIso) : ''}`,
         status: 'Confirmed' as const,
       };
+
 
       addLog('SYSTEM', 'SUCCESS', `Bệnh nhân ${patientName} (SĐT: ${patientPhone}) đặt lịch hẹn khám thành công.`);
 
@@ -662,7 +593,7 @@ export const PatientBooking: React.FC = () => {
                     dentistError ? 'border-red-400 focus:border-red-500 focus:bg-white' : 'border-slate-300 focus:border-[#005eb8] focus:bg-white'
                   }`}
                 >
-                  <option value="ANY">🎲 Bất kỳ bác sĩ nào (Phòng khám tự phân công)</option>
+                  <option value="">-- Chọn bác sĩ phụ trách --</option>
                   {dentists.filter(d => 
                     doctorShifts.some(s => isSameDentistId(s.dentistId, d.id) && s.date === date)
                   ).map(d => (
@@ -670,7 +601,9 @@ export const PatientBooking: React.FC = () => {
                       {d.name.replace(/^bác sĩ\s+/i, 'BS. ')}
                     </option>
                   ))}
+
                 </select>
+
                 {dentistError && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><span>⚠</span>{dentistError}</p>}
               </div>
             </div>

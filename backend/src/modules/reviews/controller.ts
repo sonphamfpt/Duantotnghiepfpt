@@ -53,7 +53,7 @@ export async function getPublicReviewsHandler(req: Request, res: Response, next:
 
     const formatted = data.map(r => ({
       id: `REV-${r.reviewId}`,
-      patientName: r.patient.user?.fullName || r.patient.fullName,
+      patientName: r.patient.user?.fullName || 'Bệnh nhân',
       serviceName: r.service?.name || 'Dịch vụ nha khoa',
       dentistName: r.appointment?.dentist?.user?.fullName || 'Bác sĩ GoodSmile',
       rating: r.rating,
@@ -86,8 +86,8 @@ export async function getManageReviewsHandler(req: Request, res: Response, next:
     const formatted = data.map(r => ({
       id: `REV-${r.reviewId}`,
       patientId: `P-${r.patientId}`,
-      patientName: r.patient.user?.fullName || r.patient.fullName,
-      patientPhone: r.patient.phone,
+      patientName: r.patient.user?.fullName || 'Bệnh nhân',
+      patientPhone: r.patient.user?.phone || '',
       serviceName: r.service?.name || 'Dịch vụ nha khoa',
       dentistName: r.appointment?.dentist?.user?.fullName || 'Bác sĩ GoodSmile',
       rating: r.rating,

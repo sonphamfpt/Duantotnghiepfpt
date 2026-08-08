@@ -524,7 +524,7 @@ export async function resolveConflictItem(
         data: {
           module: 'RECEPTION',
           logType: 'SUCCESS',
-          message: `Lễ tân cập nhật lịch hẹn ${appointmentId} của ${affectedItem.appointment.patient.fullName}: chuyển sang Bác sĩ mới (đã đồng ý).`,
+          message: `Lễ tân cập nhật lịch hẹn ${appointmentId} của ${affectedItem.appointment.patient.user.fullName}: chuyển sang Bác sĩ mới (đã đồng ý).`,
         },
       });
     } else if (action === 'cancelled') {
@@ -546,7 +546,7 @@ export async function resolveConflictItem(
         data: {
           module: 'RECEPTION',
           logType: 'WARN',
-          message: `Hủy lịch hẹn ${appointmentId} của ${affectedItem.appointment.patient.fullName} do không đồng ý đổi bác sĩ.`,
+          message: `Hủy lịch hẹn ${appointmentId} của ${affectedItem.appointment.patient.user.fullName} do không đồng ý đổi bác sĩ.`,
         },
       });
     }

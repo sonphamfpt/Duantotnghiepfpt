@@ -72,10 +72,10 @@ export const ReceptionistCancelHistory: React.FC = () => {
     return true;
   };
 
-  // Lọc tất cả ca hủy & lỡ hẹn theo mốc thời gian trước
+  // Chỉ lọc ca đã được XÁC NHẬN hủy (Cancelled) — NoShow được xử lý ở tab "Nhắc việc"
   const cancelledByDate = (appointments || []).filter(a => {
     if (!a) return false;
-    if (a.status !== 'Cancelled' && a.status !== 'NoShow') return false;
+    if (a.status !== 'Cancelled') return false;
     const dateObj = parseAppointmentDate(a);
     return isDateInFilter(dateObj, dateFilter);
   });
@@ -162,7 +162,8 @@ export const ReceptionistCancelHistory: React.FC = () => {
             Lịch sử hủy lịch hẹn
           </h2>
           <p className="text-body-md text-on-surface-variant mt-1">
-            Theo dõi danh sách bệnh nhân bị hủy lịch do bác sĩ đổi ca/nghỉ hoặc hủy thủ công
+            Danh sách lịch hẹn đã được <strong>xác nhận hủy</strong> bởi lễ tân hoặc bệnh nhân.
+            Bệnh nhân lỡ hẹn (NoShow) được xử lý riêng tại tab <strong>Nhắc việc → Cần CSKH liên hệ</strong>.
           </p>
         </div>
       </div>
@@ -171,19 +172,19 @@ export const ReceptionistCancelHistory: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           {
-            label: 'Tổng số ca đã hủy',
+            label: 'Tổng ca đã xác nhận hủy',
             value: stats.total,
             icon: 'event_busy',
             color: 'text-red-700 bg-red-50 border-red-200',
           },
           {
-            label: 'Tự động hủy (Do bác sĩ nghỉ/đổi ca)',
+            label: 'Hủy do bác sĩ đổi ca / nghỉ',
             value: stats.auto,
-            icon: 'no_accounts',
+            icon: 'swap_horiz',
             color: 'text-orange-700 bg-orange-50 border-orange-200',
           },
           {
-            label: 'Hủy thủ công (Bệnh nhân/Lễ tân hủy)',
+            label: 'Hủy bởi lễ tân / bệnh nhân',
             value: stats.manual,
             icon: 'cancel',
             color: 'text-slate-700 bg-slate-50 border-slate-200',

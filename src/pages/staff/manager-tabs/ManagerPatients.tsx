@@ -12,8 +12,15 @@ export const getPatientTier = (recordCount: number) => {
   return { label: 'Thường', class: 'bg-slate-100 text-slate-700 border-slate-200', code: 'Standard' };
 };
 
+const isSamePatientId = (id1?: string | null, id2?: string | null): boolean => {
+  if (!id1 || !id2) return false;
+  const s1 = String(id1).trim().replace(/^P-?/i, '');
+  const s2 = String(id2).trim().replace(/^P-?/i, '');
+  return s1 === s2;
+};
+
 export const ManagerPatients: React.FC = () => {
-  const { patients, appointments, medicalRecords, unlockPatient, lockPatient } = useClinic();
+  const { patients, appointments, medicalRecords, invoices } = useClinic();
   const { showConfirm, showAlert } = useConfirm();
 
   // Filters
@@ -24,12 +31,18 @@ export const ManagerPatients: React.FC = () => {
 
   // Helper stats calculation
   const getPatientStats = (patientId: string) => {
-    const recordCount = medicalRecords.filter(mr => mr.patientId === patientId).length;
-    const patientAppointments = appointments.filter(a => a.patientId === patientId);
+    const mrCount = medicalRecords.filter(mr => isSamePatientId(mr.patientId, patientId)).length;
+    const invCount = invoices.filter(inv => isSamePatientId(inv.patientId, patientId)).length;
+    const apptCount = appointments.filter(a => isSamePatientId(a.patientId, patientId) && (a.status === 'Completed' || a.status === 'Confirmed')).length;
+    
+    // Total visit count is maximum of recorded medical entries, invoices, or completed appointments
+    const recordCount = Math.max(mrCount, invCount, apptCount);
+
+    const patientAppointments = appointments.filter(a => isSamePatientId(a.patientId, patientId));
     const cancelCount = patientAppointments.filter(a => a.status === 'Cancelled').length;
     
     // Status lock rule: If patient is manually unlocked by manager, isLocked is false. Otherwise, locked if manually locked or cancelCount >= 3.
-    const patient = patients.find(p => p.id === patientId);
+    const patient = patients.find(p => isSamePatientId(p.id, patientId));
     const isLocked = patient?.isUnlocked ? false : Boolean(patient?.isLocked || cancelCount >= 3);
     const isFrequent = recordCount >= 3;
 
@@ -40,6 +53,7 @@ export const ManagerPatients: React.FC = () => {
       isFrequent
     };
   };
+
 
   // Filtered patients list
   const filteredPatients = patients.filter(patient => {

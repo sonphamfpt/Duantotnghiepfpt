@@ -2,7 +2,7 @@ import { prisma } from '../../config/prisma';
 import { redis } from '../../config/redis';
 import { AppError } from '../../middlewares/errorHandler';
 import { calculateAvailableSlots } from '../../utils/slotCalculator';
-import { Prisma } from '@prisma/client';
+import { Prisma, RoleCode } from '@prisma/client';
 import { socketManager } from '../../config/socket';
 
 async function resolveServiceId(id: string): Promise<bigint> {
@@ -209,13 +209,16 @@ export class AppointmentsService {
         throw new AppError(400, 'Thiếu thông tin họ tên hoặc số điện thoại của bệnh nhân vãng lai.', 'GUEST_INFO_REQUIRED');
       }
 
+      const normalizedPhone = patientPhone.trim().replace(/[\s-]/g, '');
+
       // Kiểm tra xem số điện thoại này đã có hồ sơ bệnh nhân trong DB chưa
-      let patient = await prisma.patient.findUnique({
-        where: { phone: patientPhone.trim() },
+      let patient = await prisma.patient.findFirst({
+        where: { user: { phone: normalizedPhone } },
+        include: { user: true },
       });
 
       if (!patient) {
-        // Tự động tạo hồ sơ bệnh nhân vãng lai mới
+        // Tự động tạo hồ sơ User + Patient cho bệnh nhân vãng lai mới
         const tier = await prisma.membershipTier.findFirst({
           where: { code: 'STANDARD' },
         });
@@ -224,12 +227,30 @@ export class AppointmentsService {
           throw new AppError(500, 'Không tìm thấy hạng thành viên mặc định (STANDARD). Vui lòng liên hệ quản trị viên.', 'TIER_NOT_FOUND');
         }
 
+        const patientRole = await prisma.role.findUnique({ where: { code: RoleCode.patient } });
+
+        let user = await prisma.user.findFirst({ where: { phone: normalizedPhone } });
+        if (!user) {
+          user = await prisma.user.create({
+            data: {
+              fullName: patientName.trim(),
+              phone: normalizedPhone,
+              roleId: patientRole!.roleId,
+            },
+          });
+        } else {
+          await prisma.user.update({
+            where: { userId: user.userId },
+            data: { fullName: patientName.trim() },
+          });
+        }
+
         patient = await prisma.patient.create({
           data: {
-            fullName: patientName.trim(),
-            phone: patientPhone.trim(),
+            userId: user.userId,
             tierId: tier.tierId,
           },
+          include: { user: true },
         });
       } else {
         if (patient.isLocked) {
@@ -240,19 +261,12 @@ export class AppointmentsService {
           );
         }
 
-        // Cập nhật họ tên mới vào CSDL nếu người dùng chỉnh sửa họ tên khi đặt lịch
-        if (patientName && patientName.trim() !== patient.fullName) {
-          patient = await prisma.patient.update({
-            where: { patientId: patient.patientId },
+        // Cập nhật họ tên mới vào User CSDL nếu người dùng chỉnh sửa họ tên khi đặt lịch
+        if (patientName && patientName.trim() !== patient.user.fullName) {
+          await prisma.user.update({
+            where: { userId: patient.userId },
             data: { fullName: patientName.trim() },
           });
-
-          if (patient.userId) {
-            await prisma.user.update({
-              where: { userId: patient.userId },
-              data: { fullName: patientName.trim() },
-            });
-          }
         }
       }
       dbPatientId = patient.patientId;
@@ -359,7 +373,7 @@ export class AppointmentsService {
         },
         include: {
           patient: {
-            select: { fullName: true, phone: true },
+            include: { user: true },
           },
           dentist: {
             select: { specialty: true },
@@ -383,7 +397,7 @@ export class AppointmentsService {
 
       // Ghi log đặt lịch thành công
       try {
-        const patientLabel = newAppointment.patient?.fullName || `BN-${dbPatientId}`;
+        const patientLabel = newAppointment.patient?.user?.fullName || `BN-${dbPatientId}`;
         await prisma.systemLog.create({
           data: {
             module: 'RECEPTION',
@@ -482,9 +496,9 @@ export class AppointmentsService {
     try {
       const patientInfo = await prisma.patient.findUnique({
         where: { patientId: appointment.patientId },
-        select: { fullName: true, phone: true },
+        include: { user: true },
       });
-      const patientLabel = patientInfo?.fullName || `BN-${appointment.patientId}`;
+      const patientLabel = patientInfo?.user?.fullName || `BN-${appointment.patientId}`;
 
       await prisma.systemLog.create({
         data: {
@@ -499,7 +513,7 @@ export class AppointmentsService {
           data: {
             module: 'SYSTEM',
             logType: 'WARN',
-            message: `Tự động khóa tài khoản bệnh nhân ${patientLabel} (${patientInfo?.phone || ''}) do hủy lịch ${cancelCount} lần trong 7 ngày.`,
+            message: `Tự động khóa tài khoản bệnh nhân ${patientLabel} (${patientInfo?.user?.phone || ''}) do hủy lịch ${cancelCount} lần trong 7 ngày.`,
           },
         });
       }
@@ -551,13 +565,13 @@ export class AppointmentsService {
           try {
             const patientInfo = await prisma.patient.findUnique({
               where: { patientId: appt.patientId },
-              select: { fullName: true },
+              include: { user: true },
             });
             await prisma.systemLog.create({
               data: {
                 module: 'SYSTEM',
                 logType: 'WARN',
-                message: `Tự động hủy lịch hẹn #A-${appt.appointmentId} của bệnh nhân ${patientInfo?.fullName || `BN-${appt.patientId}`} do trễ quá 15 phút chưa check-in.`,
+                message: `Tự động hủy lịch hẹn #A-${appt.appointmentId} của bệnh nhân ${patientInfo?.user?.fullName || `BN-${appt.patientId}`} do trễ quá 15 phút chưa check-in.`,
               },
             });
           } catch (logErr) {
@@ -625,8 +639,8 @@ export class AppointmentsService {
       return {
         id: `A-${appt.appointmentId}`,
         patientId: appt.patientId ? `P-${appt.patientId}` : '',
-        patientName: appt.patient?.fullName || 'Bệnh nhân',
-        patientPhone: appt.patient?.phone || 'Chưa cập nhật',
+        patientName: appt.patient?.user?.fullName || 'Bệnh nhân',
+        patientPhone: appt.patient?.user?.phone || 'Chưa cập nhật',
         serviceName: appt.service?.name || 'Dịch vụ',
         dentistId: `D-${appt.dentistId.toString().padStart(2, '0')}`,
         dentistName: appt.dentist?.user?.fullName || 'Bác sĩ',

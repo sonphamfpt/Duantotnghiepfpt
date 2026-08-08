@@ -19,6 +19,8 @@ import staffRouter from './modules/staff/routes';
 import logsRouter from './modules/logs/routes';
 import reviewsRouter from './modules/reviews/routes';
 import roomsRouter from './modules/rooms/routes';
+import medicinesRouter from './modules/medicines/routes';
+
 
 import { errorHandler } from './middlewares/errorHandler';
 import { env } from './config/env';
@@ -30,7 +32,16 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 app.use(cors({
-  origin: env.ALLOWED_ORIGINS.split(',').map(o => o.trim()),
+  origin: (origin, callback) => {
+    if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return callback(null, true);
+    }
+    const allowed = env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
+    if (allowed.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-otp-token'],
 }));
@@ -67,6 +78,8 @@ app.use('/api/staff',            staffRouter);
 app.use('/api/logs',             logsRouter);
 app.use('/api/reviews',          reviewsRouter);
 app.use('/api/rooms',            roomsRouter);
+app.use('/api/medicines',        medicinesRouter);
+
 
 // 5. Middleware xử lý lỗi tập trung (bắt buộc đặt cuối cùng)
 app.use(errorHandler);

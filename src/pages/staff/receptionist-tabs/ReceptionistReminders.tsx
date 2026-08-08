@@ -153,7 +153,7 @@ export const ReceptionistReminders: React.FC = () => {
     const now = new Date();
 
     for (const a of appointments) {
-      if (a.status !== 'Confirmed' && a.status !== 'NoShow') continue;
+      if (a.status !== 'Confirmed') continue; // Chỉ hiển thị Confirmed đang trễ (NoShow được xử lý tại mục CSKH riêng)
 
       // Check if resolved
       if (resolvedIds.includes(a.id)) continue;
@@ -187,7 +187,7 @@ export const ReceptionistReminders: React.FC = () => {
       // Check if not checked in
       const checkedIn = queue.some(q => q.patientId === a.patientId && q.status !== 'Completed');
 
-      if ((diffMins >= 15 || a.status === 'NoShow') && !checkedIn) {
+      if (diffMins >= 15 && !checkedIn) {
         list.push({
           id: a.id,
           patientName: a.patientName,
@@ -201,12 +201,13 @@ export const ReceptionistReminders: React.FC = () => {
     return list;
   }, [appointments, queue, todayStr, filterDateFormatted, resolvedIds]);
 
-  // 2. Cancelled or missed appointments for selected date (default TODAY)
+  // 2. NoShow — Cần CSKH liên hệ (hiển thị TẤT CẢ ngày, không lọc theo date picker)
   const noShowsList = useMemo(() => {
     const list: NoShowTask[] = [];
 
     for (const a of appointments) {
       if (resolvedIds.includes(a.id)) continue;
+      if (a.status !== 'NoShow') continue; // Chỉ lấy NoShow (lỡ hẹn chưa được CSKH xử lý)
 
       let apptDateStr = todayStr;
       let timeStr = a.time;
@@ -215,39 +216,20 @@ export const ReceptionistReminders: React.FC = () => {
         timeStr = a.time.split('@')[1].trim();
       }
 
-      // Chỉ lọc danh sách khách lỡ hẹn / hủy lịch theo NGÀY ĐÃ CHỌN (mặc định HÔM NAY)
-      if (apptDateStr !== filterDateFormatted) continue;
+      const displayDate = apptDateStr === todayStr ? 'Hôm nay' : apptDateStr;
 
-      const isCancelled = a.status === 'Cancelled';
-      let isMissedPast = false;
-
-      if (a.status === 'Confirmed' && a.time.includes('@')) {
-        const parts = apptDateStr.split('/');
-        if (parts.length === 3) {
-          const [d, m, y] = parts.map(Number);
-          const apptDate = new Date(y, m - 1, d);
-          if (apptDate.getTime() < todayMidnight.getTime()) {
-            isMissedPast = true;
-          }
-        }
-      }
-
-      if (isCancelled || isMissedPast) {
-        const displayDate = apptDateStr === todayStr ? 'Hôm nay' : apptDateStr;
-
-        list.push({
-          id: a.id,
-          patientName: a.patientName,
-          missedDate: `${displayDate} (${timeStr})`,
-          service: a.serviceName,
-          phone: a.patientPhone,
-          resolved: false,
-          cancelReason: a.cancelReason,
-        });
-      }
+      list.push({
+        id: a.id,
+        patientName: a.patientName,
+        missedDate: `${displayDate} lúc ${timeStr}`,
+        service: a.serviceName,
+        phone: a.patientPhone,
+        resolved: false,
+        cancelReason: a.cancelReason,
+      });
     }
     return list;
-  }, [appointments, todayMidnight, todayStr, filterDateFormatted, resolvedIds]);
+  }, [appointments, todayStr, resolvedIds]);
 
 
   // ─── Lọc & Tìm kiếm (Filters) ───
@@ -300,7 +282,7 @@ export const ReceptionistReminders: React.FC = () => {
             { id: 'all', label: 'Tất cả công việc' },
             { id: 'shift', label: 'BS Đổi ca / Trực thay' },
             { id: 'late', label: 'Khách trễ hẹn' },
-            { id: 'noshow', label: 'Khách lỡ hẹn' },
+            { id: 'noshow', label: 'Cần CSKH liên hệ' },
           ].map(f => (
             <button
               key={f.id}
@@ -505,12 +487,17 @@ export const ReceptionistReminders: React.FC = () => {
         </div>
       )}
 
-      {/* ── SECTION: Khách trễ hẹn ── */}
+      {/* ── SECTION: Khách trễ hẹn (Confirmed + chưa check-in ≥15p) ── */}
       {filteredLate.length > 0 && (
         <div className="space-y-3">
           <h3 className="font-bold text-sm text-on-surface flex items-center gap-2">
-            <Icon name="alarm_off" className="text-error" />
-            Khách trễ hẹn
+            <span className="w-7 h-7 rounded-lg bg-red-100 text-error flex items-center justify-center">
+              <Icon name="alarm_off" className="text-[18px]" />
+            </span>
+            <span>Khách trễ hẹn hôm nay</span>
+            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-extrabold text-xs">
+              {filteredLate.length}
+            </span>
           </h3>
           <div className="flex flex-col gap-3">
             {filteredLate.map(task => (
@@ -543,7 +530,7 @@ export const ReceptionistReminders: React.FC = () => {
                       title="Xác nhận bệnh nhân muốn hủy lịch hẹn này"
                     >
                       <Icon name="cancel" className="text-[14px]" />
-                      Hủy lịch
+                      Khách xác nhận hủy
                     </button>
                     <button onClick={() => handleResolveLate(task.id)} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors text-slate-700 cursor-pointer" title="Đã xong">
                       <Icon name="check" className="text-[14px]" />
@@ -556,57 +543,102 @@ export const ReceptionistReminders: React.FC = () => {
         </div>
       )}
 
-      {/* ── SECTION: Khách lỡ hẹn / Hủy lịch ── */}
+      {/* ── SECTION: Khách lỡ hẹn — Cần CSKH liên hệ ── */}
       {filteredNoShows.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="font-bold text-sm text-on-surface flex items-center gap-2 mt-4">
-            <Icon name="event_busy" className="text-amber-500" />
-            Khách lỡ hẹn / Hủy lịch
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="font-bold text-sm text-on-surface flex items-center gap-2 mt-2">
+              <span className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                <Icon name="person_off" className="text-[18px]" />
+              </span>
+              <span>Khách lỡ hẹn — Cần CSKH liên hệ</span>
+              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-extrabold text-xs">
+                {filteredNoShows.length}
+              </span>
+            </h3>
+            <span className="text-[11px] text-slate-400 font-medium hidden sm:flex items-center gap-1">
+              <Icon name="info" className="text-[13px]" />
+              Hiển thị tất cả ngày — Gọi xác nhận → Đặt lại hoặc Hủy hẳn
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-3">
             {filteredNoShows.map(task => (
-              <div key={task.id} className={`p-4 rounded-2xl border transition-all ${task.resolved ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-amber-200 shadow-sm'}`}>
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1">
-                    <p className="font-bold text-sm text-on-surface">{task.patientName}</p>
-                    <p className="text-xs text-on-surface-variant mt-0.5">{task.missedDate} • {task.service}</p>
+              <div key={task.id} className="bg-white rounded-2xl border border-amber-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                <div className="flex items-stretch">
+                  {/* Dải màu trái */}
+                  <div className="w-1.5 shrink-0 bg-amber-400" />
+                  <div className="flex-1 p-4">
+                    {/* Row 1: Patient info + phone */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                          <Icon name="person_off" className="text-[20px] text-amber-700" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-bold text-sm text-on-surface">{task.patientName}</p>
+                            <span className="text-[10px] font-mono text-on-surface-variant bg-slate-100 px-1.5 py-0.5 rounded">{task.id}</span>
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200">
+                              <Icon name="schedule" className="text-[10px]" />
+                              Lỡ hẹn
+                            </span>
+                          </div>
+                          <p className="text-xs text-on-surface-variant mt-0.5">
+                            <Icon name="calendar_today" className="text-[11px] inline mr-0.5 align-middle text-amber-500" />
+                            {task.missedDate}
+                            <span className="mx-1.5 text-slate-300">·</span>
+                            {task.service}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Nút gọi nhanh */}
+                      <a
+                        href={`tel:${task.phone.replace(/\s/g, '')}`}
+                        className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-bold hover:bg-amber-100 active:scale-95 transition-all"
+                      >
+                        <Icon name="call" className="text-[14px]" />
+                        {task.phone}
+                      </a>
+                    </div>
+
+                    {/* Row 2: Thông tin hệ thống */}
+                    <div className="mt-3 flex items-start gap-2 px-3 py-2.5 bg-orange-50 border border-orange-200 rounded-xl">
+                      <Icon name="info" className="text-orange-400 text-[14px] mt-0.5 shrink-0" />
+                      <p className="text-xs text-orange-800 leading-relaxed">
+                        <span className="font-bold">Hệ thống ghi nhận: </span>
+                        {task.cancelReason || 'Bệnh nhân không check-in sau 15 phút kể từ giờ hẹn.'}
+                      </p>
+                    </div>
+
+                    {/* Row 3: Nút hành động */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => handleOpenRebook(task.patientName, task.phone, task.id, 'noshow')}
+                        className="px-3.5 py-2 bg-[#005eb8] text-white rounded-xl text-xs font-bold hover:bg-[#00478d] transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                      >
+                        <Icon name="edit_calendar" className="text-[14px]" />
+                        Đặt lại lịch
+                      </button>
+                      <button
+                        onClick={() => handleCancelByStaff(task.id, task.patientName, 'noshow')}
+                        className="px-3.5 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                        title="Sau khi liên hệ, khách xác nhận muốn hủy hẳn lịch hẹn này"
+                      >
+                        <Icon name="cancel" className="text-[14px]" />
+                        Khách xác nhận hủy
+                      </button>
+                      <button
+                        onClick={() => handleResolveNoShow(task.id)}
+                        className="px-3 py-2 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-200 hover:border-emerald-200 rounded-xl text-xs font-bold transition-all text-slate-600 cursor-pointer flex items-center gap-1"
+                        title="Đã liên hệ xong, không cần xử lý thêm"
+                      >
+                        <Icon name="check" className="text-[14px]" />
+                        Đã xử lý
+                      </button>
+                    </div>
                   </div>
-                  {task.resolved && <Icon name="check_circle" className="text-green-500 text-[20px]" />}
                 </div>
-                {task.cancelReason && !task.resolved && (
-                  <div className="mt-2 flex items-start gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl">
-                    <Icon name="warning" className="text-amber-500 text-[14px] mt-0.5 shrink-0" />
-                    <p className="text-xs text-amber-800 font-medium leading-snug">
-                      <span className="font-bold">Lý do: </span>{task.cancelReason}
-                    </p>
-                  </div>
-                )}
-                {!task.resolved && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <a href={`tel:${task.phone.replace(/\s/g, '')}`} className="py-2 px-3 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold hover:bg-amber-100 transition-colors flex items-center justify-center gap-1">
-                      <Icon name="call" className="text-[14px]" />
-                      Gọi {task.phone}
-                    </a>
-                    <button
-                      onClick={() => handleOpenRebook(task.patientName, task.phone, task.id, 'noshow')}
-                      className="flex-1 py-2 px-3 bg-[#005eb8] text-white rounded-xl text-xs font-bold hover:bg-[#00478d] transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
-                    >
-                      <Icon name="edit_calendar" className="text-[14px]" />
-                      Đặt lại lịch
-                    </button>
-                    <button
-                      onClick={() => handleCancelByStaff(task.id, task.patientName, 'noshow')}
-                      className="py-2 px-3 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all flex items-center justify-center gap-1 cursor-pointer"
-                      title="Xác nhận khách muốn hủy lịch hẹn này"
-                    >
-                      <Icon name="cancel" className="text-[14px]" />
-                      Hủy lịch
-                    </button>
-                    <button onClick={() => handleResolveNoShow(task.id)} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors text-slate-700 cursor-pointer" title="Đã xong">
-                      <Icon name="check" className="text-[14px]" />
-                    </button>
-                  </div>
-                )}
               </div>
             ))}
           </div>

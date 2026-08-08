@@ -2,6 +2,7 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../middlewares/errorHandler';
 import { SessionType } from '@prisma/client';
 import { createInvoice } from '../invoices/service';
+import { socketManager } from '../../config/socket';
 
 
 export interface FormattedMedicalRecord {
@@ -119,6 +120,25 @@ export async function getPatientRecords(patientId: bigint): Promise<FormattedMed
   return records.map(formatMedicalRecord);
 }
 
+export async function getAllRecords(): Promise<FormattedMedicalRecord[]> {
+  const records = await prisma.medicalRecord.findMany({
+    include: {
+      dentist: { include: { user: true } },
+      room: true,
+      teeth: true,
+      services: { include: { service: true } },
+      prescription: { include: { items: true } },
+      files: true,
+    },
+    orderBy: {
+      visitDate: 'desc',
+    },
+  });
+
+  return records.map(formatMedicalRecord);
+}
+
+
 export async function createRecord(data: {
   patientId: bigint;
   dentistId: bigint;
@@ -219,10 +239,24 @@ export async function createRecord(data: {
       });
     }
 
-    // 2.4 Cập nhật trạng thái QueueTicket & Appointment liên quan sang Completed nếu có
-    if (data.queueTicketId) {
+    // 2.4 Cập nhật trạng thái QueueTicket & Appointment liên quan sang Completed
+    let targetTicketId = data.queueTicketId;
+    if (!targetTicketId) {
+      const activeTicket = await tx.queueTicket.findFirst({
+        where: {
+          patientId: data.patientId,
+          status: { in: ['Waiting', 'InChair'] },
+        },
+        orderBy: { ticketId: 'desc' },
+      });
+      if (activeTicket) {
+        targetTicketId = activeTicket.ticketId;
+      }
+    }
+
+    if (targetTicketId) {
       const updatedTicket = await tx.queueTicket.update({
-        where: { ticketId: data.queueTicketId },
+        where: { ticketId: targetTicketId },
         data: {
           status: 'Completed',
           endTreatmentTime: new Date(),
@@ -279,7 +313,10 @@ export async function createRecord(data: {
     }
   }
 
-  // 3. Truy vấn lại bản ghi hoàn chỉnh để format trả về
+  // 3. Phát thông báo WebSocket để đồng bộ bàn khám bác sĩ & quầy lễ tân ngay lập tức
+  socketManager.emit('queue:status_changed', { patientId: data.patientId.toString(), status: 'Completed' });
+
+  // 4. Truy vấn lại bản ghi hoàn chỉnh để format trả về
   const fullRecord = await prisma.medicalRecord.findUnique({
     where: { recordId: record.recordId },
     include: {
@@ -294,13 +331,14 @@ export async function createRecord(data: {
 
   try {
     const patientObj = await prisma.patient.findUnique({
-      where: { patientId: data.patientId }
+      where: { patientId: data.patientId },
+      include: { user: true },
     });
     await prisma.systemLog.create({
       data: {
         module: 'DENTIST',
         logType: 'SUCCESS',
-        message: `Bác sĩ ${fullRecord?.dentist.user.fullName} hoàn tất bệnh án điều trị cho bệnh nhân ${patientObj?.fullName}.`,
+        message: `Bác sĩ ${fullRecord?.dentist?.user?.fullName || 'N/A'} hoàn tất bệnh án điều trị cho bệnh nhân ${patientObj?.user?.fullName || 'N/A'}.`,
       },
     });
   } catch (logErr) {

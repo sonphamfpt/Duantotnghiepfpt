@@ -18,12 +18,12 @@ model Role {
 }
 
 model User {
-    userId           BigInt           @id @default(autoincrement()) @map("user_id")
+  userId           BigInt           @id @default(autoincrement()) @map("user_id")
   roleId           Int              @map("role_id")
   email            String?          @unique @db.VarChar(150)
   passwordHash     String?          @map("password_hash") @db.VarChar(255)
   fullName         String           @map("full_name") @db.VarChar(150)
-  phone            String?          @db.VarChar(20)
+  phone            String?          @unique @db.VarChar(20)
   avatarUrl        String?          @map("avatar_url")
   status           UserStatus       @default(Active)
   isDeleted        Boolean          @default(false) @map("is_deleted")
@@ -35,6 +35,7 @@ model User {
   paymentsHandled  Payment[]
   staffPermission  StaffPermission?
   systemLogs       SystemLog[]
+  medicines        Medicine[]
   role             Role             @relation(fields: [roleId], references: [roleId])
 
   @@map("users")
@@ -42,7 +43,7 @@ model User {
 
 model StaffPermission {
   userId    BigInt  @id @map("user_id")
-    admission Boolean @default(false)
+  admission Boolean @default(false)
   clinical  Boolean @default(false)
   checkout  Boolean @default(false)
   settings  Boolean @default(false)
@@ -77,11 +78,8 @@ model Dentist {
   defaultRoomId          Int?                      @map("default_room_id")
   isActive               Boolean                   @default(true) @map("is_active")
   appointments           Appointment[]
-  certifications         DentistCertification[]
-  clinicalStrengths      DentistClinicalStrength[]
-  education              DentistEducation[]
+  profileItems           DentistProfileItem[]
   shifts                 DentistShift[]
-  workHistory            DentistWorkHistory[]
   defaultRoom            Room?                     @relation(fields: [defaultRoomId], references: [roomId])
   user                   User                      @relation(fields: [userId], references: [userId])
   invoices               Invoice[]
@@ -95,46 +93,19 @@ model Dentist {
   @@map("dentists")
 }
 
-model DentistEducation {
+model DentistProfileItem {
   id          BigInt  @id @default(autoincrement())
   dentistId   BigInt  @map("dentist_id")
-  description String
-  sortOrder   Int     @default(0) @map("sort_order")
-  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
-
-  @@map("dentist_education")
-}
-
-model DentistCertification {
-  id          BigInt  @id @default(autoincrement())
-  dentistId   BigInt  @map("dentist_id")
-  description String
-  sortOrder   Int     @default(0) @map("sort_order")
-  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
-
-  @@map("dentist_certifications")
-}
-
-model DentistClinicalStrength {
-  id          BigInt  @id @default(autoincrement())
-  dentistId   BigInt  @map("dentist_id")
-  description String
-  sortOrder   Int     @default(0) @map("sort_order")
-  dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
-
-  @@map("dentist_clinical_strengths")
-}
-
-model DentistWorkHistory {
-  id          BigInt  @id @default(autoincrement())
-  dentistId   BigInt  @map("dentist_id")
+  section     String  @db.VarChar(50)
   periodText  String? @map("period_text") @db.VarChar(100)
   description String
   sortOrder   Int     @default(0) @map("sort_order")
   dentist     Dentist @relation(fields: [dentistId], references: [dentistId], onDelete: Cascade)
 
-  @@map("dentist_work_history")
+  @@index([dentistId, section])
+  @@map("dentist_profile_items")
 }
+
 
 model MembershipTier {
   tierId          Int       @id @default(autoincrement()) @map("tier_id")
@@ -149,9 +120,7 @@ model MembershipTier {
 
 model Patient {
   patientId          BigInt              @id @default(autoincrement()) @map("patient_id")
-  userId             BigInt?             @unique @map("user_id")
-  fullName           String              @map("full_name") @db.VarChar(150)
-  phone              String              @unique @db.VarChar(20)
+  userId             BigInt              @unique @map("user_id")
   dateOfBirth        DateTime?           @map("date_of_birth") @db.Date
   gender             String?             @db.VarChar(10)
   criticalAllergy    String?             @map("critical_allergy")
@@ -169,7 +138,7 @@ model Patient {
   medicalRecords     MedicalRecord[]
   tier               MembershipTier      @relation(fields: [tierId], references: [tierId])
   unlockedBy         User?               @relation("PatientUnlockedBy", fields: [unlockedByUserId], references: [userId])
-  user               User?               @relation("PatientAccount", fields: [userId], references: [userId])
+  user               User                @relation("PatientAccount", fields: [userId], references: [userId], onDelete: Cascade)
   queueTickets       QueueTicket[]
   reviews            ServiceReview[]
   treatmentPlans     TreatmentPlan[]
@@ -622,5 +591,21 @@ enum ReviewStatus {
   Pending
   Approved
   Hidden
+}
+
+// ─── Danh mục thuốc mẫu ───────────────────────────────────────────────────────
+model Medicine {
+  medicineId      BigInt   @id @default(autoincrement()) @map("medicine_id")
+  name            String   @unique @db.VarChar(150)
+  defaultDose     String?  @map("default_dose") @db.VarChar(100)
+  defaultDuration String?  @map("default_duration") @db.VarChar(100)
+  defaultNote     String?  @map("default_note") @db.Text
+  isActive        Boolean  @default(true) @map("is_active")
+  createdByUserId BigInt?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  createdBy User? @relation(fields: [createdByUserId], references: [userId], onDelete: SetNull)
+
+  @@map("medicines")
 }
 

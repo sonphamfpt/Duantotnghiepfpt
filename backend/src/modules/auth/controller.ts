@@ -80,7 +80,7 @@ export class AuthController {
       const purpose = reqPurpose || (startTime ? 'booking' : 'register');
 
       if (phone && startTime) {
-        const patient = await prisma.patient.findUnique({ where: { phone: phone.trim() } });
+        const patient = await prisma.patient.findFirst({ where: { user: { phone: phone.trim() } } });
         if (patient) {
           const reqStart = new Date(startTime);
           if (!isNaN(reqStart.getTime())) {

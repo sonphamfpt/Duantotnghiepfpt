@@ -33,13 +33,14 @@ export class AuthService {
       throw new AppError(400, 'Mã xác thực OTP không hợp lệ hoặc đã hết hạn. Vui lòng lấy mã mới.', 'INVALID_OTP_TOKEN');
     }
 
-    // 1. Kiểm tra xem Số điện thoại đã được đăng ký chưa
+    // 1. Kiểm tra xem Số điện thoại đã được đăng ký tài khoản (đã có mật khẩu) chưa
     const existingUserByPhone = await prisma.user.findFirst({
       where: { phone: normalizedPhone },
     });
-    if (existingUserByPhone) {
-      throw new AppError(409, 'Số điện thoại này đã được sử dụng.', 'PHONE_ALREADY_EXISTS');
+    if (existingUserByPhone && existingUserByPhone.passwordHash) {
+      throw new AppError(409, 'Số điện thoại này đã được đăng ký tài khoản. Vui lòng đăng nhập hoặc dùng chức năng quên mật khẩu.', 'PHONE_ALREADY_EXISTS');
     }
+
 
     // 2. Kiểm tra xem Email đã được đăng ký chưa
     if (email) {
@@ -69,48 +70,70 @@ export class AuthService {
     // 4. Mã hóa mật khẩu
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // 5. Thực hiện Transaction tạo User và liên kết/tạo Patient
+    // 5. Thực hiện Transaction tạo/kích hoạt User và liên kết/tạo Patient
     const result = await prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
-        data: {
-          roleId: role.roleId,
-          fullName,
-          phone: normalizedPhone,
-          email: email || null,
-          passwordHash,
-          status: 'Active',
-        },
-      });
-
-      // Tìm bệnh nhân cũ theo Số điện thoại
-      const existingPatient = await tx.patient.findUnique({
+      // Tìm User cũ theo SĐT (do Lễ tân hoặc Khách vãng lai đặt lịch tạo trước đó)
+      const existingUser = await tx.user.findFirst({
         where: { phone: normalizedPhone },
+        include: { patient: true },
       });
 
-      let targetPatient;
-      if (existingPatient) {
-        if (existingPatient.userId) {
-          throw new AppError(409, 'Hồ sơ bệnh nhân này đã được liên kết với một tài khoản khác.', 'PATIENT_ALREADY_LINKED');
+      let user: any;
+      let patient: any;
+
+      if (existingUser) {
+        if (existingUser.passwordHash) {
+          throw new AppError(409, 'Số điện thoại này đã được đăng ký tài khoản.', 'PHONE_ALREADY_EXISTS');
         }
 
-        // Cập nhật liên kết userId cho bệnh nhân cũ
-        targetPatient = await tx.patient.update({
-          where: { patientId: existingPatient.patientId },
+        // Kích hoạt tài khoản cũ (cập nhật passwordHash, fullName, email)
+        user = await tx.user.update({
+          where: { userId: existingUser.userId },
           data: {
-            userId: newUser.userId,
-            fullName: existingPatient.fullName || fullName,
-            dateOfBirth: existingPatient.dateOfBirth || (dateOfBirth ? new Date(dateOfBirth) : null),
-            gender: existingPatient.gender || gender || null,
-            address: existingPatient.address || address || null,
+            fullName: fullName || existingUser.fullName,
+            email: email || existingUser.email,
+            passwordHash,
+            status: 'Active',
           },
         });
+
+        if (existingUser.patient) {
+          patient = await tx.patient.update({
+            where: { patientId: existingUser.patient.patientId },
+            data: {
+              dateOfBirth: existingUser.patient.dateOfBirth || (dateOfBirth ? new Date(dateOfBirth) : null),
+              gender: existingUser.patient.gender || gender || null,
+              address: existingUser.patient.address || address || null,
+            },
+          });
+        } else {
+          patient = await tx.patient.create({
+            data: {
+              userId: user.userId,
+              dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+              gender: gender || null,
+              address: address || null,
+              tierId: defaultTier.tierId,
+              loyaltyPoints: 0,
+            },
+          });
+        }
       } else {
-        // Tạo bệnh nhân mới tinh
-        targetPatient = await tx.patient.create({
+        // Tạo tài khoản User + Patient mới tinh
+        user = await tx.user.create({
           data: {
-            userId: newUser.userId,
+            roleId: role.roleId,
             fullName,
             phone: normalizedPhone,
+            email: email || null,
+            passwordHash,
+            status: 'Active',
+          },
+        });
+
+        patient = await tx.patient.create({
+          data: {
+            userId: user.userId,
             dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
             gender: gender || null,
             address: address || null,
@@ -120,7 +143,7 @@ export class AuthService {
         });
       }
 
-      return { user: newUser, patient: targetPatient };
+      return { user, patient };
     });
 
     // 6. Ký Token JWT
@@ -350,7 +373,6 @@ export class AuthService {
           await tx.patient.update({
             where: { patientId: patient.patientId },
             data: {
-              fullName: fullName && fullName.trim() ? fullName.trim() : patient.fullName,
               dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
               gender: gender !== undefined ? gender : patient.gender,
               address: address !== undefined ? address : patient.address,

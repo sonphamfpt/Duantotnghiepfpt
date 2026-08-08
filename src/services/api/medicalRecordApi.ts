@@ -2,10 +2,13 @@ import { request } from './apiClient';
 import { MedicalRecord, ToothState } from '../../types/clinic';
 
 export const medicalRecordApi = {
+  getAll: () => request<MedicalRecord[]>('/medical-records'),
+
   /**
    * Lấy lịch sử bệnh án của một bệnh nhân
    */
   getByPatient: (patientId: string) => {
+
     const rawPatientId = patientId.split('-')[1] || patientId;
     return request<MedicalRecord[]>(`/medical-records/patients/${rawPatientId}`);
   },

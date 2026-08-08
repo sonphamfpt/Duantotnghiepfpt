@@ -22,10 +22,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       },
       include: {
         user: true,
-        education: { orderBy: { sortOrder: 'asc' } },
-        clinicalStrengths: { orderBy: { sortOrder: 'asc' } },
-        certifications: { orderBy: { sortOrder: 'asc' } },
-        workHistory: { orderBy: { sortOrder: 'asc' } },
+        profileItems: { orderBy: { sortOrder: 'asc' } },
       },
       orderBy: { dentistId: 'asc' },
     });
@@ -41,10 +38,10 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       motto: d.motto || 'Nụ cười của bạn là hạnh phúc của chúng tôi.',
       cases: d.casesHandled || '500+ ca',
       avatar: formatDentistAvatar(d.user.avatarUrl),
-      education: d.education.map(e => e.description),
-      clinicalStrengths: d.clinicalStrengths.map(s => s.description),
-      certifications: d.certifications.map(c => c.description),
-      workHistory: d.workHistory.map(w => w.periodText ? `${w.periodText}: ${w.description}` : w.description),
+      education: d.profileItems.filter(i => i.section === 'education').map(i => i.description),
+      certifications: d.profileItems.filter(i => i.section === 'certification').map(i => i.description),
+      clinicalStrengths: d.profileItems.filter(i => i.section === 'clinical_strength').map(i => i.description),
+      workHistory: d.profileItems.filter(i => i.section === 'work_history').map(w => w.periodText ? `${w.periodText}: ${w.description}` : w.description),
       status: d.user?.status || (d.isActive ? 'Active' : 'Inactive'),
     }));
 
@@ -64,10 +61,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       where: { dentistId: dentistIdNum },
       include: {
         user: true,
-        education: { orderBy: { sortOrder: 'asc' } },
-        clinicalStrengths: { orderBy: { sortOrder: 'asc' } },
-        certifications: { orderBy: { sortOrder: 'asc' } },
-        workHistory: { orderBy: { sortOrder: 'asc' } },
+        profileItems: { orderBy: { sortOrder: 'asc' } },
       },
     });
 
@@ -87,10 +81,10 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       motto: d.motto || '',
       casesHandled: d.casesHandled || '',
       avatar: formatDentistAvatar(d.user.avatarUrl),
-      education: d.education.map(e => e.description),
-      clinicalStrengths: d.clinicalStrengths.map(s => s.description),
-      certifications: d.certifications.map(c => c.description),
-      workHistory: d.workHistory.map(w => ({ periodText: w.periodText || '', description: w.description })),
+      education: d.profileItems.filter(i => i.section === 'education').map(i => i.description),
+      certifications: d.profileItems.filter(i => i.section === 'certification').map(i => i.description),
+      clinicalStrengths: d.profileItems.filter(i => i.section === 'clinical_strength').map(i => i.description),
+      workHistory: d.profileItems.filter(i => i.section === 'work_history').map(w => ({ periodText: w.periodText || '', description: w.description })),
     };
 
     return res.status(200).json({ success: true, data: formatted });
@@ -146,13 +140,14 @@ router.patch('/:id', authGuard, requireRole('manager'), async (req: Request, res
         },
       });
 
-      // 3. Cập nhật Học Vấn (dentist_education)
+      // 3. Cập nhật Học Vấn (section = 'education')
       if (Array.isArray(education)) {
-        await tx.dentistEducation.deleteMany({ where: { dentistId: dentistIdNum } });
+        await tx.dentistProfileItem.deleteMany({ where: { dentistId: dentistIdNum, section: 'education' } });
         if (education.length > 0) {
-          await tx.dentistEducation.createMany({
+          await tx.dentistProfileItem.createMany({
             data: education.map((desc: string, i: number) => ({
               dentistId: dentistIdNum,
+              section: 'education',
               description: String(desc).trim(),
               sortOrder: i,
             })),
@@ -160,13 +155,14 @@ router.patch('/:id', authGuard, requireRole('manager'), async (req: Request, res
         }
       }
 
-      // 4. Cập nhật Chứng Chỉ (dentist_certifications)
+      // 4. Cập nhật Chứng Chỉ (section = 'certification')
       if (Array.isArray(certifications)) {
-        await tx.dentistCertification.deleteMany({ where: { dentistId: dentistIdNum } });
+        await tx.dentistProfileItem.deleteMany({ where: { dentistId: dentistIdNum, section: 'certification' } });
         if (certifications.length > 0) {
-          await tx.dentistCertification.createMany({
+          await tx.dentistProfileItem.createMany({
             data: certifications.map((desc: string, i: number) => ({
               dentistId: dentistIdNum,
+              section: 'certification',
               description: String(desc).trim(),
               sortOrder: i,
             })),
@@ -174,13 +170,14 @@ router.patch('/:id', authGuard, requireRole('manager'), async (req: Request, res
         }
       }
 
-      // 5. Cập nhật Thế Mạnh Lâm Sàng (dentist_clinical_strengths)
+      // 5. Cập nhật Thế Mạnh Lâm Sàng (section = 'clinical_strength')
       if (Array.isArray(clinicalStrengths)) {
-        await tx.dentistClinicalStrength.deleteMany({ where: { dentistId: dentistIdNum } });
+        await tx.dentistProfileItem.deleteMany({ where: { dentistId: dentistIdNum, section: 'clinical_strength' } });
         if (clinicalStrengths.length > 0) {
-          await tx.dentistClinicalStrength.createMany({
+          await tx.dentistProfileItem.createMany({
             data: clinicalStrengths.map((desc: string, i: number) => ({
               dentistId: dentistIdNum,
+              section: 'clinical_strength',
               description: String(desc).trim(),
               sortOrder: i,
             })),
@@ -188,17 +185,18 @@ router.patch('/:id', authGuard, requireRole('manager'), async (req: Request, res
         }
       }
 
-      // 6. Cập nhật Lịch Sử Công Tác (dentist_work_history)
+      // 6. Cập nhật Lịch Sử Công Tác (section = 'work_history')
       if (Array.isArray(workHistory)) {
-        await tx.dentistWorkHistory.deleteMany({ where: { dentistId: dentistIdNum } });
+        await tx.dentistProfileItem.deleteMany({ where: { dentistId: dentistIdNum, section: 'work_history' } });
         if (workHistory.length > 0) {
-          await tx.dentistWorkHistory.createMany({
+          await tx.dentistProfileItem.createMany({
             data: workHistory.map((item: any, i: number) => {
               const periodText = typeof item === 'object' ? item.periodText || '' : '';
               const description = typeof item === 'object' ? item.description || '' : String(item);
               return {
                 dentistId: dentistIdNum,
-                periodText: String(periodText).trim(),
+                section: 'work_history',
+                periodText: String(periodText).trim() || null,
                 description: String(description).trim(),
                 sortOrder: i,
               };
