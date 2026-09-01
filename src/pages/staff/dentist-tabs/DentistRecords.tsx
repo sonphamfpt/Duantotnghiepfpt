@@ -807,10 +807,10 @@ export const DentistRecords: React.FC = () => {
                 {/* Print/Download helper buttons */}
                 <div className="pt-2 flex gap-3">
                   <button
-                    onClick={() => alert(`Đang tải file EMR-${viewEMRRecord.id}.pdf về thiết bị...`)}
+                    onClick={() => window.print()}
                     className="flex-1 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow cursor-pointer"
                   >
-                    <Icon name="download" className="text-[18px]" />Tải PDF bệnh án
+                    <Icon name="download" className="text-[18px]" />Tải PDF bệnh án (Lưu file)
                   </button>
                   <button
                     onClick={() => window.print()}

@@ -271,6 +271,24 @@ export const PatientRecords: React.FC = () => {
     crown: Object.values(toothConditions).filter(c => c === 'crown').length,
   };
 
+  const patientAgeDisplay = (() => {
+    const dobStr = currentPatient.dateOfBirth || (user as any)?.dateOfBirth;
+    if (dobStr) {
+      const dob = new Date(dobStr);
+      if (!isNaN(dob.getTime())) {
+        const today = new Date();
+        let a = today.getFullYear() - dob.getFullYear();
+        const m = today.getMonth() - dob.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) a--;
+        if (a > 0) return `${a} tuổi`;
+      }
+    }
+    if (currentPatient.age && currentPatient.age > 0) {
+      return `${currentPatient.age} tuổi`;
+    }
+    return 'Chưa cập nhật';
+  })();
+
   return (
     <>
     <div className={`p-stack-lg max-w-[1200px] mx-auto ${printVisit ? 'print:hidden' : ''}`}>
@@ -283,11 +301,11 @@ export const PatientRecords: React.FC = () => {
         <div className="flex gap-4 text-sm text-on-surface-variant">
           <div className="bg-surface-container-low px-4 py-2 rounded-lg border border-outline-variant">
             <span className="block text-[10px] uppercase font-bold">Giới tính</span>
-            <span className="font-bold text-on-surface">{currentPatient.gender}</span>
+            <span className="font-bold text-on-surface">{currentPatient.gender || (user as any)?.gender || 'Chưa cập nhật'}</span>
           </div>
           <div className="bg-surface-container-low px-4 py-2 rounded-lg border border-outline-variant">
             <span className="block text-[10px] uppercase font-bold">Thông tin tuổi</span>
-            <span className="font-bold text-on-surface">{currentPatient.age} tuổi</span>
+            <span className="font-bold text-on-surface">{patientAgeDisplay}</span>
           </div>
         </div>
       </div>
@@ -737,7 +755,7 @@ export const PatientRecords: React.FC = () => {
             <div className="grid grid-cols-2 gap-y-3 gap-x-6 text-sm mb-8">
               <p><strong>Họ và tên bệnh nhân:</strong> {currentPatient.name}</p>
               <p><strong>Mã Bệnh Nhân:</strong> {currentPatient.id}</p>
-              <p><strong>Thông tin tuổi:</strong> {currentPatient.age} tuổi</p>
+              <p><strong>Thông tin tuổi:</strong> {patientAgeDisplay}</p>
               <p><strong>Giới tính:</strong> {currentPatient.gender}</p>
               <p className="col-span-2"><strong>Số điện thoại:</strong> {currentPatient.phone}</p>
             </div>
@@ -988,10 +1006,27 @@ export const PatientRecords: React.FC = () => {
               {/* Print/Download helper buttons */}
               <div className="pt-2 flex gap-3 w-full">
                 <button 
-                  onClick={() => alert(`Đang tải file EMR-${viewEMRRecord.id}.pdf về thiết bị...`)}
+                  onClick={() => {
+                    setPrintVisit({
+                      id: viewEMRRecord.id,
+                      date: viewEMRRecord.date,
+                      doctor: viewEMRRecord.dentistName || 'Bác sĩ điều trị',
+                      room: viewEMRRecord.room || 'Phòng khám',
+                      reason: viewEMRRecord.notes?.match(/Bệnh sử:\s*([^-|.]+)/)?.[1]?.trim() || 'Khám răng định kỳ',
+                      diagnosis: viewEMRRecord.notes?.match(/Chẩn đoán:\s*([^|.]+)/)?.[1]?.trim() || viewEMRRecord.title || 'Khám lâm sàng',
+                      treatments: viewEMRRecord.teethMap && viewEMRRecord.teethMap.length > 0
+                        ? viewEMRRecord.teethMap.map((t: any) => `${t.treatment || CONDITION_LABELS[t.condition]?.label || t.condition} Răng ${t.toothNumber}`)
+                        : [viewEMRRecord.title],
+                      notes: viewEMRRecord.notes && !viewEMRRecord.notes.includes('|') ? viewEMRRecord.notes : undefined,
+                      prescription: viewEMRRecord.prescription || parseEMRNotes(viewEMRRecord.notes, viewEMRRecord.id).prescription
+                    });
+                    setTimeout(() => {
+                      window.print();
+                    }, 250);
+                  }}
                   className="flex-1 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all shadow cursor-pointer border-none"
                 >
-                  <Icon name="download" className="text-[18px]" />Tải PDF bệnh án
+                  <Icon name="download" className="text-[18px]" />Tải PDF bệnh án (Lưu file)
                 </button>
                 <button 
                   onClick={() => {
