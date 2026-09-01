@@ -40,7 +40,7 @@ export const createAppointmentSchema = z.object({
 // Schema xác thực tham số khi hủy lịch hẹn
 export const cancelAppointmentSchema = z.object({
   params: z.object({
-    id: z.string().regex(/^\d+$/, "ID lịch hẹn phải là một số nguyên dương"),
+    id: z.string().regex(/^(A-)?\d+$/, "ID lịch hẹn phải là một số nguyên dương hoặc có tiền tố A-"),
   }),
   body: z.object({
     cancelReason: z.string().min(2, "Lý do hủy lịch phải có ít nhất 2 ký tự").max(200, "Lý do hủy tối đa 200 ký tự").optional().default("Hủy bởi nhân viên tiếp đón"),

@@ -18,6 +18,170 @@ const TICKER_ITEMS = [
   '🩺 Miễn phí 100% khám tổng quát & cạo vôi răng lần đầu',
 ];
 
+const HERO_SLIDES = [
+  {
+    tag: 'Giải pháp nha khoa 4.0 hàng đầu',
+    titleLine1: 'Nâng Tầm Trải Nghiệm',
+    titleLine2: 'Chăm Sóc Răng Miệng',
+    desc: 'Hệ thống nha khoa chuyên sâu với công nghệ chuẩn quốc tế ISO 13485. Tối ưu hóa quy trình từ đặt lịch, chẩn đoán 3D đến thanh toán.',
+    btnText: 'Đặt lịch khám ngay',
+    btnLink: '/book',
+    badgeText: 'Đã phục vụ 15,000+ bệnh nhân',
+    image: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1200&q=80',
+  },
+  {
+    tag: 'Công nghệ Quét 3D iTero 5D',
+    titleLine1: 'Niềng Răng Thẩm Mỹ',
+    titleLine2: 'Đều Đẹp Tự Nhiên',
+    desc: 'Xem trước mô phỏng kết quả niềng răng ngay trên màn hình 3D. Hỗ trợ trả góp 0% lãi suất chỉ từ 1.000.000đ/tháng.',
+    btnText: 'Tư vấn niềng răng 0đ',
+    btnLink: '/book',
+    badgeText: 'Tặng bộ máng duy trì 3 triệu',
+    image: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=1200&q=80',
+  },
+  {
+    tag: 'Phục hình răng chuyên sâu',
+    titleLine1: 'Cấy Ghép Implant Thụy Sĩ',
+    titleLine2: 'Bảo Hành 25 Năm',
+    desc: 'Khôi phục răng đã mất chắc chắn như răng thật. Sử dụng trụ Implant Straumann chính hãng, tặng mão sứ trị giá 5.000.000đ.',
+    btnText: 'Khám & Chụp X-Quang 0đ',
+    btnLink: '/book',
+    badgeText: 'Bảo hành chính hãng 25 năm',
+    image: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=1200&q=80',
+  },
+  {
+    tag: 'Công nghệ Laser Whitening Hoa Kỳ',
+    titleLine1: 'Tẩy Trắng Răng Premium',
+    titleLine2: 'Bật Tông Sau 45 Phút',
+    desc: 'Tẩy trắng răng êm ái không ê buốt bằng ánh sáng Laser lạnh. Giảm ngay 30% cho bệnh nhân đặt lịch hẹn trực tuyến.',
+    btnText: 'Nhận ưu đãi giảm 30%',
+    btnLink: '/book',
+    badgeText: 'Cam kết trắng sáng tức thì',
+    image: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1200&q=80',
+  },
+];
+
+const HeroCarouselSection: React.FC<{ navigate: (path: string) => void }> = ({ navigate }) => {
+  const [heroIdx, setHeroIdx] = useState(0);
+
+  useEffect(() => {
+    const heroTimer = setInterval(() => {
+      setHeroIdx((prev) => (prev + 1) % HERO_SLIDES.length);
+    }, 5000);
+    return () => clearInterval(heroTimer);
+  }, []);
+
+  const currentHero = HERO_SLIDES[heroIdx];
+
+  return (
+    <section className="relative overflow-hidden bg-gradient-to-br from-[#00478d] via-[#005fa8] to-[#006d33] px-6 md:px-16 py-16 md:py-20 min-h-[580px] flex flex-col justify-between transition-all duration-700">
+      <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+      <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full bg-white/5 translate-y-1/2 -translate-x-1/4 pointer-events-none"></div>
+
+      <div className="flex flex-col md:flex-row items-center gap-12 relative z-10 my-auto">
+        <div className="flex-1 space-y-6 max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white/15 text-white/95 rounded-full text-xs font-extrabold border border-white/20 shadow-sm backdrop-blur-md">
+            <Icon name="verified" className="text-base text-yellow-300" />
+            {currentHero.tag}
+          </div>
+
+          <h1 className="font-headline-lg text-headline-lg text-white leading-tight">
+            {currentHero.titleLine1} <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-emerald-200 to-green-300">
+              {currentHero.titleLine2}
+            </span>
+          </h1>
+
+          <p className="text-white/85 text-base md:text-lg max-w-lg leading-relaxed font-medium">
+            {currentHero.desc}
+          </p>
+          
+          <div className="flex flex-wrap items-center gap-4 pt-2">
+            <button
+              onClick={() => navigate(currentHero.btnLink)}
+              className="group relative overflow-hidden bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 text-[#003366] px-8 py-4 rounded-xl font-extrabold flex items-center gap-3 shadow-xl hover:shadow-2xl hover:shadow-emerald-400/30 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer text-base"
+            >
+              <span className="absolute inset-0 w-1/2 h-full bg-white/40 skew-x-[-20deg] group-hover:translate-x-[300%] transition-transform duration-1000 ease-out"></span>
+              <span className="relative z-10 flex items-center gap-2">
+                <Icon name="calendar_month" className="text-xl" />
+                {currentHero.btnText}
+              </span>
+              <Icon name="arrow_forward" className="text-xl relative z-10 group-hover:translate-x-1.5 transition-transform duration-300" />
+            </button>
+            <button
+              onClick={() => navigate('/services')}
+              className="group bg-white/10 hover:bg-white/20 text-white border border-white/30 backdrop-blur-md px-7 py-4 rounded-xl font-bold flex items-center gap-2.5 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer text-base shadow-lg"
+            >
+              <span>Xem dịch vụ & Bảng giá</span>
+              <Icon name="read_more" className="text-lg opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-4 pt-4 border-t border-white/20">
+            <div className="flex -space-x-3">
+              {[
+                'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=500&q=80',
+                'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=500&q=80',
+              ].map((src, i) => (
+                <img key={i} src={src} alt="Doctor" className="w-10 h-10 rounded-full border-2 border-white object-cover" />
+              ))}
+              <div className="w-10 h-10 rounded-full border-2 border-white bg-primary-container text-white flex items-center justify-center text-xs font-bold">+500</div>
+            </div>
+            <p className="text-sm font-semibold text-white/95">
+               ★ <span className="text-yellow-300 font-bold">{currentHero.badgeText}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex-1 relative w-full">
+          <div className="relative z-10 rounded-2xl overflow-hidden shadow-2xl border border-white/40 bg-slate-800">
+            <img
+              alt={currentHero.titleLine1}
+              className="w-full h-[360px] md:h-[420px] object-cover transition-all duration-700 hover:scale-105"
+              src={currentHero.image}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="relative z-20 flex items-center justify-between pt-6 border-t border-white/10 mt-6">
+        <div className="flex items-center gap-2">
+          {HERO_SLIDES.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => setHeroIdx(idx)}
+              className={`h-2.5 rounded-full transition-all cursor-pointer ${
+                idx === heroIdx ? 'w-10 bg-yellow-300' : 'w-3 bg-white/40 hover:bg-white/70'
+              }`}
+              title={`Banner ${idx + 1}`}
+            />
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setHeroIdx((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)}
+            className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md border border-white/20"
+            title="Banner trước"
+          >
+            <FaChevronLeft className="text-xs" />
+          </button>
+          <span className="text-xs font-mono font-bold text-white/80 px-1">
+            0{heroIdx + 1} / 0{HERO_SLIDES.length}
+          </span>
+          <button
+            onClick={() => setHeroIdx((prev) => (prev + 1) % HERO_SLIDES.length)}
+            className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md border border-white/20"
+            title="Banner tiếp theo"
+          >
+            <FaChevronRight className="text-xs" />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 export const Home: React.FC = () => {
   const navigate = useNavigate();
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
@@ -106,173 +270,7 @@ export const Home: React.FC = () => {
       </div>
 
       {/* ── Hero Carousel Banner Section (Tự động chuyển slide) ── */}
-      {(() => {
-        const HERO_SLIDES = [
-          {
-            tag: 'Giải pháp nha khoa 4.0 hàng đầu',
-            titleLine1: 'Nâng Tầm Trải Nghiệm',
-            titleLine2: 'Chăm Sóc Răng Miệng',
-            desc: 'Hệ thống nha khoa chuyên sâu với công nghệ chuẩn quốc tế ISO 13485. Tối ưu hóa quy trình từ đặt lịch, chẩn đoán 3D đến thanh toán.',
-            btnText: 'Đặt lịch khám ngay',
-            btnLink: '/book',
-            badgeText: 'Đã phục vụ 15,000+ bệnh nhân',
-            image: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1200&q=80',
-          },
-          {
-            tag: 'Công nghệ Quét 3D iTero 5D',
-            titleLine1: 'Niềng Răng Thẩm Mỹ',
-            titleLine2: 'Đều Đẹp Tự Nhiên',
-            desc: 'Xem trước mô phỏng kết quả niềng răng ngay trên màn hình 3D. Hỗ trợ trả góp 0% lãi suất chỉ từ 1.000.000đ/tháng.',
-            btnText: 'Tư vấn niềng răng 0đ',
-            btnLink: '/book',
-            badgeText: 'Tặng bộ máng duy trì 3 triệu',
-            image: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=1200&q=80',
-          },
-          {
-            tag: 'Phục hình răng chuyên sâu',
-            titleLine1: 'Cấy Ghép Implant Thụy Sĩ',
-            titleLine2: 'Bảo Hành 25 Năm',
-            desc: 'Khôi phục răng đã mất chắc chắn như răng thật. Sử dụng trụ Implant Straumann chính hãng, tặng mão sứ trị giá 5.000.000đ.',
-            btnText: 'Khám & Chụp X-Quang 0đ',
-            btnLink: '/book',
-            badgeText: 'Bảo hành chính hãng 25 năm',
-            image: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&w=1200&q=80',
-          },
-          {
-            tag: 'Công nghệ Laser Whitening Hoa Kỳ',
-            titleLine1: 'Tẩy Trắng Răng Premium',
-            titleLine2: 'Bật Tông Sau 45 Phút',
-            desc: 'Tẩy trắng răng êm ái không ê buốt bằng ánh sáng Laser lạnh. Giảm ngay 30% cho bệnh nhân đặt lịch hẹn trực tuyến.',
-            btnText: 'Nhận ưu đãi giảm 30%',
-            btnLink: '/book',
-            badgeText: 'Cam kết trắng sáng tức thì',
-            image: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1200&q=80',
-          },
-        ];
-
-        const [heroIdx, setHeroIdx] = useState(0);
-
-        useEffect(() => {
-          const heroTimer = setInterval(() => {
-            setHeroIdx((prev) => (prev + 1) % HERO_SLIDES.length);
-          }, 5000);
-          return () => clearInterval(heroTimer);
-        }, []);
-
-        const currentHero = HERO_SLIDES[heroIdx];
-
-        return (
-          <section className="relative overflow-hidden bg-gradient-to-br from-[#00478d] via-[#005fa8] to-[#006d33] px-6 md:px-16 py-16 md:py-20 min-h-[580px] flex flex-col justify-between transition-all duration-700">
-            {/* Background Decorative Circles */}
-            <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-            <div className="absolute bottom-0 left-0 w-72 h-72 rounded-full bg-white/5 translate-y-1/2 -translate-x-1/4 pointer-events-none"></div>
-
-            <div className="flex flex-col md:flex-row items-center gap-12 relative z-10 my-auto">
-              {/* Left Content */}
-              <div className="flex-1 space-y-6 max-w-2xl">
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white/15 text-white/95 rounded-full text-xs font-extrabold border border-white/20 shadow-sm backdrop-blur-md">
-                  <Icon name="verified" className="text-base text-yellow-300" />
-                  {currentHero.tag}
-                </div>
-
-                <h1 className="font-headline-lg text-headline-lg text-white leading-tight">
-                  {currentHero.titleLine1} <br />
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-emerald-200 to-green-300">
-                    {currentHero.titleLine2}
-                  </span>
-                </h1>
-
-                <p className="text-white/85 text-base md:text-lg max-w-lg leading-relaxed font-medium">
-                  {currentHero.desc}
-                </p>
-                
-                <div className="flex flex-wrap items-center gap-4 pt-2">
-                  <button
-                    onClick={() => navigate(currentHero.btnLink)}
-                    className="group relative overflow-hidden bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 text-[#003366] px-8 py-4 rounded-xl font-extrabold flex items-center gap-3 shadow-xl hover:shadow-2xl hover:shadow-emerald-400/30 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer text-base"
-                  >
-                    <span className="absolute inset-0 w-1/2 h-full bg-white/40 skew-x-[-20deg] group-hover:translate-x-[300%] transition-transform duration-1000 ease-out"></span>
-                    <span className="relative z-10 flex items-center gap-2">
-                      <Icon name="calendar_month" className="text-xl" />
-                      {currentHero.btnText}
-                    </span>
-                    <Icon name="arrow_forward" className="text-xl relative z-10 group-hover:translate-x-1.5 transition-transform duration-300" />
-                  </button>
-                  <button
-                    onClick={() => navigate('/services')}
-                    className="group bg-white/10 hover:bg-white/20 text-white border border-white/30 backdrop-blur-md px-7 py-4 rounded-xl font-bold flex items-center gap-2.5 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 cursor-pointer text-base shadow-lg"
-                  >
-                    <span>Xem dịch vụ & Bảng giá</span>
-                    <Icon name="read_more" className="text-lg opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" />
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-4 pt-4 border-t border-white/20">
-                  <div className="flex -space-x-3">
-                    {[
-                      'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=500&q=80',
-                      'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=500&q=80',
-                    ].map((src, i) => (
-                      <img key={i} src={src} alt="Doctor" className="w-10 h-10 rounded-full border-2 border-white object-cover" />
-                    ))}
-                    <div className="w-10 h-10 rounded-full border-2 border-white bg-primary-container text-white flex items-center justify-center text-xs font-bold">+500</div>
-                  </div>
-                  <p className="text-sm font-semibold text-white/95">
-                     ★ <span className="text-yellow-300 font-bold">{currentHero.badgeText}</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Right Image Container (Đã bỏ thẻ hàng chờ 08 bệnh nhân) */}
-              <div className="flex-1 relative w-full">
-                <div className="relative z-10 rounded-2xl overflow-hidden shadow-2xl border border-white/40 bg-slate-800">
-                  <img
-                    alt={currentHero.titleLine1}
-                    className="w-full h-[360px] md:h-[420px] object-cover transition-all duration-700 hover:scale-105"
-                    src={currentHero.image}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Slider Bottom Controls & Dots */}
-            <div className="relative z-20 flex items-center justify-between pt-6 border-t border-white/10 mt-6">
-              <div className="flex items-center gap-2">
-                {HERO_SLIDES.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setHeroIdx(idx)}
-                    className={`h-2.5 rounded-full transition-all cursor-pointer ${
-                      idx === heroIdx ? 'w-10 bg-yellow-300' : 'w-3 bg-white/40 hover:bg-white/70'
-                    }`}
-                    title={`Banner ${idx + 1}`}
-                  />
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setHeroIdx((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)}
-                  className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md border border-white/20"
-                  title="Banner trước"
-                >
-                  <FaChevronLeft className="text-xs" />
-                </button>
-                <span className="text-xs font-mono font-bold text-white/80 px-1">
-                  0{heroIdx + 1} / 0{HERO_SLIDES.length}
-                </span>
-                <button
-                  onClick={() => setHeroIdx((prev) => (prev + 1) % HERO_SLIDES.length)}
-                  className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md border border-white/20"
-                  title="Banner tiếp theo"
-                >
-                  <FaChevronRight className="text-xs" />
-                </button>
-              </div>
-            </div>
-          </section>
-        );
-      })()}
+      <HeroCarouselSection navigate={navigate} />
 
       {/* ── Stats Bar ── */}
       <section className="bg-primary text-on-primary py-8 px-6 md:px-16 shadow-inner">

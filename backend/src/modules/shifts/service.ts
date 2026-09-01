@@ -134,18 +134,9 @@ export async function createShift(data: {
 
   const hasMorning = existingShifts.some(s => s.shiftType === 'Morning');
   const hasAfternoon = existingShifts.some(s => s.shiftType === 'Afternoon');
-  const hasFull = existingShifts.some(s => s.shiftType === 'Full');
-
-  if (hasFull) {
-    throw new AppError(400, 'Bác sĩ đã có Ca cả ngày vào ngày này. Không thể xếp thêm ca trực khác.', 'DOCTOR_HAS_FULL_SHIFT');
-  }
 
   if (hasMorning && hasAfternoon) {
     throw new AppError(400, 'Bác sĩ đã có đủ cả Ca sáng và Ca chiều vào ngày này. Không thể thêm ca trực nữa.', 'DOCTOR_FULL_DAY_SCHEDULED');
-  }
-
-  if ((hasMorning || hasAfternoon) && data.shiftType === 'Full') {
-    throw new AppError(400, 'Bác sĩ đã có ca trực lẻ trong ngày. Không thể đăng ký thêm Ca cả ngày.', 'CANNOT_ADD_FULL_SHIFT');
   }
 
   if (data.shiftType === 'Morning' && hasMorning) {
@@ -156,14 +147,10 @@ export async function createShift(data: {
     throw new AppError(400, 'Bác sĩ đã có Ca chiều vào ngày này.', 'DUPLICATE_SHIFT');
   }
 
-
   const shiftHours = {
     Morning: { start: '08:00', end: '14:00' },
     Afternoon: { start: '14:00', end: '20:00' },
-    Full: { start: '08:00', end: '20:00' },
   };
-
-  const sc = shiftHours[data.shiftType];
 
   // Tự động tìm phòng cố định của bác sĩ qua defaultRoomId
   let finalRoomId = 1;
@@ -193,6 +180,71 @@ export async function createShift(data: {
   } else {
     finalRoomId = Number(data.roomId);
   }
+
+  // Khi chọn "Cả ngày", tạo đồng thời ca sáng và ca chiều (hoặc bổ sung ca còn thiếu)
+  if (data.shiftType === 'Full') {
+    let resultShift: any = null;
+
+    if (!hasMorning) {
+      const sMorning = await prisma.dentistShift.upsert({
+        where: {
+          dentistId_workDate_shiftType: {
+            dentistId: data.dentistId,
+            workDate: data.workDate,
+            shiftType: 'Morning',
+          },
+        },
+        update: {
+          roomId: finalRoomId,
+          startTime: new Date(`1970-01-01T${shiftHours.Morning.start}:00.000Z`),
+          endTime: new Date(`1970-01-01T${shiftHours.Morning.end}:00.000Z`),
+          isActive: true,
+        },
+        create: {
+          dentistId: data.dentistId,
+          roomId: finalRoomId,
+          workDate: data.workDate,
+          shiftType: 'Morning',
+          startTime: new Date(`1970-01-01T${shiftHours.Morning.start}:00.000Z`),
+          endTime: new Date(`1970-01-01T${shiftHours.Morning.end}:00.000Z`),
+          isActive: true,
+        },
+      });
+      resultShift = sMorning;
+    }
+
+    if (!hasAfternoon) {
+      const sAfternoon = await prisma.dentistShift.upsert({
+        where: {
+          dentistId_workDate_shiftType: {
+            dentistId: data.dentistId,
+            workDate: data.workDate,
+            shiftType: 'Afternoon',
+          },
+        },
+        update: {
+          roomId: finalRoomId,
+          startTime: new Date(`1970-01-01T${shiftHours.Afternoon.start}:00.000Z`),
+          endTime: new Date(`1970-01-01T${shiftHours.Afternoon.end}:00.000Z`),
+          isActive: true,
+        },
+        create: {
+          dentistId: data.dentistId,
+          roomId: finalRoomId,
+          workDate: data.workDate,
+          shiftType: 'Afternoon',
+          startTime: new Date(`1970-01-01T${shiftHours.Afternoon.start}:00.000Z`),
+          endTime: new Date(`1970-01-01T${shiftHours.Afternoon.end}:00.000Z`),
+          isActive: true,
+        },
+      });
+      if (!resultShift) resultShift = sAfternoon;
+    }
+
+    return resultShift;
+  }
+
+  const sc = shiftHours[data.shiftType as 'Morning' | 'Afternoon'];
 
   return await prisma.dentistShift.upsert({
     where: {

@@ -20,7 +20,7 @@ const isSamePatientId = (id1?: string | null, id2?: string | null): boolean => {
 };
 
 export const ManagerPatients: React.FC = () => {
-  const { patients, appointments, medicalRecords, invoices } = useClinic();
+  const { patients, appointments, medicalRecords, invoices, unlockPatient, lockPatient } = useClinic();
   const { showConfirm, showAlert } = useConfirm();
 
   // Filters

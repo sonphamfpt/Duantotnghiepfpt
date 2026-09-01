@@ -8,7 +8,7 @@ import { isSameDentistId } from '../../../utils/shiftUtils';
 // Helper to extract date components timezone-independently
 const getDateParts = (dStr: any) => {
   if (!dStr) return null;
-  let str = '';
+  let str: string;
   try {
     if (dStr instanceof Date) {
       str = dStr.toISOString();

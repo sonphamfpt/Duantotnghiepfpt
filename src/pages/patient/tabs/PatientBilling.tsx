@@ -552,9 +552,9 @@ interface PayInvoiceModalProps {
 }
 
 const PayInvoiceModal: React.FC<PayInvoiceModalProps> = ({ isOpen, onClose, invoice, completedCount }) => {
-  if (!isOpen) return null;
   const [paymentMethod, setPaymentMethod] = useState<'Transfer' | 'Cash'>('Transfer');
   const [loadingVnPay, setLoadingVnPay] = useState(false);
+  if (!isOpen) return null;
 
   const remainingAmt = invoice.remainingAmount !== undefined ? invoice.remainingAmount : invoice.netPrice;
   const isVip = completedCount >= 5;

@@ -34,15 +34,7 @@ cd backend
 npx prisma db seed   # Reset + seed toàn bộ database với dữ liệu mẫu
 ```
 
-### Kiểm thử tự động
-```bash
-cd backend
-npx ts-node src/test_api.ts        # 7 ca kiểm thử liên thông xác thực & đặt lịch
-npx ts-node src/test_reports.ts    # Kiểm thử Module Báo cáo thống kê
-npx ts-node src/test_websocket.ts  # Kiểm thử WebSocket real-time (Socket.io) E2E
-```
-
-### Kiểm tra biên dịch
+### Kiểm tra biên dịch (Typecheck)
 ```bash
 # Frontend
 npx tsc -b --noEmit

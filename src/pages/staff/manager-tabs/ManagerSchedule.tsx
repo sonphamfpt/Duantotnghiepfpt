@@ -10,7 +10,7 @@ import { exportToExcel } from '../../../utils/exportToExcel';
 const SHIFT_CONFIG = {
   Morning: { label: 'Ca sáng', time: '08:00 – 14:00', color: 'bg-sky-50 border-sky-200 text-sky-800', dot: 'bg-sky-400', dotRing: 'ring-sky-200' },
   Afternoon: { label: 'Ca chiều', time: '14:00 – 20:00', color: 'bg-emerald-50 border-emerald-200 text-emerald-800', dot: 'bg-emerald-400', dotRing: 'ring-emerald-200' },
-  Full: { label: 'Cả ngày', time: '08:00 – 20:00', color: 'bg-amber-50 border-amber-200 text-amber-800', dot: 'bg-amber-400', dotRing: 'ring-amber-200' },
+  Full: { label: 'Cả ngày (Sáng + Chiều)', time: '08:00 – 20:00 (Tạo cả 2 ca)', color: 'bg-amber-50 border-amber-200 text-amber-800', dot: 'bg-amber-400', dotRing: 'ring-amber-200' },
 };
 
 const DENTIST_ACCENT: Record<string, string> = {
@@ -125,7 +125,6 @@ export const ManagerSchedule: React.FC = () => {
     const existingShifts = doctorShifts.filter(s => s.dentistId === dentistId && s.date === dateStr);
     const hasMorning = existingShifts.some(s => s.shiftType === 'Morning');
     const hasAfternoon = existingShifts.some(s => s.shiftType === 'Afternoon');
-    const hasFull = existingShifts.some(s => s.shiftType === 'Full');
 
     const isToday = dateStr === TODAY;
     const currentHour = new Date().getHours();
@@ -134,25 +133,24 @@ export const ManagerSchedule: React.FC = () => {
 
     const reasons: Record<string, string> = {};
 
-    if (hasFull) {
-      reasons.Morning = 'Đã có ca cả ngày';
-      reasons.Afternoon = 'Đã có ca cả ngày';
-      reasons.Full = 'Đã có ca cả ngày';
+    if (hasMorning && hasAfternoon) {
+      reasons.Morning = 'Đã có ca sáng';
+      reasons.Afternoon = 'Đã có ca chiều';
+      reasons.Full = 'Đã có đủ cả 2 ca';
     } else {
       if (hasMorning) {
         reasons.Morning = 'Đã có ca sáng';
-        reasons.Full = 'Đã có ca sáng';
       }
       if (hasAfternoon) {
         reasons.Afternoon = 'Đã có ca chiều';
-        reasons.Full = 'Đã có ca chiều';
       }
       if (isMorningPastRealtime) {
         if (!reasons.Morning) reasons.Morning = 'Đã qua giờ bắt đầu (08:00)';
-        if (!reasons.Full) reasons.Full = 'Đã qua giờ bắt đầu (08:00)';
+        if (!reasons.Full && !hasMorning && isAfternoonPastRealtime) reasons.Full = 'Đã qua giờ làm việc';
       }
       if (isAfternoonPastRealtime) {
         if (!reasons.Afternoon) reasons.Afternoon = 'Đã qua giờ bắt đầu (14:00)';
+        if (!reasons.Full) reasons.Full = 'Đã qua giờ làm việc';
       }
     }
 
@@ -286,31 +284,11 @@ export const ManagerSchedule: React.FC = () => {
 
     const hasMorning = existingShifts.some(s => s.shiftType === 'Morning');
     const hasAfternoon = existingShifts.some(s => s.shiftType === 'Afternoon');
-    const hasFull = existingShifts.some(s => s.shiftType === 'Full');
-
-    if (hasFull) {
-      showAlert({
-        title: 'Lịch trực đã đầy',
-        message: `Bác sĩ ${dentist.name} đã được phân công Ca cả ngày vào ngày ${addForm.date}. Không thể xếp thêm ca nào khác!`,
-        type: 'warning',
-      });
-      return;
-    }
 
     if (hasMorning && hasAfternoon) {
       showAlert({
         title: 'Lịch trực đã đầy',
         message: `Bác sĩ ${dentist.name} đã có đủ cả Ca sáng và Ca chiều vào ngày ${addForm.date}. Không thể thêm ca trực nào nữa!`,
-        type: 'warning',
-      });
-      return;
-    }
-
-    if ((hasMorning || hasAfternoon) && addForm.shiftType === 'Full') {
-      const existShiftLabel = hasMorning ? 'Ca sáng' : 'Ca chiều';
-      showAlert({
-        title: 'Xung đột ca trực',
-        message: `Bác sĩ ${dentist.name} đã có ${existShiftLabel} vào ngày ${addForm.date}. Không thể đăng ký thêm Ca cả ngày!`,
         type: 'warning',
       });
       return;
@@ -350,7 +328,11 @@ export const ManagerSchedule: React.FC = () => {
         return;
       }
 
-      showAlert({ title: 'Thành công', message: `Đã thêm ca trực mới cho ${dentist.name} thành công!`, type: 'success' });
+      const successMsg = addForm.shiftType === 'Full'
+        ? `Đã thêm ca trực trọn vẹn (Cả ca sáng và ca chiều) cho ${dentist.name} thành công!`
+        : `Đã thêm ca trực mới cho ${dentist.name} thành công!`;
+
+      showAlert({ title: 'Thành công', message: successMsg, type: 'success' });
       setShowAddModal(false);
       setAddForm({ dentistId: '', date: '', shiftType: 'Morning', room: ALL_ROOMS[0] });
     } catch (err: any) {
@@ -695,7 +677,7 @@ export const ManagerSchedule: React.FC = () => {
           {/* Legend */}
           <div className="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm space-y-2">
             <p className="text-[10px] uppercase font-extrabold text-on-surface-variant tracking-wider">Chú thích</p>
-            {Object.entries(SHIFT_CONFIG).map(([key, cfg]) => (
+            {Object.entries(SHIFT_CONFIG).filter(([k]) => k !== 'Full').map(([key, cfg]) => (
               <div key={key} className="flex items-center gap-2 text-xs font-semibold text-on-surface">
                 <span className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`} />
                 <span>{cfg.label} ({cfg.time})</span>

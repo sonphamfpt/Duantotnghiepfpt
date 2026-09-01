@@ -19,8 +19,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string
 
 // Helper to parse backend time format
 const parseAppointmentTime = (timeStr: string) => {
-  let datePart = '';
-  let timePart = '';
+  let datePart: string;
+  let timePart: string;
   
   if (timeStr.includes('@')) {
     const parts = timeStr.split('@');
