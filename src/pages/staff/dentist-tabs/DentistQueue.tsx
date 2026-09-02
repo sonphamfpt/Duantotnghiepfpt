@@ -18,6 +18,7 @@ export const DentistQueue: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [startingId, setStartingId] = useState<string | null>(null);
 
   const dentistQueue = queue.filter(q => q.dentistId === dentistId);
   const activeQueue = dentistQueue.filter(q => q.status !== 'Completed');
@@ -33,9 +34,15 @@ export const DentistQueue: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const handleAction = (item: any) => {
+  const handleAction = async (item: any) => {
+    if (startingId) return;
     if (item.status === 'Waiting') {
-      startTreatment(item.id);
+      setStartingId(item.id);
+      try {
+        await startTreatment(item.id);
+      } finally {
+        setStartingId(null);
+      }
     }
     navigate(`/dashboard/dentist?tab=workspace&queueId=${item.id}`);
   };
@@ -167,6 +174,7 @@ export const DentistQueue: React.FC = () => {
                     <td className="p-4 text-right">
                       {item.status !== 'Completed' ? (
                         <button 
+                          disabled={startingId === item.id || (item.status === 'Waiting' && isAnyInChair)}
                           onClick={() => {
                             if (item.status === 'Waiting' && isAnyInChair) {
                               alert('Vui lòng hoàn tất ca khám hiện tại trước khi tiếp nhận bệnh nhân mới!');
@@ -180,13 +188,13 @@ export const DentistQueue: React.FC = () => {
                                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                                 : 'bg-primary text-white hover:bg-primary/90' 
                               : 'bg-secondary-container text-on-secondary-container hover:bg-secondary-container/80'
-                          }`}
+                          } ${startingId === item.id ? 'opacity-70 cursor-not-allowed' : ''}`}
                         >
                           <Icon
-                            name={item.status === 'Waiting' ? 'play_arrow' : 'dashboard'}
-                            className="text-[16px]"
+                            name={startingId === item.id ? 'progress_activity' : item.status === 'Waiting' ? 'play_arrow' : 'dashboard'}
+                            className={`text-[16px] ${startingId === item.id ? 'animate-spin' : ''}`}
                           />
-                          {item.status === 'Waiting' ? 'Khám ngay' : 'Mở bàn khám'}
+                          {startingId === item.id ? 'Đang mở bàn khám...' : item.status === 'Waiting' ? 'Khám ngay' : 'Mở bàn khám'}
                         </button>
                       ) : (
                         <button 

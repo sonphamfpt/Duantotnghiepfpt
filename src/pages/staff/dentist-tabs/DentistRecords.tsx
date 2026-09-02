@@ -41,6 +41,7 @@ export const DentistRecords: React.FC = () => {
   const [zoomScale, setZoomScale] = useState<number>(1);
   const [rotateDegree, setRotateDegree] = useState<number>(0);
   const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
+  const [isLoadingRecords, setIsLoadingRecords] = useState<boolean>(false);
 
   useEffect(() => {
     setSelectedPatientId(urlPatientId);
@@ -51,12 +52,17 @@ export const DentistRecords: React.FC = () => {
   useEffect(() => {
     if (selectedPatientId && fetchedRef.current !== selectedPatientId) {
       fetchedRef.current = selectedPatientId;
-      fetchPatientRecords(selectedPatientId);
+      setIsLoadingRecords(true);
+      fetchPatientRecords(selectedPatientId).finally(() => {
+        setIsLoadingRecords(false);
+      });
     }
   }, [selectedPatientId, fetchPatientRecords]);
 
   const selectPatient = (id: string) => {
     setSelectedPatientId(id);
+    fetchedRef.current = null;
+    setIsLoadingRecords(true);
     setSearchParams(prev => {
       prev.set('patientId', id);
       return prev;
@@ -417,14 +423,28 @@ export const DentistRecords: React.FC = () => {
                     })}
                   </tbody>
                 </table>
-
-                {patientRecords.length === 0 && (
-                  <div className="text-center py-12">
-                    <Icon name="history" className="text-[60px] text-outline" />
-                    <p className="text-on-surface-variant mt-3">Chưa có lịch sử điều trị</p>
-                  </div>
-                )}
               </div>
+
+              {isLoadingRecords && (
+                <div className="p-8 space-y-4 animate-pulse">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                      <div className="space-y-2 flex-1">
+                        <div className="h-4 bg-slate-200 rounded w-1/4"></div>
+                        <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+                      </div>
+                      <div className="h-8 bg-slate-200 rounded-lg w-24"></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!isLoadingRecords && patientRecords.length === 0 && (
+                <div className="text-center py-12">
+                  <Icon name="history" className="text-[60px] text-outline" />
+                  <p className="text-on-surface-variant mt-3 font-semibold">Chưa có lịch sử điều trị</p>
+                </div>
+              )}
             </div>
           )}
 

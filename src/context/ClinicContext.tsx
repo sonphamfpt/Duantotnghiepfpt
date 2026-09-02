@@ -301,7 +301,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           const res = await queueApi.getQueue();
           if (res?.data) setQueue(res.data);
         } catch (e) { console.warn('[WS] refreshQueue failed:', e); }
-      }, 400);
+      }, 50);
     };
 
     const handleInvoiceEvent = () => {
@@ -311,7 +311,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           const res = await invoiceApi.getInvoices({ skipAuthRedirect: true });
           if (res?.data) setInvoices(mapInvoices(res.data));
         } catch (e) { console.warn('[WS] refreshInvoices failed:', e); }
-      }, 400);
+      }, 50);
     };
 
     const handleAppointmentEvent = () => {
@@ -321,7 +321,7 @@ export const ClinicProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           const res = await appointmentApi.getAppointments();
           if (res?.data) setAppointments(res.data);
         } catch (e) { console.warn('[WS] refreshAppointments failed:', e); }
-      }, 400);
+      }, 50);
     };
 
     const handleShiftEvent = () => {

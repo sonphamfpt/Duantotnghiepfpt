@@ -594,6 +594,8 @@ const DentistHome: React.FC = () => {
       setSelectedPlanId('');
       setUploadedFiles([]);
       setPostTreatmentNotes('');
+      // Tự động đưa Bác sĩ quay lại Tab Hàng chờ để tiếp nhận bệnh nhân tiếp theo
+      setSearchParams({});
     } finally {
       setIsSubmitting(false);
     }

@@ -28,6 +28,7 @@ export const registerSchema = z.object({
     }).min(10, "Mã xác thực OTP không hợp lệ"),
     dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày sinh phải ở định dạng YYYY-MM-DD").optional().or(z.literal('')),
     gender: z.string().max(10).optional().or(z.literal('')),
+    address: z.string().max(255, "Địa chỉ tối đa 255 ký tự").optional().or(z.literal('')),
   }),
 });
 
